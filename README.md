@@ -35,13 +35,17 @@ Download the APK from [Releases](https://github.com/Sanitised/ST-android/release
 ## Transferring data from SillyTavern on Termux/PC
 
 The app accepts `.tar.gz`, `.tar`, and `.zip` archives. The file format is detected automatically.
+
 The app supports two archive types: full backups exported from this app and SillyTavern user backups.
+
 Full backups produced by this app save more information and are generally recommended, especially for reinstalls.
 
 ### Use SillyTavern user backups for data transfer
 
-In your old installation of SillyTavern, press `User Settings -> Account -> Download Backup`.
+In your old installation of SillyTavern, press **User Settings**, **Account**, **Download Backup**.
+
 Then stop the server in the app, tap **Manage ST**, **Import Data** and select the backup archive (for example, `default-user-20260303-122334.zip`).
+
 This method is the easiest, and will import all your chats, characters, and other user data. It won't work properly for multi-user setups, and it won't transfer the server config.
 
 ### Quick full backup for data transfer (Termux or Linux)
