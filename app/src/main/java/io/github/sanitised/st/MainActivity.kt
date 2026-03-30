@@ -115,6 +115,30 @@ private fun appScreenStateSaver(legalDocs: List<LegalDoc>): Saver<AppScreen, Str
     )
 }
 
+private fun pendingDialogStateSaver(): Saver<PendingDialog?, String> {
+    return Saver(
+        save = { dialog ->
+            when (dialog) {
+                null -> "none"
+                PendingDialog.ResetToDefault -> "reset"
+                PendingDialog.RemoveUserData -> "remove-data"
+                is PendingDialog.ConfirmImport -> "import:${dialog.uri}"
+            }
+        },
+        restore = { key ->
+            when {
+                key == "none" -> null
+                key == "reset" -> PendingDialog.ResetToDefault
+                key == "remove-data" -> PendingDialog.RemoveUserData
+                key.startsWith("import:") -> PendingDialog.ConfirmImport(
+                    Uri.parse(key.removePrefix("import:"))
+                )
+                else -> null
+            }
+        }
+    )
+}
+
 class MainActivity : ComponentActivity() {
     private val nodeServiceState = mutableStateOf<NodeService?>(null)
 
@@ -136,7 +160,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        maybeRequestNotificationPermission()
         val versionLabel = runCatching {
             val info = packageManager.getPackageInfo(packageName, 0)
             info.versionName ?: getString(R.string.unknown_short)
@@ -191,8 +214,11 @@ class MainActivity : ComponentActivity() {
             val stdoutState = remember { mutableStateOf("") }
             val stderrState = remember { mutableStateOf("") }
             val serviceState = remember { mutableStateOf("") }
-            val pendingDialogState = remember { mutableStateOf<PendingDialog?>(null) }
+            val pendingDialogState = rememberSaveable(stateSaver = pendingDialogStateSaver()) {
+                mutableStateOf<PendingDialog?>(null)
+            }
             val notificationGrantedState = remember { mutableStateOf(isNotificationPermissionGranted()) }
+            val notificationAutoPromptAttempted = rememberSaveable { mutableStateOf(false) }
             val batteryUnrestrictedState = remember { mutableStateOf(isBatteryUnrestricted()) }
             val lifecycleOwner = LocalLifecycleOwner.current
             val scope = rememberCoroutineScope()
@@ -252,6 +278,12 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(viewModel) {
                 viewModel.snackbarMessages.collectLatest { message ->
                     snackbarHostState.showSnackbar(message)
+                }
+            }
+            LaunchedEffect(notificationGrantedState.value, notificationAutoPromptAttempted.value) {
+                if (!notificationGrantedState.value && !notificationAutoPromptAttempted.value) {
+                    notificationAutoPromptAttempted.value = true
+                    maybeRequestNotificationPermission()
                 }
             }
             val showAutoCheckOptInPrompt = viewModel.shouldShowAutoCheckOptInPrompt()

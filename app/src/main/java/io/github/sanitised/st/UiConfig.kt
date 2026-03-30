@@ -64,12 +64,12 @@ fun ConfigScreen(
     val textState = rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
-    val originalState = remember { mutableStateOf("") }
+    val originalState = rememberSaveable { mutableStateOf("") }
     val isSavingState = remember { mutableStateOf(false) }
-    val showDiscardDialog = remember { mutableStateOf(false) }
-    val missingState = remember { mutableStateOf(false) }
-    val loadedState = remember { mutableStateOf(false) }
-    val hasUserEdits = remember { mutableStateOf(false) }
+    val showDiscardDialog = rememberSaveable { mutableStateOf(false) }
+    val missingState = rememberSaveable { mutableStateOf(false) }
+    val loadedState = rememberSaveable { mutableStateOf(false) }
+    val hasUserEdits = rememberSaveable { mutableStateOf(false) }
     val editorScrollState = rememberScrollState()
     val editorViewportHeightPx = remember { mutableStateOf(0) }
     val textLayoutState = remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -87,7 +87,8 @@ fun ConfigScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(configFile.absolutePath, loadedState.value) {
+        if (loadedState.value) return@LaunchedEffect
         val content = withContext(Dispatchers.IO) {
             if (configFile.exists()) configFile.readText(Charsets.UTF_8) else ""
         }
