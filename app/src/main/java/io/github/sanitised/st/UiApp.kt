@@ -206,14 +206,6 @@ fun STAndroidApp(
                             Text(text = stringResource(R.string.config_title))
                         }
                     }
-                    if (showAutoCheckOptInPrompt) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        AutoCheckOptInCard(
-                            visible = true,
-                            onEnable = onEnableAutoCheck,
-                            onLater = onLaterAutoCheck
-                        )
-                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
@@ -229,6 +221,14 @@ fun STAndroidApp(
                         ) {
                             Text(text = stringResource(R.string.manage_st_title))
                         }
+                    }
+                    if (showAutoCheckOptInPrompt) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        AutoCheckOptInCard(
+                            visible = true,
+                            onEnable = onEnableAutoCheck,
+                            onLater = onLaterAutoCheck
+                        )
                     }
                     if (showNotificationPrompt) {
                         Spacer(modifier = Modifier.height(16.dp))
