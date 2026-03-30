@@ -200,7 +200,6 @@ fun STAndroidApp(
                         Spacer(modifier = Modifier.width(12.dp))
                         OutlinedButton(
                             onClick = onEditConfig,
-                            enabled = !isBusy && (status.state == NodeState.STOPPED || status.state == NodeState.ERROR),
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(text = stringResource(R.string.config_title))
