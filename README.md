@@ -100,7 +100,7 @@ git submodule update --init --recursive
 ./ci/scripts/build_apk_docker.sh
 ```
 
-The first build takes around 1 to 2 hours, compiling Node from scratch. Subsequent builds are a lot faster.
+The first build takes around 2 to 3 hours, compiling Node from scratch. Subsequent builds are a lot faster.
 
 Output:
 - `app/build/outputs/apk/debug/app-debug.apk`
