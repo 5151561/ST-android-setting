@@ -300,7 +300,7 @@ private fun SettingsScreenPreview() {
         onCheckNow = {},
         isChecking = false,
         showUpdatePrompt = true,
-        updateVersionLabel = "v0.3.1",
+        updateVersionLabel = "v0.4.0",
         updateDetails = "Tap Install to download and install.",
         isDownloadingUpdate = false,
         downloadProgressPercent = null,
