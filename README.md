@@ -13,7 +13,7 @@ It is intended primarily for basic on-device chatting. Extensions are not proper
 
 - No telemetry of any kind.
 - Unlike Termux, the app works in Private Space/Secure Folder/Secondary profiles.
-- Minimal network calls: opt-in GitHub release checks, npm installs and github downloads for custom ST versions. All other traffic comes from SillyTavern itself.
+- Minimal network calls: opt-in GitHub release checks, npm installs, and GitHub downloads for custom ST versions. All other traffic comes from SillyTavern itself.
 - All chats, characters, settings stay local unless you decide to export them manually and share with others.
 - Bundles SillyTavern source code without modifications.
 - Bundles Node.js with minimal patches required to run on Android.
@@ -99,6 +99,8 @@ cd ST-android
 git submodule update --init --recursive
 ./ci/scripts/build_apk_docker.sh
 ```
+
+The first build takes around 1 to 2 hours, compiling Node from scratch. Subsequent builds are a lot faster.
 
 Output:
 - `app/build/outputs/apk/debug/app-debug.apk`
