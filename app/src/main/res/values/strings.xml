@@ -19,6 +19,7 @@
     <string name="cancel">Cancel</string>
     <string name="config_discard_body">You have unsaved changes. If you go back, they will be lost.</string>
     <string name="config_discard_title">Discard changes?</string>
+    <string name="config_button_title">Edit ST config</string>
     <string name="config_file_name">config.yaml</string>
     <string name="config_missing">Config is missing. Start SillyTavern once to generate a default config.</string>
     <string name="config_save_failed">Save failed: %1$s</string>

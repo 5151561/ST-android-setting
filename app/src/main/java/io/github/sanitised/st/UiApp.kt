@@ -202,7 +202,7 @@ fun STAndroidApp(
                             onClick = onEditConfig,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(text = stringResource(R.string.config_title))
+                            Text(text = stringResource(R.string.config_button_title))
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))

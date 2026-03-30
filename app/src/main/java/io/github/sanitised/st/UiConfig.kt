@@ -161,13 +161,6 @@ fun ConfigScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                } else if (!canEdit) {
-                    Text(
-                        text = stringResource(R.string.config_stop_server),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -213,7 +206,7 @@ fun ConfigScreen(
                                     .verticalScroll(editorScrollState)
                                     .padding(horizontal = 12.dp, vertical = 10.dp)
                                     .focusRequester(focusRequester),
-                                enabled = canEditEffective,
+                                readOnly = !canEditEffective,
                                 textStyle = MaterialTheme.typography.bodyMedium.copy(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 13.sp,
@@ -240,6 +233,14 @@ fun ConfigScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
+                if (!missingState.value && !canEdit) {
+                    Text(
+                        text = stringResource(R.string.config_stop_server),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
                 Button(
                     onClick = {
                         isSavingState.value = true
