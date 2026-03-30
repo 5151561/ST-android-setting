@@ -111,9 +111,7 @@
     <string name="settings_auto_open_subtitle">When the server is ready, open SillyTavern in your browser for you.</string>
     <string name="settings_auto_open_title">Open Browser Automatically</string>
     <string name="settings_theme_title">Theme</string>
-    <string name="settings_theme_subtitle">Choose whether the app follows the system theme or always stays light or dark.</string>
     <string name="settings_theme_auto_label">Automatic</string>
-    <string name="settings_theme_auto_subtitle">Follow the system light/dark setting</string>
     <string name="settings_theme_light_label">Light</string>
     <string name="settings_theme_dark_label">Dark</string>
     <string name="settings_battery_button_enable">Set to Unrestricted</string>
@@ -130,7 +128,6 @@
     <string name="settings_checking">Checking...</string>
     <string name="settings_title">Settings</string>
     <string name="settings_update_channel_title">Update Channel</string>
-    <string name="settings_update_description">Checks for new app releases on GitHub.</string>
     <string name="settings_updates_title">App Updates</string>
     <string name="sillytavern_custom_version">SillyTavern (custom version)</string>
     <string name="sillytavern_custom_with_label">SillyTavern (%1$s)</string>

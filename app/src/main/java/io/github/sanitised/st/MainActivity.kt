@@ -1,6 +1,7 @@
 package io.github.sanitised.st
 
 import android.Manifest
+import android.graphics.Color
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
@@ -28,6 +29,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +42,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -295,6 +298,14 @@ class MainActivity : ComponentActivity() {
             val systemInDarkTheme = isSystemInDarkTheme()
             val themeMode by viewModel.themeMode
             val useDarkTheme = themeMode.shouldUseDarkTheme(systemInDarkTheme)
+            SideEffect {
+                window.statusBarColor = Color.TRANSPARENT
+                window.navigationBarColor = Color.TRANSPARENT
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !useDarkTheme
+                    isAppearanceLightNavigationBars = !useDarkTheme
+                }
+            }
 
             // Launchers must live at the top level, outside any conditional branches
             val exportLauncher = rememberLauncherForActivityResult(
