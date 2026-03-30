@@ -28,15 +28,21 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -64,6 +70,49 @@ private sealed interface PendingDialog {
     object ResetToDefault : PendingDialog
     object RemoveUserData : PendingDialog
     data class ConfirmImport(val uri: Uri) : PendingDialog
+}
+
+private val LightAppColorScheme = lightColorScheme()
+private val DarkAppColorScheme = darkColorScheme()
+
+private fun ThemeMode.shouldUseDarkTheme(systemInDarkTheme: Boolean): Boolean {
+    return when (this) {
+        ThemeMode.AUTO -> systemInDarkTheme
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+}
+
+private fun appScreenStateSaver(legalDocs: List<LegalDoc>): Saver<AppScreen, String> {
+    return Saver(
+        save = { screen ->
+            when (screen) {
+                AppScreen.Home -> "home"
+                AppScreen.Logs -> "logs"
+                AppScreen.Config -> "config"
+                AppScreen.Legal -> "legal"
+                AppScreen.Settings -> "settings"
+                AppScreen.ManageSt -> "manage-st"
+                is AppScreen.License -> "license:${screen.doc.assetPath}"
+            }
+        },
+        restore = { key ->
+            when {
+                key == "home" -> AppScreen.Home
+                key == "logs" -> AppScreen.Logs
+                key == "config" -> AppScreen.Config
+                key == "legal" -> AppScreen.Legal
+                key == "settings" -> AppScreen.Settings
+                key == "manage-st" -> AppScreen.ManageSt
+                key.startsWith("license:") -> {
+                    val assetPath = key.removePrefix("license:")
+                    val doc = legalDocs.firstOrNull { it.assetPath == assetPath }
+                    if (doc != null) AppScreen.License(doc) else AppScreen.Legal
+                }
+                else -> AppScreen.Home
+            }
+        }
+    )
 }
 
 class MainActivity : ComponentActivity() {
@@ -112,9 +161,33 @@ class MainActivity : ComponentActivity() {
         val symlinkSupported = isSymlinkSupported()
         setContent {
             val viewModel: MainViewModel = viewModel()
+            val legalDocs = remember {
+                listOf(
+                    LegalDoc(
+                        title = getString(R.string.legal_doc_app_license_title),
+                        assetPath = "legal/sillytavern_AGPL-3.0.txt",
+                        description = getString(R.string.legal_doc_app_license_description)
+                    ),
+                    LegalDoc(
+                        title = getString(R.string.legal_doc_node_license_title),
+                        assetPath = "legal/node_MIT.txt",
+                        description = getString(R.string.legal_doc_node_license_description)
+                    ),
+                    LegalDoc(
+                        title = getString(R.string.legal_doc_android_license_title),
+                        assetPath = "legal/apache-2.0.txt",
+                    ),
+                    LegalDoc(
+                        title = getString(R.string.legal_doc_st_dependencies_title),
+                        assetPath = "legal/sillytavern_package-lock.json"
+                    )
+                )
+            }
             val statusState = remember { mutableStateOf(NodeStatus(NodeState.STOPPED, "Idle")) }
-            val currentScreen = remember { mutableStateOf<AppScreen>(AppScreen.Home) }
-            val autoOpenBrowserTriggeredForCurrentRun = remember { mutableStateOf(false) }
+            val currentScreen = rememberSaveable(stateSaver = appScreenStateSaver(legalDocs)) {
+                mutableStateOf<AppScreen>(AppScreen.Home)
+            }
+            val autoOpenBrowserTriggeredForCurrentRun = rememberSaveable { mutableStateOf(false) }
             val stdoutState = remember { mutableStateOf("") }
             val stderrState = remember { mutableStateOf("") }
             val serviceState = remember { mutableStateOf("") }
@@ -128,6 +201,10 @@ class MainActivity : ComponentActivity() {
                 object : NodeStatusListener {
                     override fun onStatus(status: NodeStatus) {
                         scope.launch(Dispatchers.Main) {
+                            val previousState = statusState.value.state
+                            if (previousState == NodeState.RUNNING && status.state != NodeState.RUNNING) {
+                                autoOpenBrowserTriggeredForCurrentRun.value = false
+                            }
                             statusState.value = status
                         }
                     }
@@ -177,40 +254,15 @@ class MainActivity : ComponentActivity() {
                     snackbarHostState.showSnackbar(message)
                 }
             }
-            LaunchedEffect(statusState.value.state) {
-                if (statusState.value.state != NodeState.RUNNING) {
-                    autoOpenBrowserTriggeredForCurrentRun.value = false
-                }
-            }
             val showAutoCheckOptInPrompt = viewModel.shouldShowAutoCheckOptInPrompt()
             val showBatteryPrompt = viewModel.shouldShowBatteryPrompt(
                 isBatteryUnrestricted = batteryUnrestrictedState.value
             )
             val showUpdatePrompt = viewModel.shouldShowUpdatePrompt()
             val isUpdateReadyToInstall = viewModel.isAvailableUpdateDownloaded()
-
-            val legalDocs = remember {
-                listOf(
-                    LegalDoc(
-                        title = getString(R.string.legal_doc_app_license_title),
-                        assetPath = "legal/sillytavern_AGPL-3.0.txt",
-                        description = getString(R.string.legal_doc_app_license_description)
-                    ),
-                    LegalDoc(
-                        title = getString(R.string.legal_doc_node_license_title),
-                        assetPath = "legal/node_MIT.txt",
-                        description = getString(R.string.legal_doc_node_license_description)
-                    ),
-                    LegalDoc(
-                        title = getString(R.string.legal_doc_android_license_title),
-                        assetPath = "legal/apache-2.0.txt",
-                    ),
-                    LegalDoc(
-                        title = getString(R.string.legal_doc_st_dependencies_title),
-                        assetPath = "legal/sillytavern_package-lock.json"
-                    )
-                )
-            }
+            val systemInDarkTheme = isSystemInDarkTheme()
+            val themeMode by viewModel.themeMode
+            val useDarkTheme = themeMode.shouldUseDarkTheme(systemInDarkTheme)
 
             // Launchers must live at the top level, outside any conditional branches
             val exportLauncher = rememberLauncherForActivityResult(
@@ -250,10 +302,10 @@ class MainActivity : ComponentActivity() {
             }
 
             MaterialTheme(
-                colorScheme = if (viewModel.darkModeEnabled.value) {
-                    androidx.compose.material3.darkColorScheme()
+                colorScheme = if (useDarkTheme) {
+                    DarkAppColorScheme
                 } else {
-                    androidx.compose.material3.lightColorScheme()
+                    LightAppColorScheme
                 }
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -304,8 +356,8 @@ class MainActivity : ComponentActivity() {
                             onAutoCheckChanged = { enabled -> viewModel.setAutoCheckForUpdates(enabled) },
                             autoOpenBrowserEnabled = viewModel.autoOpenBrowserWhenReady.value,
                             onAutoOpenBrowserChanged = { enabled -> viewModel.setAutoOpenBrowserWhenReady(enabled) },
-                            darkModeEnabled = viewModel.darkModeEnabled.value,
-                            onDarkModeChanged = { enabled -> viewModel.setDarkModeEnabled(enabled) },
+                            themeMode = themeMode,
+                            onThemeModeChanged = { mode -> viewModel.setThemeMode(mode) },
                             isBatteryUnrestricted = batteryUnrestrictedState.value,
                             onOpenBatterySettings = { openBatteryOptimizationSettings() },
                             channel = viewModel.updateChannel.value,

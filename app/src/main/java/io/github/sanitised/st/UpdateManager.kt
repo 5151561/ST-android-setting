@@ -43,10 +43,10 @@ internal class UpdateManager(
 ) {
     companion object {
         private const val TAG = "UpdateCheck"
-        private const val UPDATE_PREFS_NAME = "updates"
+        private const val APP_PREFS_NAME = "updates"
         private const val PREF_AUTO_CHECK = "auto_check"
         private const val PREF_AUTO_OPEN_BROWSER = "auto_open_browser"
-        private const val PREF_DARK_MODE_ENABLED = "dark_mode_enabled"
+        private const val PREF_THEME_MODE = "theme_mode"
         private const val PREF_CHANNEL = "channel"
         private const val PREF_FIRST_LAUNCH_MS = "first_launch_ms"
         private const val PREF_AUTO_OPTIN_PROMPT_SHOWN = "auto_optin_prompt_shown"
@@ -60,31 +60,31 @@ internal class UpdateManager(
         private const val THREE_DAYS_MS = 72L * 60L * 60L * 1000L
     }
 
-    private val updatePrefs = application.getSharedPreferences(UPDATE_PREFS_NAME, Context.MODE_PRIVATE)
+    private val appPrefs = application.getSharedPreferences(APP_PREFS_NAME, Context.MODE_PRIVATE)
     private val firstLaunchMs = ensureFirstLaunchTimestamp()
     private var autoCheckAttempted = false
     private var updateDownloadJob: Job? = null
 
     val autoCheckForUpdates = mutableStateOf(
-        updatePrefs.getBoolean(PREF_AUTO_CHECK, false)
+        appPrefs.getBoolean(PREF_AUTO_CHECK, false)
     )
     val autoOpenBrowserWhenReady = mutableStateOf(
-        updatePrefs.getBoolean(PREF_AUTO_OPEN_BROWSER, true)
+        appPrefs.getBoolean(PREF_AUTO_OPEN_BROWSER, true)
     )
-    val darkModeEnabled = mutableStateOf(
-        updatePrefs.getBoolean(PREF_DARK_MODE_ENABLED, false)
+    val themeMode = mutableStateOf(
+        resolveInitialThemeMode()
     )
     val updateChannel = mutableStateOf(
         resolveInitialUpdateChannel()
     )
     private val autoOptInPromptShown = mutableStateOf(
-        updatePrefs.getBoolean(PREF_AUTO_OPTIN_PROMPT_SHOWN, false)
+        appPrefs.getBoolean(PREF_AUTO_OPTIN_PROMPT_SHOWN, false)
     )
     private val lastAutoCheckMs = mutableStateOf(
-        updatePrefs.getLong(PREF_LAST_AUTO_CHECK_MS, 0L)
+        appPrefs.getLong(PREF_LAST_AUTO_CHECK_MS, 0L)
     )
     private val updateDismissedUntilMs = mutableStateOf(
-        updatePrefs.getLong(PREF_UPDATE_DISMISSED_UNTIL_MS, 0L)
+        appPrefs.getLong(PREF_UPDATE_DISMISSED_UNTIL_MS, 0L)
     )
     val isCheckingForUpdates = mutableStateOf(false)
     private val availableUpdate = mutableStateOf<GithubReleaseInfo?>(null)
@@ -103,22 +103,22 @@ internal class UpdateManager(
 
     fun setAutoCheckForUpdates(enabled: Boolean) {
         autoCheckForUpdates.value = enabled
-        updatePrefs.edit().putBoolean(PREF_AUTO_CHECK, enabled).apply()
+        appPrefs.edit().putBoolean(PREF_AUTO_CHECK, enabled).apply()
     }
 
     fun setAutoOpenBrowserWhenReady(enabled: Boolean) {
         autoOpenBrowserWhenReady.value = enabled
-        updatePrefs.edit().putBoolean(PREF_AUTO_OPEN_BROWSER, enabled).apply()
+        appPrefs.edit().putBoolean(PREF_AUTO_OPEN_BROWSER, enabled).apply()
     }
 
-    fun setDarkModeEnabled(enabled: Boolean) {
-        darkModeEnabled.value = enabled
-        updatePrefs.edit().putBoolean(PREF_DARK_MODE_ENABLED, enabled).apply()
+    fun setThemeMode(mode: ThemeMode) {
+        themeMode.value = mode
+        appPrefs.edit().putString(PREF_THEME_MODE, mode.storageValue).apply()
     }
 
     fun setUpdateChannel(channel: UpdateChannel) {
         updateChannel.value = channel
-        updatePrefs.edit().putString(PREF_CHANNEL, channel.storageValue).apply()
+        appPrefs.edit().putString(PREF_CHANNEL, channel.storageValue).apply()
     }
 
     fun maybeAutoCheckForUpdates() {
@@ -128,7 +128,7 @@ internal class UpdateManager(
         if (!shouldRunAutoCheckNow()) return
         val now = System.currentTimeMillis()
         lastAutoCheckMs.value = now
-        updatePrefs.edit().putLong(PREF_LAST_AUTO_CHECK_MS, now).apply()
+        appPrefs.edit().putLong(PREF_LAST_AUTO_CHECK_MS, now).apply()
         checkForUpdates("auto")
     }
 
@@ -142,14 +142,14 @@ internal class UpdateManager(
     fun acceptAutoCheckOptInPrompt() {
         setAutoCheckForUpdates(true)
         autoOptInPromptShown.value = true
-        updatePrefs.edit().putBoolean(PREF_AUTO_OPTIN_PROMPT_SHOWN, true).apply()
+        appPrefs.edit().putBoolean(PREF_AUTO_OPTIN_PROMPT_SHOWN, true).apply()
         postUserMessage(s(R.string.update_auto_check_enabled))
         checkForUpdates("manual")
     }
 
     fun dismissAutoCheckOptInPrompt() {
         autoOptInPromptShown.value = true
-        updatePrefs.edit().putBoolean(PREF_AUTO_OPTIN_PROMPT_SHOWN, true).apply()
+        appPrefs.edit().putBoolean(PREF_AUTO_OPTIN_PROMPT_SHOWN, true).apply()
     }
 
     fun shouldShowUpdatePrompt(): Boolean {
@@ -175,7 +175,7 @@ internal class UpdateManager(
         val now = System.currentTimeMillis()
         val until = now + THREE_DAYS_MS
         updateDismissedUntilMs.value = until
-        updatePrefs.edit().putLong(PREF_UPDATE_DISMISSED_UNTIL_MS, until).apply()
+        appPrefs.edit().putLong(PREF_UPDATE_DISMISSED_UNTIL_MS, until).apply()
         postUserMessage(s(R.string.update_dismissed_hours, update.tagName))
     }
 
@@ -208,7 +208,7 @@ internal class UpdateManager(
                 downloadedApkPath.value = downloadedFile.absolutePath
                 updateBannerMessage.value = s(R.string.update_downloaded_ready, update.tagName)
                 updateDismissedUntilMs.value = 0L
-                updatePrefs.edit().putLong(PREF_UPDATE_DISMISSED_UNTIL_MS, 0L).apply()
+                appPrefs.edit().putLong(PREF_UPDATE_DISMISSED_UNTIL_MS, 0L).apply()
             } catch (_: CancellationException) {
                 postUserMessage(s(R.string.update_download_canceled))
                 updateBannerMessage.value = s(R.string.update_tap_install, update.tagName)
@@ -330,7 +330,7 @@ internal class UpdateManager(
                         else -> {
                             availableUpdate.value = latest
                             updateDismissedUntilMs.value = 0L
-                            updatePrefs.edit().putLong(PREF_UPDATE_DISMISSED_UNTIL_MS, 0L).apply()
+                            appPrefs.edit().putLong(PREF_UPDATE_DISMISSED_UNTIL_MS, 0L).apply()
                             if (reason == "manual") {
                                 postUserMessage(s(R.string.update_new_available, latest.tagName))
                             }
@@ -355,22 +355,26 @@ internal class UpdateManager(
         }
     }
 
+    private fun resolveInitialThemeMode(): ThemeMode {
+        return ThemeMode.fromStorage(appPrefs.getString(PREF_THEME_MODE, null))
+    }
+
     private fun ensureFirstLaunchTimestamp(): Long {
-        val existing = updatePrefs.getLong(PREF_FIRST_LAUNCH_MS, 0L)
+        val existing = appPrefs.getLong(PREF_FIRST_LAUNCH_MS, 0L)
         if (existing > 0L) return existing
         val now = System.currentTimeMillis()
-        updatePrefs.edit().putLong(PREF_FIRST_LAUNCH_MS, now).apply()
+        appPrefs.edit().putLong(PREF_FIRST_LAUNCH_MS, now).apply()
         return now
     }
 
     private fun resolveInitialUpdateChannel(): UpdateChannel {
-        val storedValue = updatePrefs.getString(PREF_CHANNEL, null)
+        val storedValue = appPrefs.getString(PREF_CHANNEL, null)
         if (storedValue != null) {
             return UpdateChannel.fromStorage(storedValue)
         }
 
         val inferred = inferChannelFromCurrentVersion(getCurrentVersionName())
-        updatePrefs.edit().putString(PREF_CHANNEL, inferred.storageValue).apply()
+        appPrefs.edit().putString(PREF_CHANNEL, inferred.storageValue).apply()
         return inferred
     }
 

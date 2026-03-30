@@ -37,8 +37,8 @@ fun SettingsScreen(
     onAutoCheckChanged: (Boolean) -> Unit,
     autoOpenBrowserEnabled: Boolean,
     onAutoOpenBrowserChanged: (Boolean) -> Unit,
-    darkModeEnabled: Boolean,
-    onDarkModeChanged: (Boolean) -> Unit,
+    themeMode: ThemeMode,
+    onThemeModeChanged: (ThemeMode) -> Unit,
     isBatteryUnrestricted: Boolean,
     onOpenBatterySettings: () -> Unit,
     channel: UpdateChannel,
@@ -79,12 +79,38 @@ fun SettingsScreen(
                     onCheckedChange = onAutoOpenBrowserChanged
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                SettingsToggleRow(
-                    title = stringResource(R.string.settings_dark_mode_title),
-                    subtitle = stringResource(R.string.settings_dark_mode_subtitle),
-                    checked = darkModeEnabled,
-                    onCheckedChange = onDarkModeChanged
+                Text(
+                    text = stringResource(R.string.settings_theme_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.settings_theme_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
+                    SettingsRadioOptionRow(
+                        selected = themeMode == ThemeMode.AUTO,
+                        title = stringResource(R.string.settings_theme_auto_label),
+                        subtitle = stringResource(R.string.settings_theme_auto_subtitle),
+                        onClick = { onThemeModeChanged(ThemeMode.AUTO) }
+                    )
+                    SettingsRadioOptionRow(
+                        selected = themeMode == ThemeMode.LIGHT,
+                        title = stringResource(R.string.settings_theme_light_label),
+                        subtitle = null,
+                        onClick = { onThemeModeChanged(ThemeMode.LIGHT) }
+                    )
+                    SettingsRadioOptionRow(
+                        selected = themeMode == ThemeMode.DARK,
+                        title = stringResource(R.string.settings_theme_dark_label),
+                        subtitle = null,
+                        onClick = { onThemeModeChanged(ThemeMode.DARK) }
+                    )
+                }
                 Spacer(modifier = Modifier.height(20.dp))
                 Text(
                     text = stringResource(R.string.settings_battery_title),
@@ -184,62 +210,18 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = channel == UpdateChannel.RELEASE,
-                                onClick = { onChannelChanged(UpdateChannel.RELEASE) },
-                                role = Role.RadioButton
-                            )
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = channel == UpdateChannel.RELEASE,
-                            onClick = null
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = stringResource(R.string.settings_channel_release_label),
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = stringResource(R.string.settings_channel_release_subtitle),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = channel == UpdateChannel.PRERELEASE,
-                                onClick = { onChannelChanged(UpdateChannel.PRERELEASE) },
-                                role = Role.RadioButton
-                            )
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = channel == UpdateChannel.PRERELEASE,
-                            onClick = null
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = stringResource(R.string.settings_channel_prerelease_label),
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = stringResource(R.string.settings_channel_prerelease_subtitle),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    SettingsRadioOptionRow(
+                        selected = channel == UpdateChannel.RELEASE,
+                        title = stringResource(R.string.settings_channel_release_label),
+                        subtitle = stringResource(R.string.settings_channel_release_subtitle),
+                        onClick = { onChannelChanged(UpdateChannel.RELEASE) }
+                    )
+                    SettingsRadioOptionRow(
+                        selected = channel == UpdateChannel.PRERELEASE,
+                        title = stringResource(R.string.settings_channel_prerelease_label),
+                        subtitle = stringResource(R.string.settings_channel_prerelease_subtitle),
+                        onClick = { onChannelChanged(UpdateChannel.PRERELEASE) }
+                    )
                 }
                 Spacer(modifier = Modifier.height(20.dp))
                 Button(
@@ -292,6 +274,45 @@ private fun SettingsToggleRow(
     }
 }
 
+@Composable
+private fun SettingsRadioOptionRow(
+    selected: Boolean,
+    title: String,
+    subtitle: String?,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.RadioButton
+            )
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = null
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 private fun SettingsScreenPreview() {
@@ -301,8 +322,8 @@ private fun SettingsScreenPreview() {
         onAutoCheckChanged = {},
         autoOpenBrowserEnabled = false,
         onAutoOpenBrowserChanged = {},
-        darkModeEnabled = false,
-        onDarkModeChanged = {},
+        themeMode = ThemeMode.AUTO,
+        onThemeModeChanged = {},
         isBatteryUnrestricted = false,
         onOpenBatterySettings = {},
         channel = UpdateChannel.RELEASE,
