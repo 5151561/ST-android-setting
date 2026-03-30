@@ -94,7 +94,7 @@ See [CHANGELOG.md](CHANGELOG.md).
 Prereqs: Docker installed (plus Git for cloning the repo). Tested only on Linux.
 
 ```bash
-git clone <repo>
+git clone https://github.com/Sanitised/ST-android
 cd ST-android
 git submodule update --init --recursive
 ./ci/scripts/build_apk_docker.sh
