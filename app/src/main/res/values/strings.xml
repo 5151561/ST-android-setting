@@ -19,6 +19,7 @@
     <string name="cancel">Cancel</string>
     <string name="config_discard_body">You have unsaved changes. If you go back, they will be lost.</string>
     <string name="config_discard_title">Discard changes?</string>
+    <string name="config_button_title">Edit ST config</string>
     <string name="config_file_name">config.yaml</string>
     <string name="config_missing">Config is missing. Start SillyTavern once to generate a default config.</string>
     <string name="config_save_failed">Save failed: %1$s</string>
@@ -109,6 +110,10 @@
     <string name="settings_auto_check_title">Automatically Check for Updates</string>
     <string name="settings_auto_open_subtitle">When the server is ready, open SillyTavern in your browser for you.</string>
     <string name="settings_auto_open_title">Open Browser Automatically</string>
+    <string name="settings_theme_title">Theme</string>
+    <string name="settings_theme_auto_label">Automatic</string>
+    <string name="settings_theme_light_label">Light</string>
+    <string name="settings_theme_dark_label">Dark</string>
     <string name="settings_battery_button_enable">Set to Unrestricted</string>
     <string name="settings_battery_button_review">Open Battery Settings</string>
     <string name="settings_battery_status_optimized">Status: Optimized / restricted</string>
@@ -123,7 +128,6 @@
     <string name="settings_checking">Checking...</string>
     <string name="settings_title">Settings</string>
     <string name="settings_update_channel_title">Update Channel</string>
-    <string name="settings_update_description">Checks for new app releases on GitHub.</string>
     <string name="settings_updates_title">App Updates</string>
     <string name="sillytavern_custom_version">SillyTavern (custom version)</string>
     <string name="sillytavern_custom_with_label">SillyTavern (%1$s)</string>

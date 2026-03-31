@@ -200,19 +200,10 @@ fun STAndroidApp(
                         Spacer(modifier = Modifier.width(12.dp))
                         OutlinedButton(
                             onClick = onEditConfig,
-                            enabled = !isBusy && (status.state == NodeState.STOPPED || status.state == NodeState.ERROR),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(text = stringResource(R.string.config_title))
+                            Text(text = stringResource(R.string.config_button_title))
                         }
-                    }
-                    if (showAutoCheckOptInPrompt) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        AutoCheckOptInCard(
-                            visible = true,
-                            onEnable = onEnableAutoCheck,
-                            onLater = onLaterAutoCheck
-                        )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
@@ -229,6 +220,14 @@ fun STAndroidApp(
                         ) {
                             Text(text = stringResource(R.string.manage_st_title))
                         }
+                    }
+                    if (showAutoCheckOptInPrompt) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        AutoCheckOptInCard(
+                            visible = true,
+                            onEnable = onEnableAutoCheck,
+                            onLater = onLaterAutoCheck
+                        )
                     }
                     if (showNotificationPrompt) {
                         Spacer(modifier = Modifier.height(16.dp))
@@ -360,7 +359,7 @@ private fun STAndroidAppPreview() {
         onEditConfig = {},
         showNotificationPrompt = false,
         showBatteryPrompt = false,
-        versionLabel = "0.3.1-dev",
+        versionLabel = "0.4.0-dev",
         stLabel = "SillyTavern 1.12.3",
         nodeLabel = "Node v24.13.0",
         symlinkSupported = true,

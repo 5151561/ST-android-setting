@@ -20,6 +20,15 @@ import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream
 
 object NodeBackup {
     private const val BACKUP_ROOT = "st_backup"
+    private const val DEFAULT_USER_HANDLE = "default-user"
+    private const val UI_BACKUP_ROOT = "ui_backup"
+    private const val SETTINGS_FILE = "settings.json"
+    private const val CHATS_DIR = "chats"
+    private val DATA_ROOT_INFRA = setOf(
+        "_storage",
+        "_uploads",
+        "cookie-secret.txt"
+    )
 
     data class BackupProgress(
         val message: String,
@@ -158,8 +167,21 @@ object NodeBackup {
             onProgress(BackupProgress(context.getString(R.string.backup_progress_applying), null))
 
             val configSrc = File(importDir, "config/config.yaml")
-            val dataSrc = File(importDir, "data")
-            if (!configSrc.exists() && !dataSrc.exists()) {
+            val uiBackupRoot = File(importDir, UI_BACKUP_ROOT)
+            val initialDataSrc = File(importDir, "data")
+            val dataSrc = when {
+                initialDataSrc.exists() -> {
+                    normalizeImportedDataRoot(initialDataSrc)
+                    initialDataSrc
+                }
+
+                uiBackupRoot.exists() -> {
+                    materializeUiBackup(uiBackupRoot, importDir)
+                }
+
+                else -> null
+            }
+            if (!configSrc.exists() && dataSrc == null) {
                 throw IllegalStateException(
                     "No recognizable data found in archive. " +
                             "Make sure you selected a valid SillyTavern backup (.tar.gz or .zip)."
@@ -172,7 +194,7 @@ object NodeBackup {
             // Atomic swap for data directory: rename old aside, rename new in.
             // renameTo within the same filesystem is atomic at the OS level,
             // so no partial state is visible even if the process is killed.
-            if (dataSrc.exists()) {
+            if (dataSrc != null && dataSrc.exists()) {
                 val oldDataDir = File(tmpRoot, "import_data_old")
                 if (oldDataDir.exists()) oldDataDir.deleteRecursively()
                 if (dataDest.exists()) {
@@ -280,14 +302,71 @@ object NodeBackup {
             clean
         }
         if (stripped.isEmpty() || stripped == "$BACKUP_ROOT" || stripped == "$BACKUP_ROOT/") return null
-        val normalized = when {
-            stripped == "config.yaml" -> "config/config.yaml"
-            stripped == "config/config.yaml" -> "config/config.yaml"
-            stripped == "data" -> "data"
-            stripped.startsWith("data/") -> stripped
-            else -> return null
-        }
+        val normalized = mapServerBackupPath(stripped) ?: "$UI_BACKUP_ROOT/$stripped"
         return TarUtils.resolveArchiveEntryName(destDir, normalized)
+    }
+
+    private fun mapServerBackupPath(path: String): String? {
+        return when {
+            path == "config.yaml" -> "config/config.yaml"
+            path == "config/config.yaml" -> "config/config.yaml"
+            path == "data" -> "data"
+            path.startsWith("data/") -> path
+            else -> null
+        }
+    }
+
+    private fun normalizeImportedDataRoot(dataDir: File) {
+        val defaultUserDir = File(dataDir, DEFAULT_USER_HANDLE)
+        if (defaultUserDir.exists()) return
+
+        val candidates = dataDir.listFiles()
+            ?.filterNot { it.name.startsWith(".") || it.name in DATA_ROOT_INFRA }
+            .orEmpty()
+
+        if (candidates.isEmpty()) return
+        if (candidates.size != 1 || !candidates[0].isDirectory) {
+            throw IllegalStateException(
+                "This backup does not contain a '$DEFAULT_USER_HANDLE' profile and appears to be multi-user. " +
+                        "Only single-user SillyTavern backups can be imported."
+            )
+        }
+
+        if (!candidates[0].renameTo(defaultUserDir)) {
+            candidates[0].copyRecursively(defaultUserDir, overwrite = true)
+            candidates[0].deleteRecursively()
+        }
+    }
+
+    private fun materializeUiBackup(uiBackupRoot: File, importDir: File): File {
+        val sourceRoot = detectUiBackupRoot(uiBackupRoot) ?: throw IllegalStateException(
+            "No recognizable data found in archive. " +
+                    "Expected a SillyTavern user backup containing '$SETTINGS_FILE' and a '$CHATS_DIR' directory."
+        )
+        val dataRoot = File(importDir, "data")
+        val defaultUserDir = File(dataRoot, DEFAULT_USER_HANDLE)
+        dataRoot.mkdirs()
+        if (!sourceRoot.renameTo(defaultUserDir)) {
+            sourceRoot.copyRecursively(defaultUserDir, overwrite = true)
+        }
+        return dataRoot
+    }
+
+    private fun detectUiBackupRoot(uiBackupRoot: File): File? {
+        if (isUiBackupRoot(uiBackupRoot)) {
+            return uiBackupRoot
+        }
+        val children = uiBackupRoot.listFiles()
+            ?.filterNot { it.name.startsWith(".") }
+            .orEmpty()
+        if (children.size == 1 && children[0].isDirectory && isUiBackupRoot(children[0])) {
+            return children[0]
+        }
+        return null
+    }
+
+    private fun isUiBackupRoot(dir: File): Boolean {
+        return File(dir, SETTINGS_FILE).isFile && File(dir, CHATS_DIR).isDirectory
     }
 
     private fun writeTarTree(

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Updated the bundled SillyTavern to 1.17.0, Node.js to v24.14.1.
+- Added light, dark, and automatic theme selection. Initial implementation contributed by @Aritra1235.
+- "Import Data" now supports user backups produced from the SillyTavern UI. Transfer your characters and chats easily.
+- Minor UI improvements.
+- Extension installation now works with SillyTavern 1.17+, but multiple related features, such as extension updates, are still broken.
+
 ## 0.3.1
 
 - Added UI to set unrestricted battery use

@@ -31,6 +31,18 @@ enum class UpdateChannel(val storageValue: String) {
     }
 }
 
+enum class ThemeMode(val storageValue: String) {
+    AUTO("auto"),
+    LIGHT("light"),
+    DARK("dark");
+
+    companion object {
+        fun fromStorage(value: String?): ThemeMode {
+            return entries.firstOrNull { it.storageValue == value } ?: AUTO
+        }
+    }
+}
+
 data class CustomRepoRefOption(
     val key: String,
     val label: String,

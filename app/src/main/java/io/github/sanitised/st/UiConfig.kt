@@ -64,12 +64,12 @@ fun ConfigScreen(
     val textState = rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
-    val originalState = remember { mutableStateOf("") }
+    val originalState = rememberSaveable { mutableStateOf("") }
     val isSavingState = remember { mutableStateOf(false) }
-    val showDiscardDialog = remember { mutableStateOf(false) }
-    val missingState = remember { mutableStateOf(false) }
-    val loadedState = remember { mutableStateOf(false) }
-    val hasUserEdits = remember { mutableStateOf(false) }
+    val showDiscardDialog = rememberSaveable { mutableStateOf(false) }
+    val missingState = rememberSaveable { mutableStateOf(false) }
+    val loadedState = rememberSaveable { mutableStateOf(false) }
+    val hasUserEdits = rememberSaveable { mutableStateOf(false) }
     val editorScrollState = rememberScrollState()
     val editorViewportHeightPx = remember { mutableStateOf(0) }
     val textLayoutState = remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -87,7 +87,8 @@ fun ConfigScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(configFile.absolutePath, loadedState.value) {
+        if (loadedState.value) return@LaunchedEffect
         val content = withContext(Dispatchers.IO) {
             if (configFile.exists()) configFile.readText(Charsets.UTF_8) else ""
         }
@@ -161,13 +162,6 @@ fun ConfigScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                } else if (!canEdit) {
-                    Text(
-                        text = stringResource(R.string.config_stop_server),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -213,7 +207,7 @@ fun ConfigScreen(
                                     .verticalScroll(editorScrollState)
                                     .padding(horizontal = 12.dp, vertical = 10.dp)
                                     .focusRequester(focusRequester),
-                                enabled = canEditEffective,
+                                readOnly = !canEditEffective,
                                 textStyle = MaterialTheme.typography.bodyMedium.copy(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 13.sp,
@@ -240,6 +234,14 @@ fun ConfigScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
+                if (!missingState.value && !canEdit) {
+                    Text(
+                        text = stringResource(R.string.config_stop_server),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
                 Button(
                     onClick = {
                         isSavingState.value = true

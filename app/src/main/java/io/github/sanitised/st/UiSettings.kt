@@ -3,6 +3,7 @@ package io.github.sanitised.st
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,11 +15,11 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +39,8 @@ fun SettingsScreen(
     onAutoCheckChanged: (Boolean) -> Unit,
     autoOpenBrowserEnabled: Boolean,
     onAutoOpenBrowserChanged: (Boolean) -> Unit,
+    themeMode: ThemeMode,
+    onThemeModeChanged: (ThemeMode) -> Unit,
     isBatteryUnrestricted: Boolean,
     onOpenBatterySettings: () -> Unit,
     channel: UpdateChannel,
@@ -77,6 +80,17 @@ fun SettingsScreen(
                     checked = autoOpenBrowserEnabled,
                     onCheckedChange = onAutoOpenBrowserChanged
                 )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.settings_theme_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                ThemeModeSelector(
+                    selectedMode = themeMode,
+                    onThemeModeChanged = onThemeModeChanged
+                )
                 Spacer(modifier = Modifier.height(20.dp))
                 Text(
                     text = stringResource(R.string.settings_battery_title),
@@ -91,9 +105,9 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 val batteryStatusColor = if (isBatteryUnrestricted) {
-                    Color(0xFF2E7D32)
+                    MaterialTheme.colorScheme.primary
                 } else {
-                    Color(0xFFB26A00)
+                    MaterialTheme.colorScheme.error
                 }
                 val batteryStatusSymbol = if (isBatteryUnrestricted) "\u2713" else "!"
                 Row(
@@ -141,12 +155,6 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.settings_update_description),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
                 if (showUpdatePrompt) {
                     Spacer(modifier = Modifier.height(16.dp))
                     UpdatePromptCard(
@@ -176,62 +184,18 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = channel == UpdateChannel.RELEASE,
-                                onClick = { onChannelChanged(UpdateChannel.RELEASE) },
-                                role = Role.RadioButton
-                            )
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = channel == UpdateChannel.RELEASE,
-                            onClick = null
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = stringResource(R.string.settings_channel_release_label),
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = stringResource(R.string.settings_channel_release_subtitle),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = channel == UpdateChannel.PRERELEASE,
-                                onClick = { onChannelChanged(UpdateChannel.PRERELEASE) },
-                                role = Role.RadioButton
-                            )
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = channel == UpdateChannel.PRERELEASE,
-                            onClick = null
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = stringResource(R.string.settings_channel_prerelease_label),
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = stringResource(R.string.settings_channel_prerelease_subtitle),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    SettingsRadioOptionRow(
+                        selected = channel == UpdateChannel.RELEASE,
+                        title = stringResource(R.string.settings_channel_release_label),
+                        subtitle = stringResource(R.string.settings_channel_release_subtitle),
+                        onClick = { onChannelChanged(UpdateChannel.RELEASE) }
+                    )
+                    SettingsRadioOptionRow(
+                        selected = channel == UpdateChannel.PRERELEASE,
+                        title = stringResource(R.string.settings_channel_prerelease_label),
+                        subtitle = stringResource(R.string.settings_channel_prerelease_subtitle),
+                        onClick = { onChannelChanged(UpdateChannel.PRERELEASE) }
+                    )
                 }
                 Spacer(modifier = Modifier.height(20.dp))
                 Button(
@@ -284,6 +248,125 @@ private fun SettingsToggleRow(
     }
 }
 
+@Composable
+private fun ThemeModeSelector(
+    selectedMode: ThemeMode,
+    onThemeModeChanged: (ThemeMode) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp)
+                .selectableGroup()
+        ) {
+            ThemeModeSegment(
+                label = stringResource(R.string.settings_theme_auto_label),
+                selected = selectedMode == ThemeMode.AUTO,
+                onClick = { onThemeModeChanged(ThemeMode.AUTO) },
+                modifier = Modifier.weight(1f)
+            )
+            ThemeModeSegment(
+                label = stringResource(R.string.settings_theme_light_label),
+                selected = selectedMode == ThemeMode.LIGHT,
+                onClick = { onThemeModeChanged(ThemeMode.LIGHT) },
+                modifier = Modifier.weight(1f)
+            )
+            ThemeModeSegment(
+                label = stringResource(R.string.settings_theme_dark_label),
+                selected = selectedMode == ThemeMode.DARK,
+                onClick = { onThemeModeChanged(ThemeMode.DARK) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThemeModeSegment(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .padding(2.dp)
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.RadioButton
+            ),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            Color.Transparent
+        }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsRadioOptionRow(
+    selected: Boolean,
+    title: String,
+    subtitle: String?,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.RadioButton
+            )
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = null
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 private fun SettingsScreenPreview() {
@@ -293,6 +376,8 @@ private fun SettingsScreenPreview() {
         onAutoCheckChanged = {},
         autoOpenBrowserEnabled = false,
         onAutoOpenBrowserChanged = {},
+        themeMode = ThemeMode.AUTO,
+        onThemeModeChanged = {},
         isBatteryUnrestricted = false,
         onOpenBatterySettings = {},
         channel = UpdateChannel.RELEASE,
@@ -300,7 +385,7 @@ private fun SettingsScreenPreview() {
         onCheckNow = {},
         isChecking = false,
         showUpdatePrompt = true,
-        updateVersionLabel = "v0.3.1",
+        updateVersionLabel = "v0.4.0",
         updateDetails = "Tap Install to download and install.",
         isDownloadingUpdate = false,
         downloadProgressPercent = null,
