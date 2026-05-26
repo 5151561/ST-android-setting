@@ -232,6 +232,7 @@
     <string name="character_detail_chats_title">Past chats</string>
     <string name="character_detail_chats_empty">No chat files found for this character.</string>
     <string name="character_detail_links_title">Linked surfaces</string>
+    <string name="character_detail_source_label">Source link</string>
     <string name="character_detail_source_missing">No source URL on this card.</string>
     <string name="character_chat_rename">Rename chat</string>
     <string name="character_chat_rename_title">Rename chat</string>

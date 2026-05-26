@@ -450,41 +450,56 @@ fun CharacterListScreen(
                 .padding(horizontal = 20.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.character_hub_title),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.fg
-                    )
-                    Text(
-                        text = stringResource(R.string.character_list_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.muted
-                    )
-                }
-                IconButton(onClick = { refreshKey++ }, enabled = serverRunning) {
-                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.character_list_refresh))
-                }
-                TextButton(
-                    onClick = { importLauncher.launch(characterImportMimeTypes) },
-                    enabled = serverRunning
+                Text(
+                    text = stringResource(R.string.character_hub_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.fg,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = stringResource(R.string.character_list_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.muted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(stringResource(R.string.import_action))
-                }
-                TextButton(
-                    onClick = { showExternalImport = true },
-                    enabled = serverRunning
-                ) {
-                    Text(stringResource(R.string.character_external_import))
-                }
-                IconButton(onClick = onCreateCharacter) {
-                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.character_list_new))
+                    IconButton(onClick = { refreshKey++ }, enabled = serverRunning) {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = stringResource(R.string.character_list_refresh),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(characterImportMimeTypes) },
+                        enabled = serverRunning
+                    ) {
+                        Text(stringResource(R.string.import_action))
+                    }
+                    OutlinedButton(
+                        onClick = { showExternalImport = true },
+                        enabled = serverRunning
+                    ) {
+                        Text(stringResource(R.string.character_external_import))
+                    }
+                    IconButton(onClick = onCreateCharacter) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = stringResource(R.string.character_list_new),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -1231,12 +1246,11 @@ private fun CharacterPaginationBar(
         colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
         border = BorderStroke(1.dp, STTheme.colors.borderSoft)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = stringResource(
@@ -1249,38 +1263,45 @@ private fun CharacterPaginationBar(
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = STTheme.colors.muted,
-                modifier = Modifier.weight(1f)
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
-            Box {
-                TextButton(onClick = { pageSizeMenuExpanded = true }) {
-                    Text(stringResource(R.string.character_page_size_label, page.pageSize))
-                }
-                DropdownMenu(
-                    expanded = pageSizeMenuExpanded,
-                    onDismissRequest = { pageSizeMenuExpanded = false }
-                ) {
-                    pageSizeOptions.forEach { size ->
-                        DropdownMenuItem(
-                            text = { Text(size.toString()) },
-                            onClick = {
-                                pageSizeMenuExpanded = false
-                                onPageSizeChanged(size)
-                            }
-                        )
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box {
+                    TextButton(onClick = { pageSizeMenuExpanded = true }) {
+                        Text(stringResource(R.string.character_page_size_label, page.pageSize))
+                    }
+                    DropdownMenu(
+                        expanded = pageSizeMenuExpanded,
+                        onDismissRequest = { pageSizeMenuExpanded = false }
+                    ) {
+                        pageSizeOptions.forEach { size ->
+                            DropdownMenuItem(
+                                text = { Text(size.toString()) },
+                                onClick = {
+                                    pageSizeMenuExpanded = false
+                                    onPageSizeChanged(size)
+                                }
+                            )
+                        }
                     }
                 }
-            }
-            OutlinedButton(
-                onClick = onPrevious,
-                enabled = page.currentPage > 1
-            ) {
-                Text(stringResource(R.string.character_page_previous))
-            }
-            OutlinedButton(
-                onClick = onNext,
-                enabled = page.currentPage < page.totalPages
-            ) {
-                Text(stringResource(R.string.character_page_next))
+                OutlinedButton(
+                    onClick = onPrevious,
+                    enabled = page.currentPage > 1
+                ) {
+                    Text(stringResource(R.string.character_page_previous))
+                }
+                OutlinedButton(
+                    onClick = onNext,
+                    enabled = page.currentPage < page.totalPages
+                ) {
+                    Text(stringResource(R.string.character_page_next))
+                }
             }
         }
     }

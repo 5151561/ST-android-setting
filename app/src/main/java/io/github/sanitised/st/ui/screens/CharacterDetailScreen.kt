@@ -656,13 +656,44 @@ private fun CharacterLinksPanel(
     onOpenSource: () -> Unit,
     onOpenPersona: () -> Unit
 ) {
+    val sourceUrl = detail.sourceUrl.trim()
     CharacterDetailPanel(title = stringResource(R.string.character_detail_links_title)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = onOpenLorebook, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.character_local_nav_lorebook))
-            }
-            OutlinedButton(onClick = onOpenSource, modifier = Modifier.weight(1f)) {
-                Text(detail.sourceUrl.ifBlank { stringResource(R.string.character_detail_source_missing) })
+        OutlinedButton(onClick = onOpenLorebook, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.character_local_nav_lorebook))
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = STTheme.colors.bg),
+            border = BorderStroke(1.dp, STTheme.colors.borderSoft),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.character_detail_source_label),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = STTheme.colors.muted
+                    )
+                    Text(
+                        text = sourceUrl.ifBlank { stringResource(R.string.character_detail_source_missing) },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (sourceUrl.isBlank()) STTheme.colors.muted else STTheme.colors.fg,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                TextButton(
+                    onClick = onOpenSource,
+                    enabled = sourceUrl.isNotBlank()
+                ) {
+                    Text(stringResource(R.string.dashboard_open))
+                }
             }
         }
         OutlinedButton(onClick = onOpenPersona, modifier = Modifier.fillMaxWidth()) {

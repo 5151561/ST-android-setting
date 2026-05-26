@@ -232,6 +232,7 @@
     <string name="character_detail_chats_title">历史聊天</string>
     <string name="character_detail_chats_empty">没有找到此角色的聊天文件。</string>
     <string name="character_detail_links_title">关联入口</string>
+    <string name="character_detail_source_label">来源链接</string>
     <string name="character_detail_source_missing">这张角色卡没有来源 URL。</string>
     <string name="character_chat_rename">重命名聊天</string>
     <string name="character_chat_rename_title">重命名聊天</string>
