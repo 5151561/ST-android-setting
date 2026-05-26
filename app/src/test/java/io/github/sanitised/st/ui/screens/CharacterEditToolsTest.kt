@@ -37,32 +37,16 @@ class CharacterEditToolsTest {
     }
 
     @Test
-    fun avatarProcessingKeepsSupportedOriginalsButNormalizesConvertedUploadsToPng() {
-        assertFalse(
-            CharacterEditTools.shouldTranscodeAvatar(
-                "Seraphina.jpg",
-                CharacterAvatarProcessingMode.ORIGINAL
-            )
-        )
-        assertTrue(
-            CharacterEditTools.shouldTranscodeAvatar(
-                "Seraphina.heic",
-                CharacterAvatarProcessingMode.ORIGINAL
-            )
-        )
-        assertTrue(
-            CharacterEditTools.shouldTranscodeAvatar(
-                "Seraphina.jpg",
-                CharacterAvatarProcessingMode.CENTER_CROP_PNG
-            )
-        )
+    fun avatarProcessingOnlyNormalizesUnsupportedUploadsToPng() {
+        assertFalse(CharacterEditTools.shouldTranscodeAvatar("Seraphina.jpg"))
+        assertTrue(CharacterEditTools.shouldTranscodeAvatar("Seraphina.heic"))
         assertEquals(
             "Seraphina.png",
-            CharacterEditTools.avatarOutputFileName("Seraphina.heic", CharacterAvatarProcessingMode.ORIGINAL)
+            CharacterEditTools.avatarOutputFileName("Seraphina.heic")
         )
         assertEquals(
-            "Seraphina.png",
-            CharacterEditTools.avatarOutputFileName("Seraphina.jpg", CharacterAvatarProcessingMode.PNG)
+            "Seraphina.jpg",
+            CharacterEditTools.avatarOutputFileName("Seraphina.jpg")
         )
     }
 }

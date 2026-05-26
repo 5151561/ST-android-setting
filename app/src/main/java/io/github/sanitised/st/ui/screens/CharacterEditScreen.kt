@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -157,7 +156,6 @@ fun CharacterEditScreen(
     var pendingDelete by remember { mutableStateOf(false) }
     var deleteChats by remember { mutableStateOf(false) }
     var pendingAvatarUpload by remember(avatar) { mutableStateOf<CharacterUpload?>(null) }
-    var avatarProcessingMode by remember { mutableStateOf(CharacterAvatarProcessingMode.ORIGINAL) }
     var pendingReplaceMode by remember { mutableStateOf<CharacterReplaceMode?>(null) }
     var selectedEditorTab by remember { mutableStateOf(CharacterEditorTab.BASIC) }
     val serverRunning = status.state == NodeState.RUNNING
@@ -379,7 +377,6 @@ fun CharacterEditScreen(
                                 onSaved = onSaved,
                                 isNew = avatar.isNullOrBlank(),
                                 avatarUpload = pendingAvatarUpload,
-                                avatarProcessingMode = avatarProcessingMode,
                                 scope = scope
                             )
                         }
@@ -410,8 +407,6 @@ fun CharacterEditScreen(
                     baseUrl = baseUrl,
                     draft = draft,
                     pendingAvatarUpload = pendingAvatarUpload,
-                    avatarProcessingMode = avatarProcessingMode,
-                    onAvatarProcessingChanged = { avatarProcessingMode = it },
                     saving = saving,
                     onChooseAvatar = { avatarLauncher.launch(arrayOf("image/*")) },
                     onUpdateAvatarNow = {
@@ -425,7 +420,6 @@ fun CharacterEditScreen(
                                 onShowMessage = onShowMessage,
                                 onSavingChanged = { saving = it },
                                 onUpdated = { pendingAvatarUpload = null },
-                                avatarProcessingMode = avatarProcessingMode,
                                 scope = scope
                             )
                         }
@@ -506,16 +500,15 @@ fun CharacterEditScreen(
                             saveCharacter(
                                 context = context,
                                 draft = draft,
-                                baseUrl = baseUrl,
-                                onShowMessage = onShowMessage,
-                                onSavingChanged = { saving = it },
-                            onSaved = onSaved,
-                            isNew = avatar.isNullOrBlank(),
-                            avatarUpload = pendingAvatarUpload,
-                            avatarProcessingMode = avatarProcessingMode,
-                            scope = scope
-                        )
-                        },
+	                                baseUrl = baseUrl,
+	                                onShowMessage = onShowMessage,
+	                                onSavingChanged = { saving = it },
+	                                onSaved = onSaved,
+	                                isNew = avatar.isNullOrBlank(),
+	                                avatarUpload = pendingAvatarUpload,
+	                                scope = scope
+	                            )
+	                        },
                         modifier = Modifier.weight(1f),
                         enabled = !saving
                     ) {
@@ -533,8 +526,6 @@ private fun CharacterAvatarEditorSection(
     baseUrl: String,
     draft: CharacterEditDraft,
     pendingAvatarUpload: CharacterUpload?,
-    avatarProcessingMode: CharacterAvatarProcessingMode,
-    onAvatarProcessingChanged: (CharacterAvatarProcessingMode) -> Unit,
     saving: Boolean,
     onChooseAvatar: () -> Unit,
     onUpdateAvatarNow: () -> Unit
@@ -571,32 +562,8 @@ private fun CharacterAvatarEditorSection(
             style = MaterialTheme.typography.bodySmall,
             color = STTheme.colors.muted
         )
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            CharacterAvatarProcessingMode.values().forEach { mode ->
-                FilterChip(
-                    selected = avatarProcessingMode == mode,
-                    onClick = { onAvatarProcessingChanged(mode) },
-                    enabled = !saving,
-                    label = {
-                        Text(
-                            when (mode) {
-                                CharacterAvatarProcessingMode.ORIGINAL ->
-                                    stringResource(R.string.character_avatar_processing_original)
-                                CharacterAvatarProcessingMode.PNG ->
-                                    stringResource(R.string.character_avatar_processing_png)
-                                CharacterAvatarProcessingMode.CENTER_CROP_PNG ->
-                                    stringResource(R.string.character_avatar_processing_crop)
-                            }
-                        )
-                    }
-                )
-            }
-        }
         pendingAvatarUpload?.let { upload ->
-            val outputName = CharacterEditTools.avatarOutputFileName(upload.fileName, avatarProcessingMode)
+            val outputName = CharacterEditTools.avatarOutputFileName(upload.fileName)
             Text(
                 text = stringResource(R.string.character_avatar_processing_output, outputName),
                 style = MaterialTheme.typography.bodySmall,
@@ -1124,7 +1091,6 @@ private fun saveCharacter(
     onSaved: (String) -> Unit,
     isNew: Boolean,
     avatarUpload: CharacterUpload?,
-    avatarProcessingMode: CharacterAvatarProcessingMode,
     scope: kotlinx.coroutines.CoroutineScope
 ) {
     if (draft.name.isBlank()) {
@@ -1136,7 +1102,7 @@ private fun saveCharacter(
         runCatching {
             val client = TavernCoreClient(baseUrl = baseUrl)
             val preparedAvatar = avatarUpload?.let {
-                context.prepareCharacterAvatarUpload(it, avatarProcessingMode)
+                context.prepareCharacterAvatarUpload(it)
             }
             if (isNew) {
                 client.createCharacter(draft.toSaveRequest(), preparedAvatar)
@@ -1162,7 +1128,6 @@ private fun updateCharacterAvatar(
     onShowMessage: (String) -> Unit,
     onSavingChanged: (Boolean) -> Unit,
     onUpdated: () -> Unit,
-    avatarProcessingMode: CharacterAvatarProcessingMode,
     scope: kotlinx.coroutines.CoroutineScope
 ) {
     val avatar = draft.avatar?.takeIf { it.isNotBlank() }
@@ -1173,7 +1138,7 @@ private fun updateCharacterAvatar(
     scope.launch {
         onSavingChanged(true)
         runCatching {
-            val preparedAvatar = context.prepareCharacterAvatarUpload(upload, avatarProcessingMode)
+            val preparedAvatar = context.prepareCharacterAvatarUpload(upload)
             TavernCoreClient(baseUrl = baseUrl).updateCharacterAvatar(
                 avatar,
                 preparedAvatar.fileName,

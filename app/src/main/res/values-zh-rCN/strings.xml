@@ -261,9 +261,6 @@
     <string name="character_avatar_choose">选择头像</string>
     <string name="character_avatar_update_now">立即更换头像</string>
     <string name="character_avatar_processing_hint">头像会在上传前处理。不支持的格式会自动转成 PNG。</string>
-    <string name="character_avatar_processing_original">原图</string>
-    <string name="character_avatar_processing_png">PNG</string>
-    <string name="character_avatar_processing_crop">裁剪 2:3</string>
     <string name="character_avatar_processing_output">将以 %1$s 上传</string>
     <string name="character_editor_tab_basic">基础</string>
     <string name="character_editor_tab_prompt">Prompt</string>

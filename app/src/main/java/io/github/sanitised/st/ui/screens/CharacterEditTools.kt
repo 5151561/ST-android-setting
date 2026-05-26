@@ -2,12 +2,6 @@ package io.github.sanitised.st.ui.screens
 
 import kotlin.math.ceil
 
-internal enum class CharacterAvatarProcessingMode {
-    ORIGINAL,
-    PNG,
-    CENTER_CROP_PNG
-}
-
 internal data class CharacterTokenInput(
     val description: String = "",
     val firstMessage: String = "",
@@ -64,12 +58,12 @@ internal object CharacterEditTools {
         )
     }
 
-    fun shouldTranscodeAvatar(fileName: String, mode: CharacterAvatarProcessingMode): Boolean {
-        return mode != CharacterAvatarProcessingMode.ORIGINAL || fileName.extension() !in originalImageExtensions
+    fun shouldTranscodeAvatar(fileName: String): Boolean {
+        return fileName.extension() !in originalImageExtensions
     }
 
-    fun avatarOutputFileName(fileName: String, mode: CharacterAvatarProcessingMode): String {
-        return if (shouldTranscodeAvatar(fileName, mode)) {
+    fun avatarOutputFileName(fileName: String): String {
+        return if (shouldTranscodeAvatar(fileName)) {
             fileName.substringBeforeLast('.', fileName).ifBlank { "avatar" } + ".png"
         } else {
             fileName

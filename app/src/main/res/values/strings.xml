@@ -261,9 +261,6 @@
     <string name="character_avatar_choose">Choose avatar</string>
     <string name="character_avatar_update_now">Update avatar now</string>
     <string name="character_avatar_processing_hint">Avatar processing runs before upload. Unsupported formats are converted to PNG.</string>
-    <string name="character_avatar_processing_original">Original</string>
-    <string name="character_avatar_processing_png">PNG</string>
-    <string name="character_avatar_processing_crop">Crop 2:3</string>
     <string name="character_avatar_processing_output">Upload as %1$s</string>
     <string name="character_editor_tab_basic">Basic</string>
     <string name="character_editor_tab_prompt">Prompt</string>

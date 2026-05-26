@@ -1,7 +1,6 @@
 package io.github.sanitised.st.ui.screens
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -9,7 +8,6 @@ import io.github.sanitised.st.api.CharacterUpload
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
 
 internal data class PickedDocument(
     val fileName: String,
@@ -34,52 +32,26 @@ internal suspend fun Context.writePickedDocument(uri: Uri, bytes: ByteArray) {
     }
 }
 
-internal suspend fun Context.prepareCharacterAvatarUpload(
-    upload: CharacterUpload,
-    mode: CharacterAvatarProcessingMode
-): CharacterUpload {
+internal suspend fun Context.prepareCharacterAvatarUpload(upload: CharacterUpload): CharacterUpload {
     return withContext(Dispatchers.IO) {
-        if (!CharacterEditTools.shouldTranscodeAvatar(upload.fileName, mode)) {
+        if (!CharacterEditTools.shouldTranscodeAvatar(upload.fileName)) {
             upload
         } else {
             CharacterUpload(
-                fileName = CharacterEditTools.avatarOutputFileName(upload.fileName, mode),
-                bytes = transcodeAvatarToPng(upload.bytes, mode)
+                fileName = CharacterEditTools.avatarOutputFileName(upload.fileName),
+                bytes = transcodeAvatarToPng(upload.bytes)
             )
         }
     }
 }
 
-private fun transcodeAvatarToPng(bytes: ByteArray, mode: CharacterAvatarProcessingMode): ByteArray {
+private fun transcodeAvatarToPng(bytes: ByteArray): ByteArray {
     val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         ?: throw IllegalStateException("Unable to decode selected image")
-    val processed = if (mode == CharacterAvatarProcessingMode.CENTER_CROP_PNG) {
-        decoded.centerCropToAvatarRatio()
-    } else {
-        decoded
-    }
     return ByteArrayOutputStream().use { output ->
-        processed.compress(Bitmap.CompressFormat.PNG, 100, output)
+        decoded.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
         output.toByteArray()
     }
-}
-
-private fun Bitmap.centerCropToAvatarRatio(): Bitmap {
-    val targetRatio = 512f / 768f
-    val sourceRatio = width.toFloat() / height.toFloat()
-    val cropWidth: Int
-    val cropHeight: Int
-    if (sourceRatio > targetRatio) {
-        cropHeight = height
-        cropWidth = (height * targetRatio).roundToInt().coerceAtMost(width)
-    } else {
-        cropWidth = width
-        cropHeight = (width / targetRatio).roundToInt().coerceAtMost(height)
-    }
-    val cropX = ((width - cropWidth) / 2).coerceAtLeast(0)
-    val cropY = ((height - cropHeight) / 2).coerceAtLeast(0)
-    val cropped = Bitmap.createBitmap(this, cropX, cropY, cropWidth, cropHeight)
-    return Bitmap.createScaledBitmap(cropped, 512, 768, true)
 }
 
 private fun Context.documentDisplayName(uri: Uri): String {
