@@ -26,6 +26,7 @@ internal object DiagnosticExporter {
     private val sensitiveLinePattern = Regex(
         pattern = """(?im)^(\s*[\w.-]*(?:key|secret|token|password)[\w.-]*\s*[:=]\s*).+$"""
     )
+    private val urlUserInfoPattern = Regex("""(?i)\b([a-z][a-z0-9+.-]*://)([^/\s@]+)@""")
     private val rawSecretPattern = Regex("""(?i)\b(?:sk|pk|sess|token)-[A-Za-z0-9._-]+""")
 
     fun export(request: DiagnosticExportRequest) {
@@ -122,6 +123,7 @@ internal object DiagnosticExporter {
     private fun redactPotentialSecrets(text: String): String {
         return text
             .replace(sensitiveLinePattern) { match -> "${match.groupValues[1]}[redacted]" }
+            .replace(urlUserInfoPattern) { match -> "${match.groupValues[1]}[redacted]@" }
             .replace(rawSecretPattern, "[redacted]")
     }
 

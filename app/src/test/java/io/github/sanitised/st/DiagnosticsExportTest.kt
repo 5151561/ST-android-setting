@@ -30,6 +30,7 @@ class DiagnosticsExportTest {
                 apiKey: sk-test
                 nested:
                   password: let-me-in
+                proxyUrl: socks5://username:password@example.com:1080
                 allowKeysExposure: false
                 """.trimIndent(),
                 Charsets.UTF_8
@@ -69,10 +70,12 @@ class DiagnosticsExportTest {
         assertEquals("rotated stdout\n", entries["logs/node_stdout.log.1"])
         assertTrue(entries["config/config.yaml"].orEmpty().contains("apiKey: [redacted]"))
         assertTrue(entries["config/config.yaml"].orEmpty().contains("password: [redacted]"))
+        assertTrue(entries["config/config.yaml"].orEmpty().contains("proxyUrl: socks5://[redacted]@example.com:1080"))
         assertTrue(entries["data-summary.txt"].orEmpty().contains("characters: 1"))
         assertTrue(entries["data-summary.txt"].orEmpty().contains("chats: 1"))
         assertFalse(entries.keys.any { it.contains("secrets.json") })
         assertFalse(entries.values.any { it.contains("sk-test") })
+        assertFalse(entries.values.any { it.contains("username:password") })
     }
 
     private fun File.file(path: String, text: String) {
