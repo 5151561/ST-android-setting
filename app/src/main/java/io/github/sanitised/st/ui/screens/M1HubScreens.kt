@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -144,10 +143,6 @@ fun CharacterHubScreen(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ToolsHubScreen(
-    serverRunning: Boolean,
-    busyMessage: String,
-    onExportData: () -> Unit,
-    onImportData: () -> Unit,
     onOpenConfig: () -> Unit,
     onOpenLogs: () -> Unit,
     onOpenManageSt: () -> Unit,
@@ -158,19 +153,6 @@ fun ToolsHubScreen(
         subtitle = stringResource(R.string.tools_hub_subtitle),
         modifier = modifier
     ) {
-        val dataButtonsEnabled = !serverRunning && busyMessage.isBlank()
-        HubActionCard(
-            icon = Icons.Filled.Storage,
-            title = stringResource(R.string.tools_hub_backup_title),
-            body = stringResource(R.string.tools_hub_backup_body),
-            primaryLabel = stringResource(R.string.manage_export_data),
-            onPrimary = onExportData,
-            secondaryLabel = stringResource(R.string.manage_import_data),
-            onSecondary = onImportData,
-            enabled = dataButtonsEnabled,
-            disabledHint = stringResource(R.string.tools_hub_backup_disabled)
-        )
-
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -707,10 +689,6 @@ private fun CharacterHubScreenPreview() {
 private fun ToolsHubScreenPreview() {
     STAppTheme {
         ToolsHubScreen(
-            serverRunning = false,
-            busyMessage = "",
-            onExportData = {},
-            onImportData = {},
             onOpenConfig = {},
             onOpenLogs = {},
             onOpenManageSt = {}

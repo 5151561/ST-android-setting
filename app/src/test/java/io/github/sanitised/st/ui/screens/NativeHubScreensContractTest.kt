@@ -139,6 +139,44 @@ class NativeHubScreensContractTest {
     }
 
     @Test
+    fun m3P0ImportFlowShowsPrecheckBeforeOverwrite() {
+        val strings = File("src/main/res/values/strings.xml").readText()
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+
+        assertTrue(mainActivity.contains("NodeBackup.inspectImportUri"))
+        assertTrue(mainActivity.contains("backupImportPreviewText"))
+        assertTrue(mainActivity.contains("confirmEnabled = dialog.canImport"))
+        assertTrue(strings.contains("dialog_import_checking_body"))
+        assertTrue(strings.contains("backup_precheck_item_present"))
+    }
+
+    @Test
+    fun m3P0ManageScreenExposesSettingsSnapshots() {
+        val strings = File("src/main/res/values/strings.xml").readText()
+        val manageScreen = File("src/main/java/io/github/sanitised/st/UiManageSt.kt").readText()
+        val viewModel = File("src/main/java/io/github/sanitised/st/MainViewModel.kt").readText()
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+
+        assertTrue(strings.contains("settings_snapshot_title"))
+        assertTrue(manageScreen.contains("onCreateSettingsSnapshot"))
+        assertTrue(manageScreen.contains("onRestoreSettingsSnapshot"))
+        assertTrue(viewModel.contains("listSettingsSnapshots"))
+        assertTrue(mainActivity.contains("PendingDialog.RestoreSettingsSnapshot"))
+    }
+
+    @Test
+    fun toolsHubDoesNotDuplicateManageStBackupControls() {
+        val toolsHub = File("src/main/java/io/github/sanitised/st/ui/screens/M1HubScreens.kt").readText()
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+
+        assertFalse(toolsHub.contains("tools_hub_backup_title"))
+        assertFalse(toolsHub.contains("onExportData"))
+        assertFalse(toolsHub.contains("onImportData"))
+        assertFalse(mainActivity.contains("onExportData = triggerExport"))
+        assertFalse(mainActivity.contains("onImportData = triggerImport"))
+    }
+
+    @Test
     fun androidLocalesExposeEnglishAndSimplifiedChinese() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
         val localeConfig = File("src/main/res/xml/locales_config.xml")

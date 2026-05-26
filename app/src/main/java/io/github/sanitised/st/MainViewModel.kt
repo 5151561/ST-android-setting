@@ -7,6 +7,8 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.sanitised.st.api.SettingsSnapshot
+import io.github.sanitised.st.api.TavernCoreClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -64,6 +66,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val customOperationCardAnchor: MutableState<CustomOperationAnchor> = customInstallManager.customOperationCardAnchor
     val backupOperationCard: MutableState<OperationCardState> = backupManager.backupOperationCard
     val backupOperationCardAnchor: MutableState<BackupOperationAnchor> = backupManager.backupOperationCardAnchor
+    val settingsSnapshots = mutableStateOf<List<SettingsSnapshot>>(emptyList())
+    val settingsSnapshotsLoading = mutableStateOf(false)
+    val settingsSnapshotMessage = mutableStateOf("")
 
     val autoCheckForUpdates: MutableState<Boolean> = updateManager.autoCheckForUpdates
     val autoOpenBrowserWhenReady: MutableState<Boolean> = updateManager.autoOpenBrowserWhenReady
@@ -97,6 +102,81 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun import(uri: Uri) {
         backupManager.import(uri)
+    }
+
+    fun refreshSettingsSnapshots(port: Int) {
+        settingsSnapshotsLoading.value = true
+        settingsSnapshotMessage.value = ""
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    TavernCoreClient(baseUrl = SillyTavernUrl.localWebUrl(port)).listSettingsSnapshots()
+                }
+            }
+            settingsSnapshotsLoading.value = false
+            result
+                .onSuccess { snapshots ->
+                    settingsSnapshots.value = snapshots.sortedByDescending { it.date }
+                    settingsSnapshotMessage.value = getApplication<Application>().getString(
+                        R.string.settings_snapshot_loaded,
+                        snapshots.size
+                    )
+                }
+                .onFailure { error ->
+                    settingsSnapshotMessage.value = getApplication<Application>().getString(
+                        R.string.settings_snapshot_failed,
+                        error.message ?: getApplication<Application>().getString(R.string.unknown_error)
+                    )
+                }
+        }
+    }
+
+    fun createSettingsSnapshot(port: Int) {
+        settingsSnapshotsLoading.value = true
+        settingsSnapshotMessage.value = ""
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    TavernCoreClient(baseUrl = SillyTavernUrl.localWebUrl(port)).makeSettingsSnapshot()
+                }
+            }
+            settingsSnapshotsLoading.value = false
+            result
+                .onSuccess {
+                    settingsSnapshotMessage.value = getApplication<Application>().getString(R.string.settings_snapshot_created)
+                    refreshSettingsSnapshots(port)
+                }
+                .onFailure { error ->
+                    settingsSnapshotMessage.value = getApplication<Application>().getString(
+                        R.string.settings_snapshot_failed,
+                        error.message ?: getApplication<Application>().getString(R.string.unknown_error)
+                    )
+                }
+        }
+    }
+
+    fun restoreSettingsSnapshot(port: Int, name: String) {
+        settingsSnapshotsLoading.value = true
+        settingsSnapshotMessage.value = ""
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    TavernCoreClient(baseUrl = SillyTavernUrl.localWebUrl(port)).restoreSettingsSnapshot(name)
+                }
+            }
+            settingsSnapshotsLoading.value = false
+            result
+                .onSuccess {
+                    settingsSnapshotMessage.value = getApplication<Application>().getString(R.string.settings_snapshot_restored)
+                    refreshSettingsSnapshots(port)
+                }
+                .onFailure { error ->
+                    settingsSnapshotMessage.value = getApplication<Application>().getString(
+                        R.string.settings_snapshot_failed,
+                        error.message ?: getApplication<Application>().getString(R.string.unknown_error)
+                    )
+                }
+        }
     }
 
     fun installCustomZip(uri: Uri) {

@@ -109,6 +109,57 @@ class TavernCoreClientTest {
     }
 
     @Test
+    fun settingsSnapshotListCallsSillyTavernEndpointAndMapsFiles() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    [
+                      { "name": "settings_default-user_20260526.json", "date": 1748246400000, "size": 42 }
+                    ]
+                    """.trimIndent()
+                )
+        )
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val snapshots = client.listSettingsSnapshots()
+
+        assertCsrfRequest()
+        assertEquals("/api/settings/get-snapshots", server.takeRequest().path)
+        assertEquals(1, snapshots.size)
+        assertEquals("settings_default-user_20260526.json", snapshots.first().name)
+        assertEquals(1748246400000L, snapshots.first().date)
+        assertEquals(42L, snapshots.first().size)
+    }
+
+    @Test
+    fun settingsSnapshotActionsUseSnapshotNamePayloads() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(MockResponse().setResponseCode(204))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{\"theme\":\"dark\"}"))
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        client.makeSettingsSnapshot()
+        val loaded = client.loadSettingsSnapshot("settings_default-user_20260526.json")
+        client.restoreSettingsSnapshot("settings_default-user_20260526.json")
+
+        assertCsrfRequest()
+        assertEquals("/api/settings/make-snapshot", server.takeRequest().path)
+        val loadRequest = server.takeRequest()
+        assertEquals("/api/settings/load-snapshot", loadRequest.path)
+        assertTrue(loadRequest.body.readUtf8().contains("\"name\":\"settings_default-user_20260526.json\""))
+        assertEquals("{\"theme\":\"dark\"}", loaded)
+        val restoreRequest = server.takeRequest()
+        assertEquals("/api/settings/restore-snapshot", restoreRequest.path)
+        assertTrue(restoreRequest.body.readUtf8().contains("\"name\":\"settings_default-user_20260526.json\""))
+    }
+
+    @Test
     fun listCharactersSurfacesApiErrors() = runBlocking {
         enqueueCsrf()
         server.enqueue(MockResponse().setResponseCode(500).setBody("broken"))

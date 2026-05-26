@@ -105,6 +105,14 @@ class NodeService : Service() {
                 return
             }
         }
+        val requestedPort = status.port
+        if (!PortAvailability.isTcpPortAvailable(requestedPort)) {
+            val logsDir = AppPaths(this).logsDir
+            appendServiceLog(logsDir, "start blocked: port $requestedPort is already in use")
+            updateStatus(NodeState.ERROR, getString(R.string.node_status_port_in_use, requestedPort))
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            return
+        }
         val layout = try {
             val layoutResult = payload.ensureExtracted()
             if (layoutResult.isFailure) {

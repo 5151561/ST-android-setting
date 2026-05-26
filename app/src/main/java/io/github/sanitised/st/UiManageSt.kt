@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.github.sanitised.st.api.SettingsSnapshot
 import io.github.sanitised.st.ui.components.STOperationProgressCard
 
 @Composable
@@ -57,6 +58,13 @@ fun ManageStScreen(
     busyMessage: String,
     onExport: () -> Unit,
     onImport: () -> Unit,
+    settingsSnapshotsEnabled: Boolean,
+    settingsSnapshots: List<SettingsSnapshot>,
+    settingsSnapshotsLoading: Boolean,
+    settingsSnapshotMessage: String,
+    onRefreshSettingsSnapshots: () -> Unit,
+    onCreateSettingsSnapshot: () -> Unit,
+    onRestoreSettingsSnapshot: (String) -> Unit,
     customRepoInput: String,
     onCustomRepoInputChanged: (String) -> Unit,
     onLoadRepoRefs: () -> Unit,
@@ -153,6 +161,72 @@ fun ManageStScreen(
                             showCancel = false,
                             onCancel = {}
                         )
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = stringResource(R.string.settings_snapshot_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.settings_snapshot_body),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = onCreateSettingsSnapshot,
+                            enabled = settingsSnapshotsEnabled && !settingsSnapshotsLoading,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = if (settingsSnapshotsLoading) {
+                                    stringResource(R.string.loading)
+                                } else {
+                                    stringResource(R.string.settings_snapshot_create)
+                                }
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        OutlinedButton(
+                            onClick = onRefreshSettingsSnapshots,
+                            enabled = settingsSnapshotsEnabled && !settingsSnapshotsLoading,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(text = stringResource(R.string.settings_snapshot_refresh))
+                        }
+                    }
+                    if (!settingsSnapshotsEnabled) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.settings_snapshot_requires_server),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (settingsSnapshotMessage.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = settingsSnapshotMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (settingsSnapshots.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                            settingsSnapshots.take(5).forEach { snapshot ->
+                                SettingsSnapshotRow(
+                                    snapshot = snapshot,
+                                    enabled = settingsSnapshotsEnabled && !settingsSnapshotsLoading,
+                                    onRestore = { onRestoreSettingsSnapshot(snapshot.name) }
+                                )
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(24.dp))
                     HorizontalDivider()
@@ -445,6 +519,42 @@ fun ManageStScreen(
 }
 
 @Composable
+private fun SettingsSnapshotRow(
+    snapshot: SettingsSnapshot,
+    enabled: Boolean,
+    onRestore: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = snapshot.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(R.string.settings_snapshot_detail, snapshot.size),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            OutlinedButton(onClick = onRestore, enabled = enabled) {
+                Text(text = stringResource(R.string.settings_snapshot_restore))
+            }
+        }
+    }
+}
+
+@Composable
 private fun WarningBullet(text: String, color: Color) {
     Row(
         modifier = Modifier.padding(top = 4.dp),
@@ -503,6 +613,13 @@ private fun ManageStScreenPreview() {
         busyMessage = "",
         onExport = {},
         onImport = {},
+        settingsSnapshotsEnabled = false,
+        settingsSnapshots = emptyList(),
+        settingsSnapshotsLoading = false,
+        settingsSnapshotMessage = "",
+        onRefreshSettingsSnapshots = {},
+        onCreateSettingsSnapshot = {},
+        onRestoreSettingsSnapshot = {},
         customRepoInput = "SillyTavern/SillyTavern",
         onCustomRepoInputChanged = {},
         onLoadRepoRefs = {},

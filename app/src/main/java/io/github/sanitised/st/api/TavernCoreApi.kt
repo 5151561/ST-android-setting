@@ -133,6 +133,12 @@ data class STTagSettings(
     val rawSettings: Map<String, Any?> = emptyMap()
 )
 
+data class SettingsSnapshot(
+    val name: String,
+    val date: Long,
+    val size: Long
+)
+
 data class ChatSummary(
     val id: String,
     val characterId: String,
@@ -160,6 +166,10 @@ interface TavernCoreApi {
     )
     suspend fun getTagSettings(): STTagSettings
     suspend fun saveTagSettings(settings: STTagSettings)
+    suspend fun listSettingsSnapshots(): List<SettingsSnapshot>
+    suspend fun makeSettingsSnapshot()
+    suspend fun loadSettingsSnapshot(name: String): String
+    suspend fun restoreSettingsSnapshot(name: String)
     suspend fun renameCharacter(avatar: String, newName: String): String
     suspend fun duplicateCharacter(avatar: String): String
     suspend fun deleteCharacter(avatar: String, deleteChats: Boolean = false)
@@ -312,6 +322,45 @@ class TavernCoreClient(
             postJson(
                 path = "api/settings/save",
                 json = jsonValue(merged)
+            )
+        }
+    }
+
+    override suspend fun listSettingsSnapshots(): List<SettingsSnapshot> {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/settings/get-snapshots", "{}")
+            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            items.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                SettingsSnapshot(
+                    name = map.stringValue("name"),
+                    date = map.longValue("date"),
+                    size = map.longValue("size")
+                )
+            }
+        }
+    }
+
+    override suspend fun makeSettingsSnapshot() {
+        withContext(Dispatchers.IO) {
+            postJson("api/settings/make-snapshot", "{}")
+        }
+    }
+
+    override suspend fun loadSettingsSnapshot(name: String): String {
+        return withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/settings/load-snapshot",
+                json = jsonObject("name" to name)
+            )
+        }
+    }
+
+    override suspend fun restoreSettingsSnapshot(name: String) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/settings/restore-snapshot",
+                json = jsonObject("name" to name)
             )
         }
     }

@@ -28,6 +28,8 @@
     <string name="config_title">编辑配置</string>
     <string name="copy">复制</string>
     <string name="dialog_import_body">现有数据将被覆盖。</string>
+    <string name="dialog_import_checking_body">正在导入前检查备份…</string>
+    <string name="dialog_import_invalid_body">此备份无法导入：%1$s</string>
     <string name="dialog_import_title">导入备份？</string>
     <string name="dialog_remove_data_body">这会永久删除应用保存的所有当前聊天、角色、预设、世界、设置以及其他数据。此操作无法撤销。如需保留内容，请先导出备份。</string>
     <string name="dialog_remove_data_title">移除所有用户数据？</string>
@@ -133,6 +135,19 @@
     <string name="settings_title">设置</string>
     <string name="settings_update_channel_title">更新通道</string>
     <string name="settings_updates_title">应用更新</string>
+    <string name="settings_snapshot_title">设置快照</string>
+    <string name="settings_snapshot_body">导入或升级源码前创建 SillyTavern 设置快照，需要时可恢复。</string>
+    <string name="settings_snapshot_create">创建快照</string>
+    <string name="settings_snapshot_refresh">刷新列表</string>
+    <string name="settings_snapshot_restore">恢复</string>
+    <string name="settings_snapshot_restore_title">恢复设置快照？</string>
+    <string name="settings_snapshot_restore_body">这会用 %1$s 替换当前 settings.json。聊天和角色文件不会改变。</string>
+    <string name="settings_snapshot_requires_server">请先启动 SillyTavern，再管理设置快照。</string>
+    <string name="settings_snapshot_detail">%1$d 字节</string>
+    <string name="settings_snapshot_loaded">已加载 %1$d 个快照。</string>
+    <string name="settings_snapshot_created">设置快照已创建。</string>
+    <string name="settings_snapshot_restored">设置快照已恢复。</string>
+    <string name="settings_snapshot_failed">设置快照失败：%1$s</string>
     <string name="sillytavern_custom_version">SillyTavern（自定义版本）</string>
     <string name="sillytavern_custom_with_label">SillyTavern（%1$s）</string>
     <string name="sillytavern_label">SillyTavern %1$s</string>
@@ -387,9 +402,6 @@
     <string name="character_token_count">%1$d tokens</string>
     <string name="tools_hub_title">工具</string>
     <string name="tools_hub_subtitle">数据、配置、日志，以及高级 SillyTavern 入口。</string>
-    <string name="tools_hub_backup_title">备份与恢复</string>
-    <string name="tools_hub_backup_body">导出应用数据，或通过系统文件选择器导入 SillyTavern 备份。</string>
-    <string name="tools_hub_backup_disabled">请停止服务器并等待当前工作完成，再更改数据。</string>
     <string name="tools_hub_config_body">使用现有的停止服务保护来编辑 config.yaml。</string>
     <string name="tools_hub_logs_body">查看 stdout、stderr 和服务诊断。</string>
     <string name="tools_hub_manage_body">安装自定义 SillyTavern 源码，或重置为内置 ST。</string>
@@ -418,6 +430,27 @@
     <string name="backup_import_failed">导入失败：%1$s</string>
     <string name="backup_import_post_install_failed">导入完成，但安装后处理失败：%1$s</string>
     <string name="backup_import_complete">导入完成</string>
+    <string name="backup_precheck_kind_app">ST Android 应用备份</string>
+    <string name="backup_precheck_kind_ui">SillyTavern UI 用户备份</string>
+    <string name="backup_precheck_type">类型：%1$s</string>
+    <string name="backup_precheck_user">目标用户：%1$s</string>
+    <string name="backup_precheck_config_present">配置：已包含</string>
+    <string name="backup_precheck_config_missing">配置：未包含</string>
+    <string name="backup_precheck_manifest">Manifest：应用 %1$s，ST %2$s</string>
+    <string name="backup_precheck_coverage">覆盖清单：</string>
+    <string name="backup_precheck_item_present">• %1$s：存在（%2$d）</string>
+    <string name="backup_precheck_item_missing">• %1$s：缺失</string>
+    <string name="backup_precheck_warnings">提示：</string>
+    <string name="backup_precheck_warning_item">• %1$s</string>
+    <string name="backup_precheck_warning_secrets">此 SillyTavern UI 备份不包含 secrets.json。API Key 可能需要重新设置。</string>
+    <string name="backup_precheck_path_settings">设置</string>
+    <string name="backup_precheck_path_characters">角色</string>
+    <string name="backup_precheck_path_chats">聊天</string>
+    <string name="backup_precheck_path_worlds">世界书</string>
+    <string name="backup_precheck_path_groups">群组</string>
+    <string name="backup_precheck_path_user_avatars">Persona 头像</string>
+    <string name="backup_precheck_path_quick_replies">Quick Replies</string>
+    <string name="backup_precheck_path_secrets">API Key / secrets</string>
 
     <!-- Backup progress (NodeBackup) -->
     <string name="backup_progress_preparing_export">正在准备导出…</string>
@@ -491,4 +524,5 @@
     <string name="node_status_binary_not_found">未找到 Node 二进制文件</string>
     <string name="node_status_start_failed">启动 node 失败</string>
     <string name="node_status_foreground_not_allowed">不允许前台服务</string>
+    <string name="node_status_port_in_use">端口 %1$d 已被占用。请停止其他服务，或在配置中更换端口。</string>
 </resources>

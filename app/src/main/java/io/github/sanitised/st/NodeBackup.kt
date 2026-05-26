@@ -9,6 +9,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.PushbackInputStream
+import java.time.Instant
 import java.util.Date
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
@@ -17,17 +18,64 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream
+import org.yaml.snakeyaml.Yaml
+
+enum class BackupImportKind {
+    APP_BACKUP,
+    ST_UI_USER_BACKUP
+}
+
+enum class BackupCoverageStatus {
+    PRESENT,
+    MISSING
+}
+
+data class BackupManifest(
+    val formatVersion: String,
+    val appVersion: String,
+    val stCommit: String?,
+    val exportedAt: String,
+    val configBytes: Long,
+    val dataBytes: Long,
+    val includesSecrets: Boolean
+)
+
+data class BackupCoverageItem(
+    val path: String,
+    val status: BackupCoverageStatus,
+    val count: Int
+)
+
+data class BackupImportPreview(
+    val kind: BackupImportKind,
+    val hasConfig: Boolean,
+    val userHandle: String,
+    val manifest: BackupManifest?,
+    val coverage: List<BackupCoverageItem>,
+    val warningMessages: List<String>
+)
 
 object NodeBackup {
     private const val BACKUP_ROOT = "st_backup"
     private const val DEFAULT_USER_HANDLE = "default-user"
     private const val UI_BACKUP_ROOT = "ui_backup"
+    private const val MANIFEST_FILE = "manifest.yaml"
     private const val SETTINGS_FILE = "settings.json"
     private const val CHATS_DIR = "chats"
     private val DATA_ROOT_INFRA = setOf(
         "_storage",
         "_uploads",
         "cookie-secret.txt"
+    )
+    private val COVERAGE_PATHS = listOf(
+        SETTINGS_FILE,
+        "characters",
+        CHATS_DIR,
+        "worlds",
+        "groups",
+        "User Avatars",
+        "QuickReplies",
+        "secrets.json"
     )
 
     data class BackupProgress(
@@ -67,6 +115,13 @@ object NodeBackup {
             }
 
             report(context.getString(R.string.backup_progress_preparing_export), force = true)
+            val manifest = buildExportManifest(
+                appVersion = appVersionName(context),
+                stCommit = NodePayload(context).readManifestInfo()?.stCommit,
+                exportedAtEpochMs = System.currentTimeMillis(),
+                configFile = configFile,
+                dataDir = dataDir
+            )
             context.contentResolver.openOutputStream(uri)?.use { output ->
                 BufferedOutputStream(output).use { buffered ->
                     GZIPOutputStream(buffered).use { gz ->
@@ -75,6 +130,11 @@ object NodeBackup {
                             tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX)
                             tar.setAddPaxHeadersForNonAsciiNames(true)
                             writeTarDirectory(tar, "$BACKUP_ROOT/")
+                            writeTarText(
+                                output = tar,
+                                name = "$BACKUP_ROOT/$MANIFEST_FILE",
+                                text = manifestToYaml(manifest)
+                            )
                             if (hasConfig) {
                                 writeTarFile(
                                     output = tar,
@@ -104,6 +164,106 @@ object NodeBackup {
         }
     }
 
+    fun inspectImportUri(
+        context: Context,
+        uri: Uri
+    ): Result<BackupImportPreview> {
+        return runCatching {
+            val paths = AppPaths(context)
+            val importDir = File(paths.tmpDir, "import_preview")
+            if (importDir.exists()) {
+                importDir.deleteRecursively()
+            }
+            importDir.mkdirs()
+            try {
+                context.contentResolver.openInputStream(uri)?.use { raw ->
+                    extractArchiveStream(BufferedInputStream(raw), importDir)
+                } ?: throw IllegalStateException("Unable to open archive")
+                inspectImportDirectory(importDir)
+            } finally {
+                importDir.deleteRecursively()
+            }
+        }
+    }
+
+    internal fun buildExportManifest(
+        appVersion: String,
+        stCommit: String?,
+        exportedAtEpochMs: Long,
+        configFile: File,
+        dataDir: File
+    ): BackupManifest {
+        return BackupManifest(
+            formatVersion = "1",
+            appVersion = appVersion,
+            stCommit = stCommit,
+            exportedAt = Instant.ofEpochMilli(exportedAtEpochMs).toString(),
+            configBytes = configFile.takeIf { it.exists() }?.length() ?: 0L,
+            dataBytes = totalRegularFileBytes(dataDir),
+            includesSecrets = File(dataDir, "$DEFAULT_USER_HANDLE/secrets.json").isFile
+        )
+    }
+
+    internal fun manifestToYaml(manifest: BackupManifest): String {
+        val map = linkedMapOf<String, Any?>(
+            "format_version" to manifest.formatVersion,
+            "app_version" to manifest.appVersion,
+            "st_commit" to manifest.stCommit,
+            "exported_at" to manifest.exportedAt,
+            "config_bytes" to manifest.configBytes,
+            "data_bytes" to manifest.dataBytes,
+            "includes_secrets" to manifest.includesSecrets
+        )
+        return Yaml().dump(map)
+    }
+
+    internal fun inspectImportDirectory(importDir: File): BackupImportPreview {
+        val configSrc = File(importDir, "config/config.yaml")
+        val dataSrc = File(importDir, "data")
+        val uiBackupRoot = File(importDir, UI_BACKUP_ROOT)
+        val manifest = readManifest(File(importDir, MANIFEST_FILE))
+
+        if (dataSrc.exists()) {
+            val userRoot = detectSingleUserDataRoot(dataSrc)
+            return buildImportPreview(
+                kind = BackupImportKind.APP_BACKUP,
+                hasConfig = configSrc.exists(),
+                userHandle = DEFAULT_USER_HANDLE,
+                userRoot = userRoot,
+                manifest = manifest
+            )
+        }
+
+        val uiRoot = if (uiBackupRoot.exists()) detectUiBackupRoot(uiBackupRoot) else null
+        if (uiRoot != null) {
+            return buildImportPreview(
+                kind = BackupImportKind.ST_UI_USER_BACKUP,
+                hasConfig = false,
+                userHandle = DEFAULT_USER_HANDLE,
+                userRoot = uiRoot,
+                manifest = manifest
+            )
+        }
+
+        if (configSrc.exists()) {
+            return BackupImportPreview(
+                kind = BackupImportKind.APP_BACKUP,
+                hasConfig = true,
+                userHandle = DEFAULT_USER_HANDLE,
+                manifest = manifest,
+                coverage = COVERAGE_PATHS.map { path ->
+                    BackupCoverageItem(path, BackupCoverageStatus.MISSING, 0)
+                },
+                warningMessages = emptyList()
+            )
+        }
+
+        throw IllegalStateException(
+            "No recognizable data found in archive. " +
+                    "Make sure you selected a valid SillyTavern backup (.tar.gz or .zip)."
+        )
+    }
+
     fun importFromUri(
         context: Context,
         uri: Uri,
@@ -127,7 +287,6 @@ object NodeBackup {
             val extractingMsg = context.getString(R.string.backup_progress_extracting)
             context.contentResolver.openInputStream(uri)?.use { raw ->
                 val countingRaw = CountingInputStream(BufferedInputStream(raw))
-                val pushback = PushbackInputStream(countingRaw, 2)
                 var lastPercent = -1
                 var lastMessage = ""
                 fun reportExtractProgress(message: String, force: Boolean) {
@@ -143,29 +302,14 @@ object NodeBackup {
                     }
                     onProgress(BackupProgress(message, percent))
                 }
-                val sig = ByteArray(2)
-                val read = pushback.read(sig)
-                if (read > 0) pushback.unread(sig, 0, read)
                 reportExtractProgress(extractingMsg, true)
-                when {
-                    read == 2 && sig[0] == 0x50.toByte() && sig[1] == 0x4B.toByte() ->
-                        extractBackupFromZip(pushback, importDir) {
-                            reportExtractProgress(extractingMsg, false)
-                        }
-
-                    read == 2 && sig[0] == 0x1F.toByte() && sig[1] == 0x8B.toByte() ->
-                        extractBackup(GZIPInputStream(pushback), importDir) {
-                            reportExtractProgress(extractingMsg, false)
-                        }
-
-                    else ->
-                        extractBackup(pushback, importDir) {
-                            reportExtractProgress(extractingMsg, false)
-                        }
+                extractArchiveStream(countingRaw, importDir) {
+                    reportExtractProgress(extractingMsg, false)
                 }
             } ?: throw IllegalStateException("Unable to open archive")
             onProgress(BackupProgress(context.getString(R.string.backup_progress_applying), null))
 
+            inspectImportDirectory(importDir)
             val configSrc = File(importDir, "config/config.yaml")
             val uiBackupRoot = File(importDir, UI_BACKUP_ROOT)
             val initialDataSrc = File(importDir, "data")
@@ -187,7 +331,6 @@ object NodeBackup {
                             "Make sure you selected a valid SillyTavern backup (.tar.gz or .zip)."
                 )
             }
-
             val configDest = paths.configFile
             val dataDest = paths.dataDir
 
@@ -263,6 +406,27 @@ object NodeBackup {
         }
     }
 
+    private fun extractArchiveStream(
+        input: InputStream,
+        destDir: File,
+        onProgressTick: () -> Unit = {}
+    ) {
+        val pushback = PushbackInputStream(input, 2)
+        val sig = ByteArray(2)
+        val read = pushback.read(sig)
+        if (read > 0) pushback.unread(sig, 0, read)
+        when {
+            read == 2 && sig[0] == 0x50.toByte() && sig[1] == 0x4B.toByte() ->
+                extractBackupFromZip(pushback, destDir, onProgressTick)
+
+            read == 2 && sig[0] == 0x1F.toByte() && sig[1] == 0x8B.toByte() ->
+                extractBackup(GZIPInputStream(pushback), destDir, onProgressTick)
+
+            else ->
+                extractBackup(pushback, destDir, onProgressTick)
+        }
+    }
+
     private fun extractBackup(
         input: InputStream,
         destDir: File,
@@ -308,12 +472,86 @@ object NodeBackup {
 
     private fun mapServerBackupPath(path: String): String? {
         return when {
+            path == MANIFEST_FILE -> MANIFEST_FILE
             path == "config.yaml" -> "config/config.yaml"
             path == "config/config.yaml" -> "config/config.yaml"
             path == "data" -> "data"
             path.startsWith("data/") -> path
             else -> null
         }
+    }
+
+    private fun buildImportPreview(
+        kind: BackupImportKind,
+        hasConfig: Boolean,
+        userHandle: String,
+        userRoot: File,
+        manifest: BackupManifest?
+    ): BackupImportPreview {
+        val coverage = COVERAGE_PATHS.map { path ->
+            val target = File(userRoot, path)
+            val count = when {
+                target.isFile -> 1
+                target.isDirectory -> countRegularFiles(target)
+                else -> 0
+            }
+            val present = target.exists() && (target.isFile || target.isDirectory)
+            BackupCoverageItem(
+                path = path,
+                status = if (present) BackupCoverageStatus.PRESENT else BackupCoverageStatus.MISSING,
+                count = count
+            )
+        }
+        val warnings = buildList {
+            val secrets = coverage.firstOrNull { it.path == "secrets.json" }
+            if (kind == BackupImportKind.ST_UI_USER_BACKUP && secrets?.status == BackupCoverageStatus.MISSING) {
+                add("This SillyTavern UI backup does not include secrets.json; API keys may need to be set again.")
+            }
+        }
+        return BackupImportPreview(
+            kind = kind,
+            hasConfig = hasConfig,
+            userHandle = userHandle,
+            manifest = manifest,
+            coverage = coverage,
+            warningMessages = warnings
+        )
+    }
+
+    private fun detectSingleUserDataRoot(dataDir: File): File {
+        val defaultUserDir = File(dataDir, DEFAULT_USER_HANDLE)
+        if (defaultUserDir.exists()) return defaultUserDir
+
+        val candidates = dataDir.listFiles()
+            ?.filterNot { it.name.startsWith(".") || it.name in DATA_ROOT_INFRA }
+            .orEmpty()
+
+        if (candidates.isEmpty()) return dataDir
+        if (candidates.size != 1 || !candidates[0].isDirectory) {
+            throw IllegalStateException(
+                "This backup does not contain a '$DEFAULT_USER_HANDLE' profile and appears to be multi-user. " +
+                        "Only single-user SillyTavern backups can be imported."
+            )
+        }
+        return candidates[0]
+    }
+
+    private fun readManifest(file: File): BackupManifest? {
+        if (!file.isFile) return null
+        return runCatching {
+            val map = file.inputStream().bufferedReader(Charsets.UTF_8).use { reader ->
+                Yaml().load<Any?>(reader)
+            } as? Map<*, *> ?: return null
+            BackupManifest(
+                formatVersion = map.stringValue("format_version").ifBlank { "1" },
+                appVersion = map.stringValue("app_version"),
+                stCommit = map.stringValue("st_commit").ifBlank { null },
+                exportedAt = map.stringValue("exported_at"),
+                configBytes = map.longValue("config_bytes"),
+                dataBytes = map.longValue("data_bytes"),
+                includesSecrets = map.booleanValue("includes_secrets")
+            )
+        }.getOrNull()
     }
 
     private fun normalizeImportedDataRoot(dataDir: File) {
@@ -424,6 +662,22 @@ object NodeBackup {
         output.closeArchiveEntry()
     }
 
+    private fun writeTarText(
+        output: TarArchiveOutputStream,
+        name: String,
+        text: String
+    ) {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        val entry = TarArchiveEntry(name).apply {
+            mode = 420
+            size = bytes.size.toLong()
+            modTime = Date()
+        }
+        output.putArchiveEntry(entry)
+        output.write(bytes)
+        output.closeArchiveEntry()
+    }
+
     private fun totalRegularFileBytes(root: File): Long {
         if (!root.exists()) return 0L
         if (root.isFile) return root.length()
@@ -433,6 +687,24 @@ object NodeBackup {
             total += totalRegularFileBytes(child)
         }
         return total
+    }
+
+    private fun countRegularFiles(root: File): Int {
+        if (!root.exists()) return 0
+        if (root.isFile) return 1
+        val children = root.listFiles() ?: return 0
+        var total = 0
+        for (child in children) {
+            total += countRegularFiles(child)
+        }
+        return total
+    }
+
+    private fun appVersionName(context: Context): String {
+        return runCatching {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            info.versionName ?: "unknown"
+        }.getOrElse { "unknown" }
     }
 
     private class CountingInputStream(
@@ -463,4 +735,24 @@ object NodeBackup {
     }
 
     // Tar parsing helpers live in TarUtils.
+}
+
+private fun Map<*, *>.stringValue(key: String): String {
+    return this[key]?.toString().orEmpty()
+}
+
+private fun Map<*, *>.longValue(key: String): Long {
+    return when (val value = this[key]) {
+        is Number -> value.toLong()
+        is String -> value.toLongOrNull() ?: 0L
+        else -> 0L
+    }
+}
+
+private fun Map<*, *>.booleanValue(key: String): Boolean {
+    return when (val value = this[key]) {
+        is Boolean -> value
+        is String -> value.equals("true", ignoreCase = true)
+        else -> false
+    }
 }

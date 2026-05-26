@@ -76,6 +76,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.file.Files
 import java.time.LocalDateTime
@@ -282,7 +283,26 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.OpenDocument()
             ) { uri ->
                 if (uri == null) return@rememberLauncherForActivityResult
-                pendingDialogState.value = PendingDialog.ConfirmImport(uri)
+                pendingDialogState.value = PendingDialog.CheckingImport(uri)
+                scope.launch {
+                    val previewResult = withContext(Dispatchers.IO) {
+                        NodeBackup.inspectImportUri(this@MainActivity, uri)
+                    }
+                    val previewText = previewResult.fold(
+                        onSuccess = { preview -> backupImportPreviewText(preview) },
+                        onFailure = { error ->
+                            getString(
+                                R.string.dialog_import_invalid_body,
+                                error.message ?: getString(R.string.unknown_error)
+                            )
+                        }
+                    )
+                    pendingDialogState.value = PendingDialog.ConfirmImport(
+                        uri = uri,
+                        previewText = previewText,
+                        canImport = previewResult.isSuccess
+                    )
+                }
             }
             val customZipLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.OpenDocument()
@@ -508,12 +528,6 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.TOOLS) {
                                 ToolsHubScreen(
-                                    serverRunning = statusState.value.state == NodeState.RUNNING ||
-                                            statusState.value.state == NodeState.STARTING ||
-                                            statusState.value.state == NodeState.STOPPING,
-                                    busyMessage = viewModel.busyMessage,
-                                    onExportData = triggerExport,
-                                    onImportData = triggerImport,
                                     onOpenConfig = { navController.navigate(STRoutes.CONFIG) },
                                     onOpenLogs = { navController.navigate(STRoutes.LOGS) },
                                     onOpenManageSt = { navController.navigate(STRoutes.MANAGE_ST) }
@@ -619,6 +633,20 @@ class MainActivity : ComponentActivity() {
                                     busyMessage = viewModel.busyMessage,
                                     onExport = triggerExport,
                                     onImport = triggerImport,
+                                    settingsSnapshotsEnabled = statusState.value.state == NodeState.RUNNING &&
+                                            viewModel.busyMessage.isBlank(),
+                                    settingsSnapshots = viewModel.settingsSnapshots.value,
+                                    settingsSnapshotsLoading = viewModel.settingsSnapshotsLoading.value,
+                                    settingsSnapshotMessage = viewModel.settingsSnapshotMessage.value,
+                                    onRefreshSettingsSnapshots = {
+                                        viewModel.refreshSettingsSnapshots(statusState.value.port)
+                                    },
+                                    onCreateSettingsSnapshot = {
+                                        viewModel.createSettingsSnapshot(statusState.value.port)
+                                    },
+                                    onRestoreSettingsSnapshot = { name ->
+                                        pendingDialogState.value = PendingDialog.RestoreSettingsSnapshot(name)
+                                    },
                                     customRepoInput = viewModel.customRepoInput.value,
                                     onCustomRepoInputChanged = { viewModel.setCustomRepoInput(it) },
                                     onLoadRepoRefs = { viewModel.loadCustomRepoRefs() },
@@ -688,6 +716,35 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        is PendingDialog.RestoreSettingsSnapshot -> {
+                            STConfirmDialog(
+                                title = getString(R.string.settings_snapshot_restore_title),
+                                confirmLabel = getString(R.string.settings_snapshot_restore),
+                                onConfirm = {
+                                    val snapshotName = dialog.name
+                                    pendingDialogState.value = null
+                                    viewModel.restoreSettingsSnapshot(statusState.value.port, snapshotName)
+                                },
+                                onDismiss = { pendingDialogState.value = null },
+                                body = {
+                                    Text(text = getString(R.string.settings_snapshot_restore_body, dialog.name))
+                                },
+                                buttonStyle = STDialogButtonStyle.FILLED
+                            )
+                        }
+
+                        is PendingDialog.CheckingImport -> {
+                            STConfirmDialog(
+                                title = getString(R.string.dialog_import_title),
+                                confirmLabel = getString(R.string.import_action),
+                                onConfirm = {},
+                                onDismiss = { pendingDialogState.value = null },
+                                body = { Text(text = getString(R.string.dialog_import_checking_body)) },
+                                confirmEnabled = false,
+                                buttonStyle = STDialogButtonStyle.FILLED
+                            )
+                        }
+
                         is PendingDialog.ConfirmImport -> {
                             STConfirmDialog(
                                 title = getString(R.string.dialog_import_title),
@@ -698,7 +755,8 @@ class MainActivity : ComponentActivity() {
                                     viewModel.import(importUri)
                                 },
                                 onDismiss = { pendingDialogState.value = null },
-                                body = { Text(text = getString(R.string.dialog_import_body)) },
+                                body = { Text(text = dialog.previewText) },
+                                confirmEnabled = dialog.canImport,
                                 buttonStyle = STDialogButtonStyle.FILLED
                             )
                         }
@@ -851,10 +909,83 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun MainActivity.backupImportPreviewText(preview: BackupImportPreview): String {
+    val kindLabel = when (preview.kind) {
+        BackupImportKind.APP_BACKUP -> getString(R.string.backup_precheck_kind_app)
+        BackupImportKind.ST_UI_USER_BACKUP -> getString(R.string.backup_precheck_kind_ui)
+    }
+    val configLine = if (preview.hasConfig) {
+        getString(R.string.backup_precheck_config_present)
+    } else {
+        getString(R.string.backup_precheck_config_missing)
+    }
+    val manifestLine = preview.manifest?.let { manifest ->
+        getString(
+            R.string.backup_precheck_manifest,
+            manifest.appVersion.ifBlank { getString(R.string.unknown_short) },
+            manifest.stCommit ?: getString(R.string.unknown_short)
+        )
+    }
+    val coverageLines = preview.coverage.joinToString(separator = "\n") { item ->
+        val label = backupCoverageLabel(item.path)
+        when (item.status) {
+            BackupCoverageStatus.PRESENT ->
+                getString(R.string.backup_precheck_item_present, label, item.count)
+            BackupCoverageStatus.MISSING ->
+                getString(R.string.backup_precheck_item_missing, label)
+        }
+    }
+    val warningLines = preview.warningMessages.takeIf { it.isNotEmpty() }?.joinToString(separator = "\n") { warning ->
+        val localized = if (warning.contains("secrets.json")) {
+            getString(R.string.backup_precheck_warning_secrets)
+        } else {
+            warning
+        }
+        getString(R.string.backup_precheck_warning_item, localized)
+    }
+
+    return buildString {
+        appendLine(getString(R.string.dialog_import_body))
+        appendLine()
+        appendLine(getString(R.string.backup_precheck_type, kindLabel))
+        appendLine(getString(R.string.backup_precheck_user, preview.userHandle))
+        appendLine(configLine)
+        if (manifestLine != null) appendLine(manifestLine)
+        appendLine()
+        appendLine(getString(R.string.backup_precheck_coverage))
+        appendLine(coverageLines)
+        if (warningLines != null) {
+            appendLine()
+            appendLine(getString(R.string.backup_precheck_warnings))
+            append(warningLines)
+        }
+    }.trim()
+}
+
+private fun MainActivity.backupCoverageLabel(path: String): String {
+    return when (path) {
+        "settings.json" -> getString(R.string.backup_precheck_path_settings)
+        "characters" -> getString(R.string.backup_precheck_path_characters)
+        "chats" -> getString(R.string.backup_precheck_path_chats)
+        "worlds" -> getString(R.string.backup_precheck_path_worlds)
+        "groups" -> getString(R.string.backup_precheck_path_groups)
+        "User Avatars" -> getString(R.string.backup_precheck_path_user_avatars)
+        "QuickReplies" -> getString(R.string.backup_precheck_path_quick_replies)
+        "secrets.json" -> getString(R.string.backup_precheck_path_secrets)
+        else -> path
+    }
+}
+
 private sealed interface PendingDialog {
     object ResetToDefault : PendingDialog
     object RemoveUserData : PendingDialog
-    data class ConfirmImport(val uri: Uri) : PendingDialog
+    data class RestoreSettingsSnapshot(val name: String) : PendingDialog
+    data class CheckingImport(val uri: Uri) : PendingDialog
+    data class ConfirmImport(
+        val uri: Uri,
+        val previewText: String,
+        val canImport: Boolean
+    ) : PendingDialog
 }
 
 private fun ThemeMode.shouldUseDarkTheme(systemInDarkTheme: Boolean): Boolean {
@@ -872,7 +1003,9 @@ private fun pendingDialogStateSaver(): androidx.compose.runtime.saveable.Saver<P
                 null -> "none"
                 PendingDialog.ResetToDefault -> "reset"
                 PendingDialog.RemoveUserData -> "remove-data"
-                is PendingDialog.ConfirmImport -> "import:${dialog.uri}"
+                is PendingDialog.RestoreSettingsSnapshot -> "restore-snapshot:${Uri.encode(dialog.name)}"
+                is PendingDialog.CheckingImport -> "none"
+                is PendingDialog.ConfirmImport -> "import:${Uri.encode(dialog.uri.toString())}:${dialog.canImport}:${Uri.encode(dialog.previewText)}"
             }
         },
         restore = { key ->
@@ -880,8 +1013,13 @@ private fun pendingDialogStateSaver(): androidx.compose.runtime.saveable.Saver<P
                 key == "none" -> null
                 key == "reset" -> PendingDialog.ResetToDefault
                 key == "remove-data" -> PendingDialog.RemoveUserData
+                key.startsWith("restore-snapshot:") -> PendingDialog.RestoreSettingsSnapshot(
+                    Uri.decode(key.removePrefix("restore-snapshot:"))
+                )
                 key.startsWith("import:") -> PendingDialog.ConfirmImport(
-                    Uri.parse(key.removePrefix("import:"))
+                    uri = Uri.parse(Uri.decode(key.removePrefix("import:").split(":", limit = 3).getOrElse(0) { "" })),
+                    canImport = key.removePrefix("import:").split(":", limit = 3).getOrElse(1) { "false" }.toBoolean(),
+                    previewText = Uri.decode(key.removePrefix("import:").split(":", limit = 3).getOrElse(2) { "" })
                 )
                 else -> null
             }
