@@ -104,6 +104,7 @@ fun CharacterListScreen(
     baseUrl: String,
     onStartService: () -> Unit,
     onOpenCharacter: (String) -> Unit,
+    onOpenChat: ((String) -> Unit)? = null,
     onCreateCharacter: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -699,6 +700,7 @@ fun CharacterListScreen(
                     viewMode = viewMode,
                     selectedCharacters = selectedCharacters,
                     onOpenCharacter = onOpenCharacter,
+                    onOpenChat = onOpenChat,
 	                    onToggleSelection = { character ->
 	                        selectedCharacters = if (character.id in selectedCharacters) {
 	                            selectedCharacters - character.id
@@ -792,6 +794,7 @@ private fun CharacterListCard(
     viewMode: CharacterViewMode,
     selectedCharacters: Set<String>,
     onOpenCharacter: (String) -> Unit,
+    onOpenChat: ((String) -> Unit)?,
     onToggleSelection: (CharacterSummary) -> Unit,
     onToggleFavorite: (CharacterSummary) -> Unit,
     onEditTags: (CharacterSummary) -> Unit,
@@ -834,6 +837,7 @@ private fun CharacterListCard(
                         selectable = viewMode == CharacterViewMode.BATCH,
 	                        onToggleSelection = { onToggleSelection(character) },
 	                        onOpenCharacter = { onOpenCharacter(character.id) },
+	                        onOpenChat = if (onOpenChat != null) {{ onOpenChat(character.id) }} else null,
 	                        onToggleFavorite = { onToggleFavorite(character) },
 	                        onEditTags = { onEditTags(character) },
 	                        onDuplicateCharacter = { onDuplicateCharacter(character) },
@@ -853,6 +857,7 @@ private fun CharacterRow(
     selectable: Boolean,
     onToggleSelection: () -> Unit,
     onOpenCharacter: () -> Unit,
+    onOpenChat: (() -> Unit)? = null,
     onToggleFavorite: () -> Unit,
     onEditTags: () -> Unit,
     onDuplicateCharacter: () -> Unit,
@@ -931,6 +936,15 @@ private fun CharacterRow(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false }
             ) {
+	                if (onOpenChat != null) {
+	                    DropdownMenuItem(
+	                        text = { Text(stringResource(R.string.character_hub_open_chat)) },
+	                        onClick = {
+	                            menuExpanded = false
+	                            onOpenChat()
+	                        }
+	                    )
+	                }
 	                DropdownMenuItem(
 	                    text = { Text(stringResource(R.string.character_action_edit)) },
                     onClick = {

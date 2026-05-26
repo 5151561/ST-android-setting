@@ -71,6 +71,8 @@ fun ChatWebViewScreen(
     onStartService: () -> Unit,
     onShowLogs: () -> Unit,
     onBackToHome: () -> Unit,
+    chatEventHandler: ((String) -> Unit)? = null,
+    onWebViewReady: ((WebView) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -121,7 +123,8 @@ fun ChatWebViewScreen(
                 STAndroidBridge(
                     context = context,
                     portProvider = { currentPort.value },
-                    themeModeProvider = { currentThemeMode.value }
+                    themeModeProvider = { currentThemeMode.value },
+                    chatEventHandler = chatEventHandler
                 ),
                 "STAndroid"
             )
@@ -165,6 +168,7 @@ fun ChatWebViewScreen(
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
                     pageError = null
+                    WebViewNavigator.resetInjectionState()
                     logWebView("webview: page-started url=$url")
                 }
 
@@ -192,6 +196,7 @@ fun ChatWebViewScreen(
                     logWebView("webview: page-finished url=$url current=${finishedView.url}")
                     finishedView.logDocumentState(logWebView)
                     WebViewNavigator.injectAndroidRuntimeFlags(finishedView)
+                    WebViewNavigator.injectChatRuntimeAdapter(finishedView, context)
                     WebViewNavigator.navigateToTarget(finishedView, currentTarget.value)
                 }
 
@@ -286,7 +291,9 @@ fun ChatWebViewScreen(
         }
     }
     DisposableEffect(Unit) {
+        onWebViewReady?.invoke(webView)
         onDispose {
+            WebViewNavigator.resetInjectionState()
             webView.stopLoading()
             webView.destroy()
         }

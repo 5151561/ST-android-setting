@@ -67,6 +67,9 @@ import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STDialogButtonStyle
 import io.github.sanitised.st.ui.theme.STAppTheme
+import io.github.sanitised.st.chat.ChatRuntimeBridge
+import io.github.sanitised.st.chat.ChatStore
+import io.github.sanitised.st.chat.NativeChatScreen
 import io.github.sanitised.st.ui.webview.ChatWebViewScreen
 import io.github.sanitised.st.ui.webview.WebViewTarget
 import kotlinx.coroutines.Dispatchers
@@ -304,6 +307,8 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
+            val chatStore = remember { ChatStore() }
+            val chatBridge = remember { ChatRuntimeBridge(chatStore) }
             var pendingWebViewTarget by remember { mutableStateOf<WebViewTarget>(WebViewTarget.CHAT) }
             val navigateMainTab: (String) -> Unit = { route ->
                 if (route == STRoutes.CHAT) {
@@ -319,6 +324,9 @@ class MainActivity : ComponentActivity() {
             }
             val openCharacterChatFromCharacterManagement: (String, String?) -> Unit = { avatar, chatFile ->
                 pendingWebViewTarget = WebViewTarget.CharacterChat(avatar, chatFile)
+                if (chatStore.runtimeState == io.github.sanitised.st.chat.RuntimeState.READY) {
+                    chatBridge.openCharacter(avatar, chatFile)
+                }
                 navController.navigate(STRoutes.CHAT) {
                     launchSingleTop = true
                 }
@@ -414,10 +422,12 @@ class MainActivity : ComponentActivity() {
                             }
 
                             composable(STRoutes.CHAT) {
-                                ChatWebViewScreen(
+                                NativeChatScreen(
                                     status = statusState.value,
                                     target = pendingWebViewTarget,
                                     themeMode = themeMode,
+                                    store = chatStore,
+                                    bridge = chatBridge,
                                     onStartService = { startNode() },
                                     onShowLogs = { navController.navigate(STRoutes.LOGS) },
                                     onBackToHome = { if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME) }
@@ -431,6 +441,9 @@ class MainActivity : ComponentActivity() {
                                     onStartService = { startNode() },
                                     onOpenCharacter = { avatar ->
                                         navController.navigate(STRoutes.characterDetail(avatar))
+                                    },
+                                    onOpenChat = { avatar ->
+                                        openCharacterChatFromCharacterManagement(avatar, null)
                                     },
                                     onCreateCharacter = {
                                         navController.navigate(STRoutes.CHARACTER_NEW)

@@ -1,5 +1,6 @@
 package io.github.sanitised.st.ui.webview
 
+import android.content.Context
 import android.webkit.WebView
 import org.json.JSONObject
 
@@ -9,6 +10,8 @@ sealed class WebViewTarget {
 }
 
 object WebViewNavigator {
+    private var adapterInjected = false
+
     fun injectAndroidRuntimeFlags(webView: WebView) {
         webView.evaluateJavascript(
             """
@@ -19,6 +22,19 @@ object WebViewNavigator {
             """.trimIndent(),
             null
         )
+    }
+
+    fun injectChatRuntimeAdapter(webView: WebView, context: Context) {
+        if (adapterInjected) return
+        val script = context.assets.open("chat_runtime_adapter.js")
+            .bufferedReader(Charsets.UTF_8)
+            .readText()
+        webView.evaluateJavascript(script, null)
+        adapterInjected = true
+    }
+
+    fun resetInjectionState() {
+        adapterInjected = false
     }
 
     fun navigateToTarget(webView: WebView, target: WebViewTarget) {

@@ -1,8 +1,8 @@
 # SillyTavern Chat 原生界面迁移方案
 
-版本：0.3  
+版本：0.4  
 日期：2026-05-26  
-状态：草案（已对照 SillyTavern 源码审查）  
+状态：**P0 已实现，待真机验证**（已对照 SillyTavern 源码审查）  
 适用范围：ST-android 下一阶段 Chat 原生化、JS Bridge、SillyTavern 运行时复用、API 对接
 
 ## 1. 背景和目标
@@ -799,7 +799,101 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
 
 阶段性目标应该是”原生 UI 体验明显改善，但聊天语义仍和原版 ST 一致”。在没有契约测试前，不建议重写提示词组装和生成请求。
 
-## 15. v0.3 审查变更记录
+## 15. P0 实现进度
+
+日期：2026-05-26（v0.4a 修订）
+状态：**P0 代码已落地，待真机验证**
+
+### v0.4a 修订（代码审查后修复）
+
+基于代码审查反馈，修复了以下 3 个关键问题：
+
+1. **`runtime.ready` 时序修正**：不再在拿到 `eventSource` 时立即发送 `runtime.ready`。改为监听 ST 的 `APP_READY` 事件（对应 `event_types.APP_READY`），该事件在 ST 完成 `firstLoadInit`、角色加载、初始聊天渲染后才触发。同时保留一个兜底检查：如果注入时 `APP_READY` 已经触发过（角色列表非空且 chat 存在），则立即发送 ready。
+2. **函数访问路径统一为 `getContext()`**：
+   - `generation.regenerate` / `generation.continue`：从 `window.Generate` 改为 `ctx.generate`（`getContext()` 上的 `generate` 属性，映射自 `Generate`）
+   - `generation.stop`：优先使用 `ctx.stopGeneration`，回退到 DOM `#mes_stop`
+   - `chat.openCharacter`：从 `ctx.selectCharacterById || window.selectCharacterById` 改为仅 `ctx.selectCharacterById`；`openCharacterChat` 同理
+   - `chat.new`：由于 `doNewChat` 是 ES module export 但不在 `getContext()` 上，改为 DOM 点击 `#option_start_new_chat`（ST 自身的新建聊天按钮）
+   - `chat.reload`：**新增实现**，调用 `ctx.reloadCurrentChat()`（返回 Promise，完成后发送 snapshot）
+3. **角色列表直接进入 Chat**：`CharacterListScreen` 新增 `onOpenChat` 回调，角色列表行的下拉菜单中新增"聊天"选项（使用已有的 `R.string.character_hub_open_chat`），点击后直接导航到 Chat 页并打开该角色。`MainActivity` 中将此回调连接到 `openCharacterChatFromCharacterManagement`。
+
+Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
+
+### 已完成
+
+#### 路线图步骤 1-3 已完成
+
+按照第 14 节推荐路线，一次性完成了步骤 1（Runtime WebView + Bridge adapter）、步骤 2（原生只读镜像）和步骤 3（原生输入栏接管）。
+
+#### 新增文件
+
+| 文件 | 职责 | 对应方案章节 |
+|---|---|---|
+| `app/src/main/java/io/github/sanitised/st/chat/ChatBridgeModels.kt` | Bridge 消息信封（`BridgeMessage`）、`ChatMessage`、`ChatSnapshot`、`BridgeEvent` sealed class 及 JSON 解析 | §4.2 消息信封、§4.4 事件、§4.5 Snapshot |
+| `app/src/main/java/io/github/sanitised/st/chat/ChatStore.kt` | Compose 可观察状态持有：runtime 状态、角色信息、消息列表的增删改和 snapshot 覆盖 | §10 `ChatStore` |
+| `app/src/main/java/io/github/sanitised/st/chat/ChatRuntimeBridge.kt` | Kotlin 侧 Bridge：通过 `evaluateJavascript` 发送命令，接收 JS 事件并更新 `ChatStore` | §10 `ChatRuntimeBridge` + `ChatBridgeEventHandler` |
+| `app/src/main/java/io/github/sanitised/st/chat/NativeChatScreen.kt` | 完整 Compose Chat UI：标题栏（角色名 + 生成状态）、消息气泡列表、输入栏（发送/停止按钮）。内嵌不可见 `ChatWebViewScreen` 作为 runtime 容器 | §10 `NativeChatScreen` + `MessageRenderer`（基础版） |
+| `app/src/main/assets/chat_runtime_adapter.js` | 注入 WebView 的 JS 适配器：监听 ST `eventSource` 事件、构建 snapshot、处理 Android 发来的命令 | §4.1 `STAndroidChatRuntime`、§4.3 命令、§4.4 事件 |
+
+#### 修改文件
+
+| 文件 | 变更 |
+|---|---|
+| `STAndroidBridge.kt` | 新增 `postChatEvent` `@JavascriptInterface` 方法和 `chatEventHandler` 参数 |
+| `WebViewNavigator.kt` | 新增 `injectChatRuntimeAdapter()` 从 assets 加载 JS adapter，`resetInjectionState()` 处理页面重载 |
+| `ChatWebViewScreen.kt` | 新增 `chatEventHandler` 和 `onWebViewReady` 参数；`onPageFinished` 中注入 adapter；页面 start/dispose 时重置注入状态 |
+| `MainActivity.kt` | Chat tab 替换为 `NativeChatScreen`；创建共享 `ChatStore` 和 `ChatRuntimeBridge`；角色详情页和角色列表进入聊天时触发 bridge `openCharacter` |
+| `CharacterListScreen.kt` | 新增 `onOpenChat` 回调参数；角色行下拉菜单新增"聊天"选项 |
+
+#### P0 验收清单对照
+
+| # | 验收项 | 状态 | 说明 |
+|---|---|---|---|
+| 1 | 原生 Chat 页面能等待 Runtime WebView ready | ✅ 已实现 | JS adapter 轮询 ST `eventSource`，就绪后发送 `runtime.ready` |
+| 2 | 从角色列表或角色详情进入 Chat，能打开正确角色 | ✅ 已实现 | `openCharacterChatFromCharacterManagement` → bridge `openCharacter` + `WebViewTarget.CharacterChat` |
+| 3 | 指定历史聊天时，能打开对应 chat file | ✅ 已实现 | `chat.openCharacter` 命令携带 `chatFile`，JS 侧调用 `openCharacterChat(normalized)` |
+| 4 | 原生消息列表显示 ST runtime 的实际消息 | ✅ 已实现 | `chat.loaded` snapshot → `ChatStore.applySnapshot` → `MessageList` composable |
+| 5 | 空聊天能显示角色首条消息 | ✅ 已实现 | snapshot 包含 ST runtime 的 `chat[]`，首条消息由 ST 生成 |
+| 6 | 原生输入栏能发送一条用户消息 | ✅ 已实现 | `chat.send` 命令 → JS 写入 `#send_textarea` 并 click `#send_but` |
+| 7 | 能收到 AI 回复 | ✅ 已实现 | `MESSAGE_RECEIVED` 事件 → `message.added` → `ChatStore.addMessage` |
+| 8 | 生成中能停止 | ✅ 已实现 | `generation.stop` 命令 → JS click `#mes_stop` 或调用 `stopGeneration()` |
+| 9 | 聊天由 ST runtime 保存，重启 App 后能恢复 | ✅ 设计保证 | 活动聊天写入由 ST runtime 负责，原生端不写 JSONL |
+| 10 | Runtime WebView reload 后能重新同步 snapshot | ✅ 已实现 | `onPageStarted` 重置注入状态 → `onPageFinished` 重新注入 adapter → 重新 `runtime.ready` + snapshot |
+
+#### 额外已实现（超出 P0 最小范围）
+
+- **Streaming token 更新**：`STREAM_TOKEN_RECEIVED` 事件以 80ms 节流回传 `stream.token`，原生端实时更新最后一条消息文本
+- **重生成和继续**：`ChatRuntimeBridge` 已暴露 `regenerate()` 和 `continueGeneration()`，JS adapter 已实现 `generation.regenerate` 和 `generation.continue` 命令
+- **新建聊天**：`ChatRuntimeBridge.newChat()` → `chat.new` → JS 调用 `doNewChat()`
+- **`generation.ended` 后自动刷新 snapshot**：确保生成结束后原生端拿到完整的最终消息
+
+### 待验证（需真机测试）
+
+1. Runtime WebView 在 `Box(Modifier.size(0.dp))` 中是否正常运行 ST 前端（WebView 不可见但 JS 仍执行）
+2. `postChatEvent` 的 `@JavascriptInterface` 在高频 streaming 场景下的性能
+3. 角色切换时 `selectCharacterById` + `openCharacterChat` 的时序是否可靠
+4. 后台切回前台时 WebView 状态是否保持
+5. 输入法弹出时消息列表的滚动行为
+
+### 与方案的偏差和决策
+
+1. **`ChatController` 和 `ChatBridgeEventHandler` 合并**：方案第 10 节建议分开，实现时合并到 `ChatRuntimeBridge` 中，因为 P0 阶段命令和事件处理紧密耦合，拆分反而增加复杂度。P1 如果逻辑膨胀再拆分。
+2. **Runtime WebView 作为 NativeChatScreen 的子组件**：方案建议 `ChatRuntimeWebViewHost` 独立管理生命周期，实现时嵌入 `NativeChatScreen` 的不可见 `Box` 中，复用现有 `ChatWebViewScreen` 的服务启动和健康检查逻辑。
+3. **`chat.send` 和 `chat.new` 通过 DOM 操作**：`chat.send` 直接设置 `#send_textarea.value` 并 click `#send_but`；`chat.new` 点击 `#option_start_new_chat`。两者的目标函数（`sendTextareaMessage`、`doNewChat`）是 ES module export 但不在 `getContext()` 上，DOM 操作是唯一可靠的调用路径，但依赖 ST 前端 DOM 结构不变。
+4. **其他命令统一走 `getContext()`**：`generation.stop`（`ctx.stopGeneration`）、`generation.regenerate` / `generation.continue`（`ctx.generate`）、`chat.reload`（`ctx.reloadCurrentChat`）、`chat.openCharacter`（`ctx.selectCharacterById` + `ctx.openCharacterChat`）全部通过 `SillyTavern.getContext()` 暴露的公开 API 调用，不依赖 `window` 全局变量。
+5. **Chat UI 字符串暂未国际化**：P0 使用英文硬编码字符串，后续统一添加到 `strings.xml` 和 `values-zh-rCN/strings.xml`。
+
+### 下一步（P1）
+
+1. 真机验证 P0 全部验收项
+2. Streaming delta 增量更新优化（当前已有基础 token 回传，需测试性能）
+3. 新建聊天 UI 入口
+4. 聊天文件列表和历史聊天切换
+5. 重生成、继续生成 UI 按钮
+6. 消息复制、编辑、删除
+7. Bridge 超时处理和 runtime 崩溃恢复
+
+## 16. v0.3 审查变更记录（历史）
 
 v0.3 基于对 SillyTavern 源码的逐行审查，修正和补充了以下内容：
 
