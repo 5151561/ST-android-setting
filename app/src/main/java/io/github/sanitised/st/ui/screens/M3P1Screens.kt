@@ -10,6 +10,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -82,9 +83,30 @@ private enum class PersonaViewMode {
     DETAIL
 }
 
+private enum class WorldInfoViewMode {
+    LIST,
+    DETAIL
+}
+
 private enum class PresetViewMode {
     LIST,
     DETAIL
+}
+
+private enum class ConnectionViewMode {
+    LIST,
+    DETAIL
+}
+
+private enum class ConnectionDetailMode {
+    KEY,
+    ENDPOINT
+}
+
+private enum class M3HeroTone {
+    PRIMARY,
+    TERTIARY,
+    SURFACE
 }
 
 @Composable
@@ -100,6 +122,7 @@ fun WorldInfoScreen(
     val scope = rememberCoroutineScope()
     val serverRunning = status.state == NodeState.RUNNING
     var worlds by remember { mutableStateOf<List<WorldInfoSummary>>(emptyList()) }
+    var viewMode by remember { mutableStateOf(WorldInfoViewMode.LIST) }
     var selectedWorldId by remember { mutableStateOf<String?>(null) }
     var book by remember { mutableStateOf<WorldInfoBook?>(null) }
     var selectedEntryUid by remember { mutableStateOf<Int?>(null) }
@@ -118,6 +141,7 @@ fun WorldInfoScreen(
                 book = loaded
                 selectedWorldId = worldId
                 selectedEntryUid = loaded.entries.firstOrNull()?.uid
+                viewMode = WorldInfoViewMode.DETAIL
             }.onFailure {
                 onShowMessage(context.getString(R.string.m3_world_info_load_failed))
             }
@@ -134,12 +158,11 @@ fun WorldInfoScreen(
             }.onSuccess { loaded ->
                 worlds = loaded
                 val nextId = selectedWorldId?.takeIf { id -> loaded.any { it.id == id } }
-                    ?: loaded.firstOrNull()?.id
-                if (nextId != null) {
+                selectedWorldId = nextId
+                if (viewMode == WorldInfoViewMode.DETAIL && nextId != null) {
                     loadBook(nextId)
-                } else {
+                } else if (nextId == null) {
                     book = null
-                    selectedWorldId = null
                     selectedEntryUid = null
                 }
             }.onFailure {
@@ -166,6 +189,7 @@ fun WorldInfoScreen(
                         onShowMessage(context.getString(R.string.m3_world_info_deleted))
                         book = null
                         selectedWorldId = null
+                        viewMode = WorldInfoViewMode.LIST
                         refresh()
                     }.onFailure {
                         onShowMessage(context.getString(R.string.m3_world_info_save_failed))
@@ -205,6 +229,7 @@ fun WorldInfoScreen(
                             }.onSuccess {
                                 onShowMessage(context.getString(R.string.m3_world_info_saved))
                                 selectedWorldId = name
+                                viewMode = WorldInfoViewMode.DETAIL
                                 refresh()
                             }.onFailure {
                                 onShowMessage(context.getString(R.string.m3_world_info_save_failed))
@@ -233,57 +258,100 @@ fun WorldInfoScreen(
         modifier = modifier
     ) {
         if (!serverRunning) return@M3ManagerScaffold
-        M3SearchField(search = search, onSearchChanged = { search = it })
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = { newWorldDialog = true }, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.m3_world_info_new))
+        when (viewMode) {
+            WorldInfoViewMode.LIST -> {
+                M3StateBanner(
+                    title = stringResource(R.string.m3_state_list_world_info),
+                    body = stringResource(R.string.m3_state_list_world_info_body)
+                )
+                M3HeroSurface(
+                    title = stringResource(R.string.m3_world_info_list_hero_title),
+                    body = stringResource(R.string.m3_world_info_list_hero_body, worlds.size),
+                    labels = listOf(
+                        stringResource(R.string.tools_hub_list_detail),
+                        stringResource(R.string.m3_source_fidelity)
+                    ),
+                    tone = M3HeroTone.TERTIARY
+                )
+                M3SearchField(search = search, onSearchChanged = { search = it })
+                OutlinedButton(onClick = { newWorldDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.m3_world_info_new))
+                }
+                WorldListCard(
+                    worlds = worlds.filter { it.name.contains(search, ignoreCase = true) || it.id.contains(search, ignoreCase = true) },
+                    selectedWorldId = selectedWorldId,
+                    loading = loading,
+                    onSelect = { loadBook(it.id) }
+                )
+                M3SectionSurface(
+                    title = stringResource(R.string.m3_list_responsibility),
+                    body = stringResource(R.string.m3_world_info_list_responsibility)
+                )
             }
-            OutlinedButton(
-                onClick = {
-                    val current = book
-                    if (current != null) {
-                        val nextUid = (current.entries.maxOfOrNull { it.uid } ?: 0) + 1
-                        val nextEntry = WorldInfoEntry(uid = nextUid, comment = "Entry $nextUid")
-                        book = current.copy(entries = current.entries + nextEntry)
-                        selectedEntryUid = nextUid
+
+            WorldInfoViewMode.DETAIL -> {
+                val current = book
+                M3StateBanner(
+                    title = stringResource(R.string.m3_state_detail_world_info),
+                    body = stringResource(R.string.m3_state_detail_world_info_body)
+                )
+                M3HeroSurface(
+                    title = current?.name ?: stringResource(R.string.m3_world_info_title),
+                    body = stringResource(
+                        R.string.m3_world_info_detail_hero_body,
+                        current?.entries?.size ?: 0
+                    ),
+                    labels = listOf(
+                        stringResource(R.string.m3_detail_form_only),
+                        stringResource(R.string.m3_source_fidelity)
+                    ),
+                    tone = M3HeroTone.TERTIARY
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { viewMode = WorldInfoViewMode.LIST }, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.back))
                     }
-                },
-                enabled = book != null,
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.m3_world_info_entry_new))
+                    OutlinedButton(
+                        onClick = {
+                            if (current != null) {
+                                val nextUid = (current.entries.maxOfOrNull { it.uid } ?: 0) + 1
+                                val nextEntry = WorldInfoEntry(uid = nextUid, comment = "Entry $nextUid")
+                                book = current.copy(entries = current.entries + nextEntry)
+                                selectedEntryUid = nextUid
+                            }
+                        },
+                        enabled = current != null,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.m3_world_info_entry_new))
+                    }
+                }
+                current?.let { editable ->
+                    WorldEntryEditor(
+                        book = editable,
+                        selectedEntryUid = selectedEntryUid,
+                        onSelectEntry = { selectedEntryUid = it },
+                        onBookChanged = { book = it },
+                        onSave = {
+                            scope.launch {
+                                runCatching {
+                                    TavernCoreClient(baseUrl).saveWorldInfo(editable)
+                                }.onSuccess {
+                                    onShowMessage(context.getString(R.string.m3_world_info_saved))
+                                    refresh()
+                                }.onFailure {
+                                    onShowMessage(context.getString(R.string.m3_world_info_save_failed))
+                                }
+                            }
+                        },
+                        onDelete = { pendingDelete = editable }
+                    )
+                }
             }
-        }
-        WorldListCard(
-            worlds = worlds.filter { it.name.contains(search, ignoreCase = true) || it.id.contains(search, ignoreCase = true) },
-            selectedWorldId = selectedWorldId,
-            loading = loading,
-            onSelect = { loadBook(it.id) }
-        )
-        book?.let { current ->
-            WorldEntryEditor(
-                book = current,
-                selectedEntryUid = selectedEntryUid,
-                onSelectEntry = { selectedEntryUid = it },
-                onBookChanged = { book = it },
-                onSave = {
-                    scope.launch {
-                        runCatching {
-                            TavernCoreClient(baseUrl).saveWorldInfo(current)
-                        }.onSuccess {
-                            onShowMessage(context.getString(R.string.m3_world_info_saved))
-                            refresh()
-                        }.onFailure {
-                            onShowMessage(context.getString(R.string.m3_world_info_save_failed))
-                        }
-                    }
-                },
-                onDelete = { pendingDelete = current }
-            )
         }
     }
 }
@@ -421,6 +489,18 @@ fun PersonaScreen(
         if (!serverRunning) return@M3ManagerScaffold
         when (viewMode) {
             PersonaViewMode.LIST -> {
+                M3StateBanner(
+                    title = stringResource(R.string.m3_state_list_persona),
+                    body = stringResource(R.string.m3_state_list_persona_body)
+                )
+                M3HeroSurface(
+                    title = stringResource(R.string.m3_persona_list_hero_title),
+                    body = stringResource(R.string.m3_persona_list_hero_body, personas.size),
+                    labels = listOf(
+                        stringResource(R.string.tools_hub_list_detail),
+                        stringResource(R.string.m3_persona_default)
+                    )
+                )
                 M3SearchField(search = search, onSearchChanged = { search = it })
                 OutlinedButton(
                     onClick = {
@@ -467,9 +547,25 @@ fun PersonaScreen(
                         }
                     }
                 )
+                M3SectionSurface(
+                    title = stringResource(R.string.m3_list_responsibility),
+                    body = stringResource(R.string.m3_persona_list_responsibility)
+                )
             }
 
             PersonaViewMode.DETAIL -> {
+                M3StateBanner(
+                    title = stringResource(R.string.m3_state_detail_persona),
+                    body = stringResource(R.string.m3_state_detail_persona_body)
+                )
+                M3HeroSurface(
+                    title = name.ifBlank { stringResource(R.string.m3_persona_title) },
+                    body = selectedAvatar ?: stringResource(R.string.m3_persona_missing_avatar),
+                    labels = listOf(
+                        if (makeDefault) stringResource(R.string.m3_enabled) else stringResource(R.string.m3_detail_form_only),
+                        stringResource(R.string.m3_persona_upload)
+                    )
+                )
                 PersonaDetailEditor(
                     avatar = selectedAvatar,
                     name = name,
@@ -615,6 +711,21 @@ fun PresetLiteScreen(
         if (!serverRunning) return@M3ManagerScaffold
         when (viewMode) {
             PresetViewMode.LIST -> {
+                M3StateBanner(
+                    title = stringResource(R.string.m3_state_list_presets),
+                    body = stringResource(R.string.m3_state_list_presets_body)
+                )
+                M3HeroSurface(
+                    title = stringResource(R.string.m3_presets_list_hero_title),
+                    body = stringResource(
+                        R.string.m3_presets_list_hero_body,
+                        library.categories.sumOf { it.presets.size }
+                    ),
+                    labels = listOf(
+                        stringResource(R.string.tools_hub_list_detail),
+                        stringResource(R.string.m3_source_fidelity)
+                    )
+                )
                 PresetCategoryChips(
                     categories = library.categories,
                     selectedApiId = selectedApiId,
@@ -642,10 +753,31 @@ fun PresetLiteScreen(
                         }
                     }
                 )
+                M3SectionSurface(
+                    title = stringResource(R.string.m3_list_responsibility),
+                    body = stringResource(R.string.m3_presets_list_responsibility)
+                )
             }
 
             PresetViewMode.DETAIL -> {
                 val apiId = selectedApiId
+                val apiLabel = apiId.orEmpty().ifBlank { stringResource(R.string.unknown_short) }
+                M3StateBanner(
+                    title = stringResource(R.string.m3_state_detail_presets),
+                    body = stringResource(R.string.m3_state_detail_presets_body)
+                )
+                M3HeroSurface(
+                    title = presetName.ifBlank { stringResource(R.string.m3_presets_title) },
+                    body = stringResource(R.string.m3_presets_detail_hero_body, apiLabel),
+                    labels = listOf(
+                        if (library.categories.flatMap { it.presets }.any { it.apiId == apiId && it.name == selectedName && it.selected }) {
+                            stringResource(R.string.m3_enabled)
+                        } else {
+                            stringResource(R.string.m3_detail_form_only)
+                        },
+                        stringResource(R.string.m3_source_fidelity)
+                    )
+                )
                 PresetDetailEditor(
                     apiId = apiId,
                     presetName = presetName,
@@ -740,8 +872,30 @@ fun ConnectionProfilesScreen(
     var selectedKey by remember { mutableStateOf<String?>(null) }
     var secretLabel by remember { mutableStateOf("") }
     var secretValue by remember { mutableStateOf("") }
+    var selectedSecretEntryId by remember { mutableStateOf<String?>(null) }
     var endpointLabel by remember { mutableStateOf("OpenAI-compatible") }
     var endpointUrl by remember { mutableStateOf("") }
+    var viewMode by remember { mutableStateOf(ConnectionViewMode.LIST) }
+    var detailMode by remember { mutableStateOf(ConnectionDetailMode.KEY) }
+
+    fun openSecretDetail(provider: SecretProviderState, entryId: String? = null) {
+        val entry = provider.entries.firstOrNull { it.id == entryId }
+            ?: provider.entries.firstOrNull { it.active }
+            ?: provider.entries.firstOrNull()
+        selectedKey = provider.key
+        selectedSecretEntryId = entry?.id
+        secretLabel = entry?.label ?: provider.label
+        secretValue = ""
+        detailMode = ConnectionDetailMode.KEY
+        viewMode = ConnectionViewMode.DETAIL
+    }
+
+    fun openEndpointDetail(profile: ConnectionProfile? = null) {
+        endpointLabel = profile?.label ?: "OpenAI-compatible"
+        endpointUrl = profile?.url.orEmpty()
+        detailMode = ConnectionDetailMode.ENDPOINT
+        viewMode = ConnectionViewMode.DETAIL
+    }
 
     fun refresh() {
         if (!serverRunning) return
@@ -754,8 +908,12 @@ fun ConnectionProfilesScreen(
                 connections = loadedConnections
                 selectedKey = selectedKey?.takeIf { key -> loadedSecrets.any { it.key == key } }
                     ?: loadedSecrets.firstOrNull()?.key
-                if (secretLabel.isBlank()) {
-                    secretLabel = loadedSecrets.firstOrNull { it.key == selectedKey }?.label.orEmpty()
+                val selectedProvider = loadedSecrets.firstOrNull { it.key == selectedKey }
+                selectedSecretEntryId = selectedSecretEntryId?.takeIf { id ->
+                    selectedProvider?.entries?.any { it.id == id } == true
+                }
+                if (secretLabel.isBlank() || viewMode == ConnectionViewMode.LIST) {
+                    secretLabel = selectedProvider?.label.orEmpty()
                 }
             }.onFailure {
                 onShowMessage(context.getString(R.string.m3_connections_load_failed))
@@ -777,152 +935,240 @@ fun ConnectionProfilesScreen(
         modifier = modifier
     ) {
         if (!serverRunning) return@M3ManagerScaffold
-        SecretProviderChips(
-            providers = secrets,
-            selectedKey = selectedKey,
-            onSelect = {
-                selectedKey = it.key
-                secretLabel = it.label
-                secretValue = ""
-            }
-        )
-        val selected = secrets.firstOrNull { it.key == selectedKey }
-        STSectionCard(title = selected?.label ?: stringResource(R.string.m3_connections_title), borderColor = MaterialTheme.colorScheme.outlineVariant) {
-            selected?.entries.orEmpty().forEach { entry ->
-                M3ListRow(
-                    avatarLabel = if (entry.active) "*" else entry.label.avatarInitial(),
-                    title = entry.label,
-                    body = entry.value,
-                    trailing = if (entry.active) stringResource(R.string.enable) else stringResource(R.string.m3_connections_rotate),
-                    onClick = {
-                        selectedKey?.let { key ->
-                            scope.launch {
-                                runCatching { TavernCoreClient(baseUrl).rotateSecret(key, entry.id) }
-                                    .onSuccess { refresh() }
-                                    .onFailure { onShowMessage(context.getString(R.string.m3_connections_save_failed)) }
-                            }
-                        }
+        when (viewMode) {
+            ConnectionViewMode.LIST -> {
+                val selected = secrets.firstOrNull { it.key == selectedKey }
+                M3StateBanner(
+                    title = stringResource(R.string.m3_state_list_connections),
+                    body = stringResource(R.string.m3_state_list_connections_body)
+                )
+                M3HeroSurface(
+                    title = selected?.label ?: stringResource(R.string.m3_connections_title),
+                    body = stringResource(R.string.m3_connections_list_hero_body, selected?.entries?.size ?: 0, connections.size),
+                    labels = listOf(
+                        stringResource(R.string.tools_hub_sensitive),
+                        stringResource(R.string.m3_connections_masked)
+                    )
+                )
+                SecretProviderChips(
+                    providers = secrets,
+                    selectedKey = selectedKey,
+                    onSelect = {
+                        selectedKey = it.key
+                        secretLabel = it.label
+                        secretValue = ""
+                        selectedSecretEntryId = null
                     }
                 )
-            }
-            OutlinedTextField(
-                value = secretLabel,
-                onValueChange = { secretLabel = it },
-                label = { Text(stringResource(R.string.m3_connections_key_label)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = secretValue,
-                onValueChange = { secretValue = it },
-                label = { Text(stringResource(R.string.m3_connections_key_value)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = {
-                        val key = selectedKey ?: return@Button
-                        scope.launch {
-                            runCatching {
-                                TavernCoreClient(baseUrl).writeSecret(key, secretValue, secretLabel.ifBlank { key })
-                            }.onSuccess {
-                                secretValue = ""
-                                onShowMessage(context.getString(R.string.m3_connections_key_saved))
-                                refresh()
-                            }.onFailure {
-                                onShowMessage(context.getString(R.string.m3_connections_save_failed))
-                            }
-                        }
-                    },
-                    enabled = selectedKey != null && secretValue.isNotBlank(),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(stringResource(R.string.m3_connections_write_key))
-                }
-                OutlinedButton(
-                    onClick = {
-                        val key = selectedKey ?: return@OutlinedButton
-                        val active = selected?.entries?.firstOrNull { it.active } ?: return@OutlinedButton
-                        scope.launch {
-                            runCatching {
-                                TavernCoreClient(baseUrl).renameSecret(key, active.id, secretLabel.ifBlank { active.label })
-                            }.onSuccess {
-                                onShowMessage(context.getString(R.string.m3_connections_key_saved))
-                                refresh()
-                            }.onFailure {
-                                onShowMessage(context.getString(R.string.m3_connections_save_failed))
-                            }
-                        }
-                    },
-                    enabled = selected?.entries?.any { it.active } == true,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(stringResource(R.string.m3_connections_rename))
-                }
-            }
-            OutlinedButton(
-                onClick = {
-                    val key = selectedKey ?: return@OutlinedButton
-                    val active = selected?.entries?.firstOrNull { it.active } ?: return@OutlinedButton
-                    scope.launch {
-                        runCatching { TavernCoreClient(baseUrl).deleteSecret(key, active.id) }
-                            .onSuccess { refresh() }
-                            .onFailure { onShowMessage(context.getString(R.string.m3_connections_save_failed)) }
+                M3SectionSurface(title = selected?.label ?: stringResource(R.string.m3_connections_title)) {
+                    selected?.entries.orEmpty().forEach { entry ->
+                        M3ListRow(
+                            avatarLabel = if (entry.active) "*" else entry.label.avatarInitial(),
+                            title = entry.label,
+                            body = entry.value,
+                            trailing = if (entry.active) stringResource(R.string.m3_enabled) else stringResource(R.string.m3_connections_rotate),
+                            onClick = { selected?.let { openSecretDetail(it, entry.id) } }
+                        )
                     }
-                },
-                enabled = selected?.entries?.any { it.active } == true,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(stringResource(R.string.m3_connections_delete))
-            }
-        }
-        STSectionCard(title = stringResource(R.string.m3_connections_endpoint_label), borderColor = MaterialTheme.colorScheme.outlineVariant) {
-            connections.take(6).forEach { profile ->
-                M3ListRow(
-                    avatarLabel = profile.label.avatarInitial(),
-                    title = profile.label,
-                    body = profile.url,
-                    trailing = stringResource(R.string.dashboard_open),
-                    onClick = {
-                        endpointLabel = profile.label
-                        endpointUrl = profile.url
+                    OutlinedButton(
+                        onClick = { selected?.let { openSecretDetail(it) } },
+                        enabled = selected != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.m3_connections_write_key))
                     }
+                }
+                M3SectionSurface(title = stringResource(R.string.m3_connections_endpoint_label)) {
+                    connections.take(6).forEach { profile ->
+                        M3ListRow(
+                            avatarLabel = profile.label.avatarInitial(),
+                            title = profile.label,
+                            body = profile.url,
+                            trailing = stringResource(R.string.dashboard_open),
+                            onClick = { openEndpointDetail(profile) }
+                        )
+                    }
+                    OutlinedButton(onClick = { openEndpointDetail() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.m3_connections_save_endpoint))
+                    }
+                }
+                M3SectionSurface(
+                    title = stringResource(R.string.m3_list_responsibility),
+                    body = stringResource(R.string.m3_connections_list_responsibility)
                 )
             }
-            OutlinedTextField(
-                value = endpointLabel,
-                onValueChange = { endpointLabel = it },
-                label = { Text(stringResource(R.string.m3_connections_endpoint_label)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = endpointUrl,
-                onValueChange = { endpointUrl = it },
-                label = { Text(stringResource(R.string.m3_connections_endpoint_url)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Button(
-                onClick = {
-                    scope.launch {
-                        runCatching {
-                            TavernCoreClient(baseUrl).saveConnectionProfile(
-                                ConnectionProfile(label = endpointLabel, url = endpointUrl)
-                            )
-                        }.onSuccess {
-                            onShowMessage(context.getString(R.string.m3_connections_endpoint_saved))
-                            refresh()
-                        }.onFailure {
-                            onShowMessage(context.getString(R.string.m3_connections_save_failed))
+
+            ConnectionViewMode.DETAIL -> {
+                val selected = secrets.firstOrNull { it.key == selectedKey }
+                val selectedEntry = selected?.entries?.firstOrNull { it.id == selectedSecretEntryId }
+                M3StateBanner(
+                    title = if (detailMode == ConnectionDetailMode.KEY) {
+                        stringResource(R.string.m3_state_detail_connection_key)
+                    } else {
+                        stringResource(R.string.m3_state_detail_connection_endpoint)
+                    },
+                    body = stringResource(R.string.m3_state_detail_connections_body)
+                )
+                M3HeroSurface(
+                    title = if (detailMode == ConnectionDetailMode.KEY) {
+                        secretLabel.ifBlank { selected?.label ?: stringResource(R.string.m3_connections_title) }
+                    } else {
+                        endpointLabel.ifBlank { stringResource(R.string.m3_connections_endpoint_label) }
+                    },
+                    body = if (detailMode == ConnectionDetailMode.KEY) {
+                        selectedEntry?.value ?: stringResource(R.string.m3_connections_masked)
+                    } else {
+                        endpointUrl.ifBlank { stringResource(R.string.m3_connections_endpoint_url) }
+                    },
+                    labels = listOf(
+                        stringResource(R.string.m3_detail_form_only),
+                        if (detailMode == ConnectionDetailMode.KEY) {
+                            stringResource(R.string.m3_connections_masked)
+                        } else {
+                            stringResource(R.string.tools_hub_guarded)
+                        }
+                    )
+                )
+                if (detailMode == ConnectionDetailMode.KEY) {
+                    M3SectionSurface(title = selected?.label ?: stringResource(R.string.m3_connections_title)) {
+                        OutlinedTextField(
+                            value = secretLabel,
+                            onValueChange = { secretLabel = it },
+                            label = { Text(stringResource(R.string.m3_connections_key_label)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = secretValue,
+                            onValueChange = { secretValue = it },
+                            label = { Text(stringResource(R.string.m3_connections_key_value)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(onClick = { viewMode = ConnectionViewMode.LIST }, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.back))
+                            }
+                            Button(
+                                onClick = {
+                                    val key = selectedKey ?: return@Button
+                                    scope.launch {
+                                        runCatching {
+                                            TavernCoreClient(baseUrl).writeSecret(key, secretValue, secretLabel.ifBlank { key })
+                                        }.onSuccess {
+                                            secretValue = ""
+                                            onShowMessage(context.getString(R.string.m3_connections_key_saved))
+                                            refresh()
+                                        }.onFailure {
+                                            onShowMessage(context.getString(R.string.m3_connections_save_failed))
+                                        }
+                                    }
+                                },
+                                enabled = selectedKey != null && secretValue.isNotBlank(),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(R.string.m3_connections_write_key))
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = {
+                                    val key = selectedKey ?: return@OutlinedButton
+                                    val entry = selectedEntry ?: return@OutlinedButton
+                                    scope.launch {
+                                        runCatching {
+                                            TavernCoreClient(baseUrl).renameSecret(key, entry.id, secretLabel.ifBlank { entry.label })
+                                        }.onSuccess {
+                                            onShowMessage(context.getString(R.string.m3_connections_key_saved))
+                                            refresh()
+                                        }.onFailure {
+                                            onShowMessage(context.getString(R.string.m3_connections_save_failed))
+                                        }
+                                    }
+                                },
+                                enabled = selectedEntry != null,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(R.string.m3_connections_rename))
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val key = selectedKey ?: return@OutlinedButton
+                                    val entry = selectedEntry ?: return@OutlinedButton
+                                    scope.launch {
+                                        runCatching { TavernCoreClient(baseUrl).rotateSecret(key, entry.id) }
+                                            .onSuccess { refresh() }
+                                            .onFailure { onShowMessage(context.getString(R.string.m3_connections_save_failed)) }
+                                    }
+                                },
+                                enabled = selectedEntry != null && selectedEntry.active.not(),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(R.string.m3_connections_rotate))
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val key = selectedKey ?: return@OutlinedButton
+                                val entry = selectedEntry ?: return@OutlinedButton
+                                scope.launch {
+                                    runCatching { TavernCoreClient(baseUrl).deleteSecret(key, entry.id) }
+                                        .onSuccess {
+                                            viewMode = ConnectionViewMode.LIST
+                                            refresh()
+                                        }
+                                        .onFailure { onShowMessage(context.getString(R.string.m3_connections_save_failed)) }
+                                }
+                            },
+                            enabled = selectedEntry != null,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.m3_connections_delete))
                         }
                     }
-                },
-                enabled = endpointLabel.isNotBlank() && endpointUrl.isNotBlank(),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(stringResource(R.string.m3_connections_save_endpoint))
+                } else {
+                    M3SectionSurface(title = stringResource(R.string.m3_connections_endpoint_label)) {
+                        OutlinedTextField(
+                            value = endpointLabel,
+                            onValueChange = { endpointLabel = it },
+                            label = { Text(stringResource(R.string.m3_connections_endpoint_label)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = endpointUrl,
+                            onValueChange = { endpointUrl = it },
+                            label = { Text(stringResource(R.string.m3_connections_endpoint_url)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(onClick = { viewMode = ConnectionViewMode.LIST }, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.back))
+                            }
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        runCatching {
+                                            TavernCoreClient(baseUrl).saveConnectionProfile(
+                                                ConnectionProfile(label = endpointLabel, url = endpointUrl)
+                                            )
+                                        }.onSuccess {
+                                            onShowMessage(context.getString(R.string.m3_connections_endpoint_saved))
+                                            refresh()
+                                        }.onFailure {
+                                            onShowMessage(context.getString(R.string.m3_connections_save_failed))
+                                        }
+                                    }
+                                },
+                                enabled = endpointLabel.isNotBlank() && endpointUrl.isNotBlank(),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(R.string.m3_connections_save_endpoint))
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1027,6 +1273,19 @@ fun ChatBackupsScreen(
         modifier = modifier
     ) {
         if (!serverRunning) return@M3ManagerScaffold
+        M3StateBanner(
+            title = stringResource(R.string.m3_state_chat_backups),
+            body = stringResource(R.string.m3_state_chat_backups_body)
+        )
+        M3HeroSurface(
+            title = stringResource(R.string.m3_chat_backups_hero_title),
+            body = stringResource(R.string.m3_chat_backups_hero_body, backups.size),
+            labels = listOf(
+                stringResource(R.string.m3_chat_backups_export),
+                stringResource(R.string.m3_chat_backups_delete_selected)
+            ),
+            tone = M3HeroTone.TERTIARY
+        )
         STSectionCard(borderColor = MaterialTheme.colorScheme.outlineVariant, contentSpacing = 8.dp) {
             if (backups.isEmpty()) {
                 Text(
@@ -1081,6 +1340,147 @@ fun ChatBackupsScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun M3StateBanner(
+    title: String,
+    body: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun M3HeroSurface(
+    title: String,
+    body: String,
+    labels: List<String>,
+    modifier: Modifier = Modifier,
+    tone: M3HeroTone = M3HeroTone.PRIMARY
+) {
+    val colors = MaterialTheme.colorScheme
+    val (container, content) = when (tone) {
+        M3HeroTone.PRIMARY -> colors.primaryContainer to colors.onPrimaryContainer
+        M3HeroTone.TERTIARY -> colors.tertiaryContainer to colors.onTertiaryContainer
+        M3HeroTone.SURFACE -> colors.surfaceContainerHigh to colors.onSurface
+    }
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = container,
+        contentColor = content,
+        shape = MaterialTheme.shapes.extraLarge,
+        border = BorderStroke(1.dp, colors.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = content.copy(alpha = 0.78f),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                labels.take(3).forEach { label ->
+                    M3StatusChip(label = label, tone = tone)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun M3SectionSurface(
+    title: String? = null,
+    body: String? = null,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit = {}
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (title != null) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            if (body != null) {
+                Text(
+                    text = body,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun M3StatusChip(label: String, tone: M3HeroTone = M3HeroTone.SURFACE) {
+    val colors = MaterialTheme.colorScheme
+    val (container, content) = when (tone) {
+        M3HeroTone.PRIMARY -> colors.surfaceContainerLowest to colors.onSurfaceVariant
+        M3HeroTone.TERTIARY -> colors.surfaceContainerLowest to colors.onSurfaceVariant
+        M3HeroTone.SURFACE -> colors.secondaryContainer to colors.onSecondaryContainer
+    }
+    Surface(shape = CircleShape, color = container, contentColor = content) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

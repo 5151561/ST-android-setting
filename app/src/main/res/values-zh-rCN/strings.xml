@@ -214,6 +214,8 @@
     <string name="character_list_search_hint">搜索名称、标签或创作者备注</string>
     <string name="character_list_refresh">刷新角色</string>
     <string name="character_list_new">新建角色</string>
+    <string name="character_add_local">本地创建</string>
+    <string name="character_search_clear">清除搜索</string>
     <string name="character_list_loading">正在加载角色</string>
     <string name="character_list_error_title">无法加载角色</string>
     <string name="character_list_empty_body">没有匹配的角色。请尝试其他搜索，或创建新角色卡。</string>
@@ -426,8 +428,19 @@
     <string name="tools_hub_presets_body">不打开 Web 抽屉也能编辑预设 JSON 和 Prompt 模板。</string>
     <string name="tools_hub_connections_body">管理 API Key 和常用端点历史。</string>
     <string name="tools_hub_chat_backups_body">浏览、导出和删除 SillyTavern 聊天备份。</string>
+    <string name="tools_hub_list_detail">LIST / DETAIL</string>
+    <string name="tools_hub_sensitive">已遮蔽</string>
+    <string name="tools_hub_guarded">有保护</string>
     <string name="m3_world_info_title">世界书</string>
     <string name="m3_world_info_subtitle">世界书列表、条目字段，以及保真整包保存。</string>
+    <string name="m3_state_list_world_info">LIST 状态 · 世界书列表</string>
+    <string name="m3_state_list_world_info_body">在这里搜索、新建、后续导入，并先选择一本书再编辑条目。</string>
+    <string name="m3_state_detail_world_info">DETAIL 状态 · 条目编辑</string>
+    <string name="m3_state_detail_world_info_body">条目字段、保存和删除留在详情页，让列表保持可扫读。</string>
+    <string name="m3_world_info_list_hero_title">全局世界书管理</string>
+    <string name="m3_world_info_list_hero_body">已加载 %1$d 本世界书。保存时会保留未知字段和 extensions。</string>
+    <string name="m3_world_info_detail_hero_body">%1$d 个条目。保存时会把完整 data.entries 写回 SillyTavern。</string>
+    <string name="m3_world_info_list_responsibility">列表只负责搜索、新建、启用状态摘要，以及进入详情。</string>
     <string name="m3_world_info_entries">条目</string>
     <string name="m3_world_info_new">新建世界书</string>
     <string name="m3_world_info_new_name">世界书名称</string>
@@ -452,6 +465,13 @@
     <string name="m3_world_info_save_failed">无法保存世界书</string>
     <string name="m3_persona_title">Persona</string>
     <string name="m3_persona_subtitle">用户身份、头像文件、描述和默认 Persona。</string>
+    <string name="m3_state_list_persona">LIST 状态 · Persona 列表</string>
+    <string name="m3_state_list_persona_body">搜索、上传、设默认或打开详情，不在列表内直接编辑字段。</string>
+    <string name="m3_state_detail_persona">DETAIL 状态 · Persona 设置</string>
+    <string name="m3_state_detail_persona_body">名称、标题、描述、头像和默认状态都在这里编辑。</string>
+    <string name="m3_persona_list_hero_title">当前默认身份</string>
+    <string name="m3_persona_list_hero_body">默认用户下有 %1$d 个 Persona 可用。</string>
+    <string name="m3_persona_list_responsibility">列表只负责搜索、上传、默认选择和打开详情。</string>
     <string name="m3_persona_upload">上传头像</string>
     <string name="m3_persona_name">名称</string>
     <string name="m3_persona_title_field">标题</string>
@@ -469,6 +489,14 @@
     <string name="m3_persona_save_failed">无法保存 Persona</string>
     <string name="m3_presets_title">预设</string>
     <string name="m3_presets_subtitle">Preset Lite：管理 Prompt 模板和 provider JSON。</string>
+    <string name="m3_state_list_presets">LIST 状态 · 预设分类</string>
+    <string name="m3_state_list_presets_body">切换 provider 分类、启用预设，或进入 JSON 详情。</string>
+    <string name="m3_state_detail_presets">DETAIL 状态 · 预设 JSON</string>
+    <string name="m3_state_detail_presets_body">JSON 编辑、恢复默认、导出和删除都在详情页。</string>
+    <string name="m3_presets_list_hero_title">Preset Lite 库</string>
+    <string name="m3_presets_list_hero_body">已从支持的分类中加载 %1$d 个预设。</string>
+    <string name="m3_presets_detail_hero_body">apiId=%1$s。恢复默认只编辑 preset 内容，不写回 wrapper 元数据。</string>
+    <string name="m3_presets_list_responsibility">列表负责分类、摘要、启用、导入入口和进入详情。</string>
     <string name="m3_presets_save">保存预设</string>
     <string name="m3_presets_delete">删除预设</string>
     <string name="m3_presets_restore">恢复默认</string>
@@ -483,6 +511,14 @@
     <string name="m3_presets_save_failed">无法保存预设</string>
     <string name="m3_connections_title">连接</string>
     <string name="m3_connections_subtitle">API Key、active secret 和端点历史。</string>
+    <string name="m3_state_list_connections">LIST 状态 · Provider 和端点</string>
+    <string name="m3_state_list_connections_body">先浏览 provider、遮蔽 Key、active 状态和端点历史，再进入详情。</string>
+    <string name="m3_state_detail_connection_key">DETAIL 状态 · Key 设置</string>
+    <string name="m3_state_detail_connection_endpoint">DETAIL 状态 · 端点设置</string>
+    <string name="m3_state_detail_connections_body">敏感写入、重命名、active 切换和端点保存都在这里。</string>
+    <string name="m3_connections_list_hero_body">有 %1$d 个 Key、%2$d 个端点。页面不会展示明文 Key。</string>
+    <string name="m3_connections_list_responsibility">列表只显示 provider、Key 和端点摘要；敏感写入留在详情。</string>
+    <string name="m3_connections_masked">已遮蔽值</string>
     <string name="m3_connections_key_label">Secret 标签</string>
     <string name="m3_connections_key_value">API Key</string>
     <string name="m3_connections_write_key">保存 Key</string>
@@ -498,6 +534,10 @@
     <string name="m3_connections_save_failed">无法保存连接</string>
     <string name="m3_chat_backups_title">聊天备份</string>
     <string name="m3_chat_backups_subtitle">SillyTavern 自动聊天备份。</string>
+    <string name="m3_state_chat_backups">备份 · 多选列表</string>
+    <string name="m3_state_chat_backups_body">点击导出，长按进入多选，再确认删除所选。</string>
+    <string name="m3_chat_backups_hero_title">最近聊天备份集</string>
+    <string name="m3_chat_backups_hero_body">已从 SillyTavern 加载 %1$d 个备份。</string>
     <string name="m3_chat_backups_export">导出备份</string>
     <string name="m3_chat_backups_delete">删除备份</string>
     <string name="m3_chat_backups_delete_selected">删除所选</string>
@@ -515,6 +555,9 @@
     <string name="m3_search">搜索</string>
     <string name="m3_refresh">刷新</string>
     <string name="m3_empty">这里暂时没有内容。</string>
+    <string name="m3_source_fidelity">源码保真</string>
+    <string name="m3_detail_form_only">详情编辑</string>
+    <string name="m3_list_responsibility">列表职责</string>
 
     <!-- WebView shell -->
     <string name="webview_loading_starting">正在启动 SillyTavern...</string>

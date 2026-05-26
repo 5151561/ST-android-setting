@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -138,7 +136,6 @@ fun CharacterHubScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ToolsHubScreen(
     onOpenConfig: () -> Unit,
@@ -156,67 +153,57 @@ fun ToolsHubScreen(
         subtitle = stringResource(R.string.tools_hub_subtitle),
         modifier = modifier
     ) {
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            maxItemsInEachRow = 2
-        ) {
-            ToolTile(
-                icon = Icons.Filled.Description,
-                title = stringResource(R.string.config_button_title),
-                body = stringResource(R.string.tools_hub_config_body),
-                onClick = onOpenConfig,
-                modifier = Modifier.weight(1f)
-            )
-            ToolTile(
-                icon = Icons.Filled.History,
-                title = stringResource(R.string.logs_title),
-                body = stringResource(R.string.tools_hub_logs_body),
-                onClick = onOpenLogs,
-                modifier = Modifier.weight(1f)
-            )
-            ToolTile(
-                icon = Icons.Filled.FolderOpen,
-                title = stringResource(R.string.manage_st_title),
-                body = stringResource(R.string.tools_hub_manage_body),
-                onClick = onOpenManageSt,
-                modifier = Modifier.weight(1f)
-            )
-            ToolTile(
+        ToolListSection {
+            ToolListRow(
                 icon = Icons.Filled.Description,
                 title = stringResource(R.string.m3_world_info_title),
                 body = stringResource(R.string.tools_hub_world_info_body),
-                onClick = onOpenWorldInfo,
-                modifier = Modifier.weight(1f)
+                onClick = onOpenWorldInfo
             )
-            ToolTile(
+            ToolListRow(
                 icon = Icons.Filled.Person,
                 title = stringResource(R.string.m3_persona_title),
                 body = stringResource(R.string.tools_hub_persona_body),
-                onClick = onOpenPersona,
-                modifier = Modifier.weight(1f)
+                onClick = onOpenPersona
             )
-            ToolTile(
+            ToolListRow(
                 icon = Icons.Filled.Description,
                 title = stringResource(R.string.m3_presets_title),
                 body = stringResource(R.string.tools_hub_presets_body),
-                onClick = onOpenPresets,
-                modifier = Modifier.weight(1f)
+                onClick = onOpenPresets
             )
-            ToolTile(
+            ToolListRow(
                 icon = Icons.Filled.Info,
                 title = stringResource(R.string.m3_connections_title),
                 body = stringResource(R.string.tools_hub_connections_body),
-                onClick = onOpenConnections,
-                modifier = Modifier.weight(1f)
+                onClick = onOpenConnections
             )
-            ToolTile(
+            ToolListRow(
                 icon = Icons.Filled.History,
                 title = stringResource(R.string.m3_chat_backups_title),
                 body = stringResource(R.string.tools_hub_chat_backups_body),
-                onClick = onOpenChatBackups,
-                modifier = Modifier.weight(1f)
+                onClick = onOpenChatBackups
+            )
+        }
+
+        ToolListSection {
+            ToolListRow(
+                icon = Icons.Filled.Description,
+                title = stringResource(R.string.config_button_title),
+                body = stringResource(R.string.tools_hub_config_body),
+                onClick = onOpenConfig
+            )
+            ToolListRow(
+                icon = Icons.Filled.History,
+                title = stringResource(R.string.logs_title),
+                body = stringResource(R.string.tools_hub_logs_body),
+                onClick = onOpenLogs
+            )
+            ToolListRow(
+                icon = Icons.Filled.FolderOpen,
+                title = stringResource(R.string.manage_st_title),
+                body = stringResource(R.string.tools_hub_manage_body),
+                onClick = onOpenManageSt
             )
         }
     }
@@ -465,30 +452,37 @@ private fun HubActionCard(
 }
 
 @Composable
-private fun ToolTile(
+private fun ToolListSection(
+    content: @Composable ColumnScope.() -> Unit = {}
+) {
+    STSectionCard(
+        borderColor = MaterialTheme.colorScheme.outlineVariant,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+        contentSpacing = 0.dp,
+        content = content
+    )
+}
+
+@Composable
+private fun ToolListRow(
     icon: ImageVector,
     title: String,
     body: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onClick: () -> Unit
 ) {
-    val colors = MaterialTheme.colorScheme
-    Card(
-        modifier = modifier
+    Row(
+        modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(1.dp, colors.outline),
-        shape = MaterialTheme.shapes.medium
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            IconPill(icon = icon)
+        IconPill(icon = icon)
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -497,10 +491,17 @@ private fun ToolTile(
                 text = body,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = stringResource(R.string.dashboard_open),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1
+        )
     }
 }
 

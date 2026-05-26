@@ -139,6 +139,24 @@ class NativeHubScreensContractTest {
     }
 
     @Test
+    fun characterListUsesCompactTopActionsAndPullRefresh() {
+        val listScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt").readText()
+
+        assertTrue(listScreen.contains("CharacterListTopBar"))
+        assertTrue(listScreen.contains("CharacterPullRefreshContainer"))
+        assertTrue(listScreen.contains("onCreateLocalCharacter"))
+        assertTrue(listScreen.contains("onImportCharacters"))
+        assertTrue(listScreen.contains("onImportFromUrl"))
+        assertTrue(listScreen.contains("CharacterViewModeToggle"))
+        assertTrue(listScreen.contains("Icons.Filled.Search"))
+        assertTrue(listScreen.contains("Icons.Filled.GridView"))
+        assertTrue(listScreen.contains("Icons.AutoMirrored.Filled.ViewList"))
+        assertFalse(listScreen.contains("Icons.Filled.Refresh"))
+        assertFalse(listScreen.contains("character_list_refresh"))
+        assertFalse(listScreen.contains("value = query,\n                onValueChange"))
+    }
+
+    @Test
     fun m3P0ImportFlowShowsPrecheckBeforeOverwrite() {
         val strings = File("src/main/res/values/strings.xml").readText()
         val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
@@ -267,6 +285,31 @@ class NativeHubScreensContractTest {
                     "                        Text(stringResource(R.string.delete))"
             )
         )
+    }
+
+    @Test
+    fun m3NativeManagementToolsHubUsesPlainMaterialListWithoutBadges() {
+        val toolsHub = File("src/main/java/io/github/sanitised/st/ui/screens/M1HubScreens.kt").readText()
+        val screens = File("src/main/java/io/github/sanitised/st/ui/screens/M3P1Screens.kt").readText()
+
+        assertTrue(toolsHub.contains("ToolListSection"))
+        assertTrue(toolsHub.contains("ToolListRow"))
+        assertFalse(toolsHub.contains("ToolBoundaryBanner"))
+        assertFalse(toolsHub.contains("ToolGroupSection"))
+        assertFalse(toolsHub.contains("ToolStatusChip"))
+        assertFalse(toolsHub.contains("tools_hub_boundary"))
+        assertFalse(toolsHub.contains("tools_hub_native_group_title"))
+        assertFalse(toolsHub.contains("tools_hub_list_detail"))
+        assertFalse(toolsHub.contains("statusLabel"))
+        assertFalse(toolsHub.contains("ToolTile("))
+
+        assertTrue(screens.contains("WorldInfoViewMode.LIST"))
+        assertTrue(screens.contains("WorldInfoViewMode.DETAIL"))
+        assertTrue(screens.contains("ConnectionViewMode.LIST"))
+        assertTrue(screens.contains("ConnectionViewMode.DETAIL"))
+        assertTrue(screens.contains("M3StateBanner"))
+        assertTrue(screens.contains("M3HeroSurface"))
+        assertTrue(screens.contains("M3SectionSurface"))
     }
 
     @Test

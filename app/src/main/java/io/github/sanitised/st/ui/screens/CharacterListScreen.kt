@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,12 +25,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -38,6 +39,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -47,18 +49,26 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
@@ -130,6 +140,7 @@ fun CharacterListScreen(
     var pendingTagEdit by remember { mutableStateOf<CharacterSummary?>(null) }
     var showBatchTags by remember { mutableStateOf(false) }
     var showTagManager by remember { mutableStateOf(false) }
+    var showSearchDialog by remember { mutableStateOf(false) }
     var deleteChats by remember { mutableStateOf(false) }
     var showExternalImport by remember { mutableStateOf(false) }
     var externalImportText by remember { mutableStateOf("") }
@@ -351,6 +362,23 @@ fun CharacterListScreen(
         )
     }
 
+    if (showSearchDialog) {
+        CharacterSearchDialog(
+            initialQuery = query,
+            onDismiss = { showSearchDialog = false },
+            onClear = {
+                query = ""
+                currentPage = 1
+                showSearchDialog = false
+            },
+            onApplySearch = { search ->
+                query = search
+                currentPage = 1
+                showSearchDialog = false
+            }
+        )
+    }
+
     if (showExternalImport) {
         AlertDialog(
             onDismissRequest = {
@@ -414,81 +442,25 @@ fun CharacterListScreen(
     }
 
     Surface(modifier = modifier.fillMaxSize(), color = colors.background) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        CharacterPullRefreshContainer(
+            enabled = serverRunning,
+            refreshing = loadState.loading,
+            onRefresh = { refreshKey++ },
+            modifier = Modifier.fillMaxSize()
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.character_hub_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = stringResource(R.string.character_list_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { refreshKey++ }, enabled = serverRunning) {
-                        Icon(
-                            Icons.Filled.Refresh,
-                            contentDescription = stringResource(R.string.character_list_refresh),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = { importLauncher.launch(characterImportMimeTypes) },
-                        enabled = serverRunning
-                    ) {
-                        Text(stringResource(R.string.import_action))
-                    }
-                    OutlinedButton(
-                        onClick = { showExternalImport = true },
-                        enabled = serverRunning
-                    ) {
-                        Text(stringResource(R.string.character_external_import))
-                    }
-                    IconButton(onClick = onCreateCharacter) {
-                        Icon(
-                            Icons.Filled.Add,
-                            contentDescription = stringResource(R.string.character_list_new),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
+            CharacterListTopBar(
+                query = query,
+                serverRunning = serverRunning,
+                onSearchClick = { showSearchDialog = true },
+                onCreateLocalCharacter = onCreateCharacter,
+                onImportCharacters = { importLauncher.launch(characterImportMimeTypes) },
+                onImportFromUrl = { showExternalImport = true }
+            )
 
             if (!serverRunning) {
                 CharacterServiceCard(onStartService = onStartService)
-                return@Column
+                return@CharacterPullRefreshContainer
             }
-
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                singleLine = true,
-                label = { Text(stringResource(R.string.character_list_search_hint)) }
-            )
 
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -581,26 +553,27 @@ fun CharacterListScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                CharacterViewMode.values().forEach { mode ->
-                    FilterChip(
-                        selected = viewMode == mode,
-                        onClick = {
-                            viewMode = mode
-                            if (mode != CharacterViewMode.BATCH) {
-                                selectedCharacters = emptySet()
-                            }
-                        },
-                        label = {
-                            Text(
-                                when (mode) {
-                                    CharacterViewMode.LIST -> stringResource(R.string.character_view_list)
-                                    CharacterViewMode.GRID -> stringResource(R.string.character_view_grid)
-                                    CharacterViewMode.BATCH -> stringResource(R.string.character_view_batch)
-                                }
-                            )
+                CharacterViewModeToggle(
+                    viewMode = viewMode,
+                    onViewModeChange = { mode ->
+                        viewMode = mode
+                        selectedCharacters = emptySet()
+                    }
+                )
+                FilterChip(
+                    selected = viewMode == CharacterViewMode.BATCH,
+                    onClick = {
+                        viewMode = if (viewMode == CharacterViewMode.BATCH) {
+                            CharacterViewMode.LIST
+                        } else {
+                            CharacterViewMode.BATCH
                         }
-                    )
-                }
+                        if (viewMode != CharacterViewMode.BATCH) {
+                            selectedCharacters = emptySet()
+                        }
+                    },
+                    label = { Text(stringResource(R.string.character_view_batch)) }
+                )
                 Box {
                     TextButton(onClick = { sortMenuExpanded = true }) {
                         Text(stringResource(R.string.character_sort_label, characterSortLabel(sort)))
@@ -756,6 +729,211 @@ fun CharacterListScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CharacterPullRefreshContainer(
+    enabled: Boolean,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val scrollState = rememberScrollState()
+    val latestOnRefresh by rememberUpdatedState(onRefresh)
+    val thresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
+    var pullDistance by remember { mutableFloatStateOf(0f) }
+    val nestedScrollConnection = remember(enabled, refreshing, scrollState, thresholdPx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (!enabled || refreshing || source != NestedScrollSource.Drag) return Offset.Zero
+                if (available.y < 0f && pullDistance > 0f) {
+                    val consumed = minOf(pullDistance, -available.y)
+                    pullDistance -= consumed
+                    return Offset(x = 0f, y = -consumed)
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (!enabled || refreshing || source != NestedScrollSource.Drag) return Offset.Zero
+                if (available.y > 0f && scrollState.value == 0) {
+                    pullDistance = (pullDistance + available.y).coerceAtMost(thresholdPx * 1.5f)
+                    return Offset(x = 0f, y = available.y)
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (enabled && !refreshing && pullDistance >= thresholdPx) {
+                    latestOnRefresh()
+                }
+                pullDistance = 0f
+                return Velocity.Zero
+            }
+        }
+    }
+
+    Box(modifier = modifier.nestedScroll(nestedScrollConnection)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            content = content
+        )
+        if (enabled && refreshing) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun CharacterListTopBar(
+    query: String,
+    serverRunning: Boolean,
+    onSearchClick: () -> Unit,
+    onCreateLocalCharacter: () -> Unit,
+    onImportCharacters: () -> Unit,
+    onImportFromUrl: () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    var createMenuExpanded by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.character_hub_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = stringResource(R.string.character_list_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(onClick = onSearchClick, enabled = serverRunning) {
+            Icon(
+                Icons.Filled.Search,
+                contentDescription = stringResource(R.string.m3_search),
+                tint = if (query.isNotBlank()) colors.primary else colors.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Box {
+            IconButton(onClick = { createMenuExpanded = true }, enabled = serverRunning) {
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = stringResource(R.string.character_list_new),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            DropdownMenu(
+                expanded = createMenuExpanded,
+                onDismissRequest = { createMenuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.character_add_local)) },
+                    onClick = {
+                        createMenuExpanded = false
+                        onCreateLocalCharacter()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.import_action)) },
+                    onClick = {
+                        createMenuExpanded = false
+                        onImportCharacters()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.character_external_import)) },
+                    onClick = {
+                        createMenuExpanded = false
+                        onImportFromUrl()
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CharacterSearchDialog(
+    initialQuery: String,
+    onDismiss: () -> Unit,
+    onClear: () -> Unit,
+    onApplySearch: (String) -> Unit
+) {
+    var draftQuery by remember(initialQuery) { mutableStateOf(initialQuery) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.m3_search)) },
+        text = {
+            OutlinedTextField(
+                value = draftQuery,
+                onValueChange = { draftQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                singleLine = true,
+                label = { Text(stringResource(R.string.character_list_search_hint)) }
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onApplySearch(draftQuery.trim()) }) {
+                Text(stringResource(R.string.apply_action))
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onClear) {
+                    Text(stringResource(R.string.character_search_clear))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun CharacterViewModeToggle(
+    viewMode: CharacterViewMode,
+    onViewModeChange: (CharacterViewMode) -> Unit
+) {
+    val showingGrid = viewMode == CharacterViewMode.GRID
+    val targetMode = if (showingGrid) CharacterViewMode.LIST else CharacterViewMode.GRID
+    IconButton(onClick = { onViewModeChange(targetMode) }) {
+        Icon(
+            imageVector = if (showingGrid) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
+            contentDescription = stringResource(
+                if (showingGrid) R.string.character_view_list else R.string.character_view_grid
+            ),
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 

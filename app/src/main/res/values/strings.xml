@@ -214,6 +214,8 @@
     <string name="character_list_search_hint">Search name, tags, or creator notes</string>
     <string name="character_list_refresh">Refresh characters</string>
     <string name="character_list_new">New character</string>
+    <string name="character_add_local">Create locally</string>
+    <string name="character_search_clear">Clear search</string>
     <string name="character_list_loading">Loading characters</string>
     <string name="character_list_error_title">Couldn\'t load characters</string>
     <string name="character_list_empty_body">No matching characters. Try another search or create a new card.</string>
@@ -426,8 +428,19 @@
     <string name="tools_hub_presets_body">Edit preset JSON and prompt templates without opening the web drawer.</string>
     <string name="tools_hub_connections_body">Manage API keys and common endpoint history.</string>
     <string name="tools_hub_chat_backups_body">Browse, export, and remove SillyTavern chat backups.</string>
+    <string name="tools_hub_list_detail">LIST / DETAIL</string>
+    <string name="tools_hub_sensitive">masked</string>
+    <string name="tools_hub_guarded">guarded</string>
     <string name="m3_world_info_title">World Info</string>
     <string name="m3_world_info_subtitle">Lorebook list, entry fields, and safe full-file saves.</string>
+    <string name="m3_state_list_world_info">LIST state · Lorebook list</string>
+    <string name="m3_state_list_world_info_body">Search, create, import later, and choose one book before editing entries.</string>
+    <string name="m3_state_detail_world_info">DETAIL state · Entry editor</string>
+    <string name="m3_state_detail_world_info_body">Entry fields, save, and delete stay in detail so the list remains scan-first.</string>
+    <string name="m3_world_info_list_hero_title">Global lorebook management</string>
+    <string name="m3_world_info_list_hero_body">%1$d lorebooks loaded. Unknown fields and extensions are preserved on save.</string>
+    <string name="m3_world_info_detail_hero_body">%1$d entries. Full data.entries is saved back to SillyTavern.</string>
+    <string name="m3_world_info_list_responsibility">The list is only for search, creation, enable-state summaries, and navigation into detail.</string>
     <string name="m3_world_info_entries">Entries</string>
     <string name="m3_world_info_new">New lorebook</string>
     <string name="m3_world_info_new_name">Lorebook name</string>
@@ -452,6 +465,13 @@
     <string name="m3_world_info_save_failed">Unable to save world info</string>
     <string name="m3_persona_title">Persona</string>
     <string name="m3_persona_subtitle">User identity, avatar file, description, and default persona.</string>
+    <string name="m3_state_list_persona">LIST state · Persona list</string>
+    <string name="m3_state_list_persona_body">Search, upload, set default, or open detail without editing fields inline.</string>
+    <string name="m3_state_detail_persona">DETAIL state · Persona settings</string>
+    <string name="m3_state_detail_persona_body">Name, title, description, avatar, and default state are edited here.</string>
+    <string name="m3_persona_list_hero_title">Current default identity</string>
+    <string name="m3_persona_list_hero_body">%1$d personas available for the default user.</string>
+    <string name="m3_persona_list_responsibility">The list handles search, upload, default selection, and opening details only.</string>
     <string name="m3_persona_upload">Upload avatar</string>
     <string name="m3_persona_name">Name</string>
     <string name="m3_persona_title_field">Title</string>
@@ -469,6 +489,14 @@
     <string name="m3_persona_save_failed">Unable to save persona</string>
     <string name="m3_presets_title">Presets</string>
     <string name="m3_presets_subtitle">Preset Lite for prompt templates and provider JSON.</string>
+    <string name="m3_state_list_presets">LIST state · Preset categories</string>
+    <string name="m3_state_list_presets_body">Switch provider categories, enable a preset, or open JSON detail.</string>
+    <string name="m3_state_detail_presets">DETAIL state · Preset JSON</string>
+    <string name="m3_state_detail_presets_body">JSON editing, restore, export, and delete live in detail.</string>
+    <string name="m3_presets_list_hero_title">Preset Lite library</string>
+    <string name="m3_presets_list_hero_body">%1$d presets loaded across supported categories.</string>
+    <string name="m3_presets_detail_hero_body">apiId=%1$s. Restore only edits the preset payload, not wrapper metadata.</string>
+    <string name="m3_presets_list_responsibility">The list handles category, summary, enable, import path, and detail navigation.</string>
     <string name="m3_presets_save">Save preset</string>
     <string name="m3_presets_delete">Delete preset</string>
     <string name="m3_presets_restore">Restore default</string>
@@ -483,6 +511,14 @@
     <string name="m3_presets_save_failed">Unable to save preset</string>
     <string name="m3_connections_title">Connections</string>
     <string name="m3_connections_subtitle">API keys, active secrets, and endpoint history.</string>
+    <string name="m3_state_list_connections">LIST state · Providers and endpoints</string>
+    <string name="m3_state_list_connections_body">Browse providers, masked keys, active state, and endpoint history before opening detail.</string>
+    <string name="m3_state_detail_connection_key">DETAIL state · Key settings</string>
+    <string name="m3_state_detail_connection_endpoint">DETAIL state · Endpoint settings</string>
+    <string name="m3_state_detail_connections_body">Sensitive writes, rename, active rotation, and endpoint saves happen here.</string>
+    <string name="m3_connections_list_hero_body">%1$d keys and %2$d endpoints available. Plaintext keys are not displayed.</string>
+    <string name="m3_connections_list_responsibility">The list shows provider/key/endpoint summaries only; sensitive writes stay in detail.</string>
+    <string name="m3_connections_masked">masked value</string>
     <string name="m3_connections_key_label">Secret label</string>
     <string name="m3_connections_key_value">API key</string>
     <string name="m3_connections_write_key">Save key</string>
@@ -498,6 +534,10 @@
     <string name="m3_connections_save_failed">Unable to save connection</string>
     <string name="m3_chat_backups_title">Chat Backups</string>
     <string name="m3_chat_backups_subtitle">SillyTavern automatic chat backups.</string>
+    <string name="m3_state_chat_backups">Backups · Multi-select list</string>
+    <string name="m3_state_chat_backups_body">Tap to export, long press to select, then delete selected with confirmation.</string>
+    <string name="m3_chat_backups_hero_title">Recent chat backup set</string>
+    <string name="m3_chat_backups_hero_body">%1$d backups loaded from SillyTavern.</string>
     <string name="m3_chat_backups_export">Export backup</string>
     <string name="m3_chat_backups_delete">Delete backup</string>
     <string name="m3_chat_backups_delete_selected">Delete selected</string>
@@ -515,6 +555,9 @@
     <string name="m3_search">Search</string>
     <string name="m3_refresh">Refresh</string>
     <string name="m3_empty">Nothing here yet.</string>
+    <string name="m3_source_fidelity">source fidelity</string>
+    <string name="m3_detail_form_only">detail only</string>
+    <string name="m3_list_responsibility">List responsibility</string>
 
     <!-- WebView shell -->
     <string name="webview_loading_starting">Starting SillyTavern...</string>
