@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -69,6 +68,10 @@ import io.github.sanitised.st.api.CharacterChatSummary
 import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.api.ChatExportFormat
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.ui.components.FavoriteIconButton
+import io.github.sanitised.st.ui.components.STConfirmDialog
+import io.github.sanitised.st.ui.components.STInfoCard
+import io.github.sanitised.st.ui.components.STSectionCard
 import io.github.sanitised.st.ui.theme.STTheme
 import kotlinx.coroutines.launch
 
@@ -223,26 +226,18 @@ fun CharacterDetailScreen(
     }
 
     pendingDeleteChat?.let { chat ->
-        AlertDialog(
-            onDismissRequest = { pendingDeleteChat = null },
-            title = { Text(stringResource(R.string.character_chat_delete_title)) },
-            text = { Text(stringResource(R.string.character_chat_delete_body, chat.fileName)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pendingDeleteChat = null
-                        deleteCharacterChat(context, baseUrl, avatar, chat, onShowMessage, scope) {
-                            chats = chats.filterNot { it.fileName == chat.fileName }
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.delete))
+        STConfirmDialog(
+            title = stringResource(R.string.character_chat_delete_title),
+            confirmLabel = stringResource(R.string.delete),
+            onConfirm = {
+                pendingDeleteChat = null
+                deleteCharacterChat(context, baseUrl, avatar, chat, onShowMessage, scope) {
+                    chats = chats.filterNot { it.fileName == chat.fileName }
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { pendingDeleteChat = null }) {
-                    Text(stringResource(R.string.cancel))
-                }
+            onDismiss = { pendingDeleteChat = null },
+            body = {
+                Text(stringResource(R.string.character_chat_delete_body, chat.fileName))
             }
         )
     }
@@ -279,7 +274,7 @@ fun CharacterDetailScreen(
                 )
 
                 if (!serverRunning) {
-                    CharacterDetailInfoCard(
+                    STInfoCard(
                         title = stringResource(R.string.webview_error_service_stopped_title),
                         body = stringResource(R.string.webview_error_service_stopped_body),
                         actionLabel = stringResource(R.string.webview_start_service),
@@ -288,12 +283,12 @@ fun CharacterDetailScreen(
                 } else {
                     val character = detail
                     when {
-                        loading -> CharacterDetailInfoCard(
+                        loading -> STInfoCard(
                             title = stringResource(R.string.character_edit_loading),
                             body = stringResource(R.string.waiting_for_server)
                         )
 
-                        character == null -> CharacterDetailInfoCard(
+                        character == null -> STInfoCard(
                             title = stringResource(R.string.character_load_failed),
                             body = avatar
                         )
@@ -388,13 +383,11 @@ private fun CharacterDetailTopBar(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        IconButton(onClick = onToggleFavorite, enabled = detail != null) {
-            Icon(
-                Icons.Filled.Star,
-                contentDescription = stringResource(R.string.character_filter_favorites),
-                tint = if (detail?.isFavorite == true) colors.warn else colors.muted
-            )
-        }
+        FavoriteIconButton(
+            isFavorite = detail?.isFavorite == true,
+            onToggleFavorite = onToggleFavorite,
+            enabled = detail != null
+        )
     }
 }
 
@@ -512,14 +505,22 @@ private fun CharacterDetailTabs(selectedTab: CharacterDetailTab, onSelected: (Ch
 
 @Composable
 private fun CharacterOverviewPanel(detail: CharacterDetail) {
-    CharacterDetailPanel(title = stringResource(R.string.character_detail_core_fields)) {
+    STSectionCard(
+        title = stringResource(R.string.character_detail_core_fields),
+        borderColor = STTheme.colors.borderSoft,
+        contentSpacing = 10.dp
+    ) {
         CharacterInfoRow(stringResource(R.string.character_edit_description), detail.description)
         CharacterInfoRow(stringResource(R.string.character_edit_first_message), detail.firstMessage)
         CharacterInfoRow(stringResource(R.string.character_edit_system_prompt), detail.systemPrompt)
         CharacterInfoRow(stringResource(R.string.character_edit_depth_prompt), detail.depthPrompt)
     }
     Spacer(modifier = Modifier.height(2.dp))
-    CharacterDetailPanel(title = stringResource(R.string.character_detail_migration_status)) {
+    STSectionCard(
+        title = stringResource(R.string.character_detail_migration_status),
+        borderColor = STTheme.colors.borderSoft,
+        contentSpacing = 10.dp
+    ) {
         CharacterInfoRow(stringResource(R.string.character_edit_alternate_greetings), detail.alternateGreetings.size.toString())
         CharacterInfoRow(stringResource(R.string.character_edit_world), detail.world)
         CharacterInfoRow(stringResource(R.string.character_edit_tags), detail.tags.joinToString(", "))
@@ -536,7 +537,11 @@ private fun CharacterChatsPanel(
     onDeleteChat: (CharacterChatSummary) -> Unit,
     onExportChat: (CharacterChatSummary, ChatExportFormat) -> Unit
 ) {
-    CharacterDetailPanel(title = stringResource(R.string.character_detail_chats_title)) {
+    STSectionCard(
+        title = stringResource(R.string.character_detail_chats_title),
+        borderColor = STTheme.colors.borderSoft,
+        contentSpacing = 10.dp
+    ) {
         OutlinedButton(
             onClick = onImportChat,
             enabled = !importingChat,
@@ -661,7 +666,11 @@ private fun CharacterLinksPanel(
     onSetAssistant: () -> Unit
 ) {
     val sourceUrl = detail.sourceUrl.trim()
-    CharacterDetailPanel(title = stringResource(R.string.character_detail_links_title)) {
+    STSectionCard(
+        title = stringResource(R.string.character_detail_links_title),
+        borderColor = STTheme.colors.borderSoft,
+        contentSpacing = 10.dp
+    ) {
         CharacterLinkRow(
             label = stringResource(R.string.character_detail_lorebook_label),
             value = detail.world.ifBlank { stringResource(R.string.character_detail_lorebook_missing) },
@@ -727,20 +736,6 @@ private fun CharacterLinkRow(
 }
 
 @Composable
-private fun CharacterDetailPanel(title: String, content: @Composable () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
-        border = BorderStroke(1.dp, STTheme.colors.borderSoft)
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            content()
-        }
-    }
-}
-
-@Composable
 private fun CharacterInfoRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -755,30 +750,6 @@ private fun CharacterInfoRow(label: String, value: String) {
             color = STTheme.colors.fg,
             modifier = Modifier.weight(0.64f)
         )
-    }
-}
-
-@Composable
-private fun CharacterDetailInfoCard(
-    title: String,
-    body: String,
-    actionLabel: String? = null,
-    onAction: (() -> Unit)? = null
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
-        border = BorderStroke(1.dp, STTheme.colors.border)
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(text = body, style = MaterialTheme.typography.bodySmall, color = STTheme.colors.muted)
-            if (actionLabel != null && onAction != null) {
-                Button(onClick = onAction) {
-                    Text(actionLabel)
-                }
-            }
-        }
     }
 }
 

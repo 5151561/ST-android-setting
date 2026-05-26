@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,10 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -57,6 +53,9 @@ import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.api.CharacterSaveRequest
 import io.github.sanitised.st.api.CharacterUpload
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.ui.components.STConfirmDialog
+import io.github.sanitised.st.ui.components.STInfoCard
+import io.github.sanitised.st.ui.components.STSectionCard
 import io.github.sanitised.st.ui.theme.STTheme
 import kotlinx.coroutines.launch
 
@@ -238,13 +237,29 @@ fun CharacterEditScreen(
     }
 
     if (pendingDelete && !draft.avatar.isNullOrBlank()) {
-        AlertDialog(
-            onDismissRequest = {
+        STConfirmDialog(
+            title = stringResource(R.string.character_delete_title),
+            confirmLabel = stringResource(R.string.delete),
+            onConfirm = {
+                val removeChats = deleteChats
+                pendingDelete = false
+                deleteChats = false
+                deleteCharacter(
+                    context = context,
+                    draft = draft,
+                    baseUrl = baseUrl,
+                    deleteChats = removeChats,
+                    onShowMessage = onShowMessage,
+                    onSavingChanged = { saving = it },
+                    onDeleted = onBack,
+                    scope = scope
+                )
+            },
+            onDismiss = {
                 pendingDelete = false
                 deleteChats = false
             },
-            title = { Text(stringResource(R.string.character_delete_title)) },
-            text = {
+            body = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.character_delete_body, draft.name.ifBlank { draft.avatar.orEmpty() }))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -257,48 +272,33 @@ fun CharacterEditScreen(
                     }
                 }
             },
-            confirmButton = {
-                TextButton(
-                    enabled = !saving,
-                    onClick = {
-                        val removeChats = deleteChats
-                        pendingDelete = false
-                        deleteChats = false
-                        deleteCharacter(
-                            context = context,
-                            draft = draft,
-                            baseUrl = baseUrl,
-                            deleteChats = removeChats,
-                            onShowMessage = onShowMessage,
-                            onSavingChanged = { saving = it },
-                            onDeleted = onBack,
-                            scope = scope
-                        )
-                    }
-                ) {
-                    Text(stringResource(R.string.delete))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    enabled = !saving,
-                    onClick = {
-                        pendingDelete = false
-                        deleteChats = false
-                    }
-                ) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
+            confirmEnabled = !saving,
+            dismissEnabled = !saving
         )
     }
 
     pendingReplaceMode?.let { mode ->
         if (!draft.avatar.isNullOrBlank()) {
-            AlertDialog(
-                onDismissRequest = { pendingReplaceMode = null },
-                title = { Text(stringResource(R.string.character_replace_title)) },
-                text = {
+            STConfirmDialog(
+                title = stringResource(R.string.character_replace_title),
+                confirmLabel = stringResource(R.string.character_replace_confirm),
+                onConfirm = {
+                    pendingReplaceMode = null
+                    when (mode) {
+                        CharacterReplaceMode.FILE -> replaceLauncher.launch(characterReplaceMimeTypes)
+                        CharacterReplaceMode.SOURCE -> replaceCharacterFromSource(
+                            context = context,
+                            draft = draft,
+                            baseUrl = baseUrl,
+                            onShowMessage = onShowMessage,
+                            onSavingChanged = { saving = it },
+                            onSaved = onSaved,
+                            scope = scope
+                        )
+                    }
+                },
+                onDismiss = { pendingReplaceMode = null },
+                body = {
                     Text(
                         when (mode) {
                             CharacterReplaceMode.FILE -> stringResource(R.string.character_replace_file_body)
@@ -306,33 +306,8 @@ fun CharacterEditScreen(
                         }
                     )
                 },
-                confirmButton = {
-                    TextButton(
-                        enabled = !saving,
-                        onClick = {
-                            pendingReplaceMode = null
-                            when (mode) {
-                                CharacterReplaceMode.FILE -> replaceLauncher.launch(characterReplaceMimeTypes)
-                                CharacterReplaceMode.SOURCE -> replaceCharacterFromSource(
-                                    context = context,
-                                    draft = draft,
-                                    baseUrl = baseUrl,
-                                    onShowMessage = onShowMessage,
-                                    onSavingChanged = { saving = it },
-                                    onSaved = onSaved,
-                                    scope = scope
-                                )
-                            }
-                        }
-                    ) {
-                        Text(stringResource(R.string.character_replace_confirm))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { pendingReplaceMode = null }, enabled = !saving) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                }
+                confirmEnabled = !saving,
+                dismissEnabled = !saving
             )
         }
     }
@@ -386,7 +361,7 @@ fun CharacterEditScreen(
                 }
 
                 if (!serverRunning) {
-                    CharacterEditorInfoCard(
+                    STInfoCard(
                         title = stringResource(R.string.webview_error_service_stopped_title),
                         body = stringResource(R.string.webview_error_service_stopped_body),
                         actionLabel = stringResource(R.string.webview_start_service),
@@ -396,7 +371,7 @@ fun CharacterEditScreen(
                 }
 
                 if (loading) {
-                    CharacterEditorInfoCard(
+                    STInfoCard(
                         title = stringResource(R.string.character_edit_loading),
                         body = stringResource(R.string.waiting_for_server)
                     )
@@ -530,7 +505,7 @@ private fun CharacterAvatarEditorSection(
     onChooseAvatar: () -> Unit,
     onUpdateAvatarNow: () -> Unit
 ) {
-    CharacterEditorSection(title = stringResource(R.string.character_avatar_section)) {
+    STSectionCard(title = stringResource(R.string.character_avatar_section)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             CharacterAvatarImage(
                 baseUrl = baseUrl,
@@ -606,7 +581,7 @@ private fun CharacterEditorFields(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when (selectedTab) {
-            CharacterEditorTab.BASIC -> CharacterEditorSection(title = stringResource(R.string.character_edit_basic_section)) {
+            CharacterEditorTab.BASIC -> STSectionCard(title = stringResource(R.string.character_edit_basic_section)) {
                 CharacterField(
                     label = stringResource(R.string.character_edit_name),
                     value = draft.name,
@@ -644,7 +619,7 @@ private fun CharacterEditorFields(
             }
 
             CharacterEditorTab.PROMPT -> {
-                CharacterEditorSection(title = stringResource(R.string.character_edit_prompt_section)) {
+                STSectionCard(title = stringResource(R.string.character_edit_prompt_section)) {
                     CharacterAlternateGreetingsEditor(
                         greetings = draft.alternateGreetings,
                         enabled = !saving,
@@ -691,7 +666,7 @@ private fun CharacterEditorFields(
             }
 
             CharacterEditorTab.METADATA -> {
-                CharacterEditorSection(title = stringResource(R.string.character_edit_metadata_section)) {
+                STSectionCard(title = stringResource(R.string.character_edit_metadata_section)) {
                     CharacterField(
                         label = stringResource(R.string.character_edit_creator),
                         value = draft.creator,
@@ -870,7 +845,7 @@ private fun CharacterTokenCounterSection(draft: CharacterEditDraft) {
             messageExample = draft.messageExample
         )
     )
-    CharacterEditorSection(title = stringResource(R.string.character_token_section)) {
+    STSectionCard(title = stringResource(R.string.character_token_section)) {
         Text(
             text = stringResource(R.string.character_token_body),
             style = MaterialTheme.typography.bodySmall,
@@ -901,23 +876,6 @@ private fun CharacterTokenRow(label: String, count: Int) {
 }
 
 @Composable
-private fun CharacterEditorSection(
-    title: String,
-    content: @Composable () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
-        border = BorderStroke(1.dp, STTheme.colors.border)
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            content()
-        }
-    }
-}
-
-@Composable
 private fun CharacterField(
     label: String,
     value: String,
@@ -937,30 +895,6 @@ private fun CharacterField(
 }
 
 @Composable
-private fun CharacterEditorInfoCard(
-    title: String,
-    body: String,
-    actionLabel: String? = null,
-    onAction: (() -> Unit)? = null
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
-        border = BorderStroke(1.dp, STTheme.colors.border)
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(text = body, style = MaterialTheme.typography.bodySmall, color = STTheme.colors.muted)
-            if (actionLabel != null && onAction != null) {
-                Button(onClick = onAction) {
-                    Text(actionLabel)
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun CharacterManagementActions(
     saving: Boolean,
     onRename: () -> Unit,
@@ -973,7 +907,7 @@ private fun CharacterManagementActions(
     sourceAvailable: Boolean,
     onDelete: () -> Unit
 ) {
-    CharacterEditorSection(title = stringResource(R.string.character_edit_management_section)) {
+    STSectionCard(title = stringResource(R.string.character_edit_management_section)) {
         Text(
             text = stringResource(R.string.character_edit_management_body),
             style = MaterialTheme.typography.bodySmall,

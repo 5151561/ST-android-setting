@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,6 +58,7 @@ import io.github.sanitised.st.R
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.data.LocalTavernLibraryReader
+import io.github.sanitised.st.ui.components.STSectionCard
 import io.github.sanitised.st.ui.theme.STAppTheme
 import io.github.sanitised.st.ui.theme.STTheme
 import java.io.File
@@ -210,15 +212,9 @@ fun DashboardStatusCard(
     onOpenChat: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = STTheme.colors
     val isRunning = status.state == NodeState.RUNNING
     val isBusy = status.state == NodeState.STARTING || status.state == NodeState.STOPPING
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(1.dp, colors.border)
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    STSectionCard(modifier = modifier, contentSpacing = 12.dp) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -272,7 +268,6 @@ fun DashboardStatusCard(
                     Text(text = stringResource(R.string.stop))
                 }
             }
-        }
     }
 }
 
@@ -404,12 +399,7 @@ private fun HubActionCard(
     disabledHint: String? = null
 ) {
     val colors = STTheme.colors
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(1.dp, colors.border)
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    STSectionCard(modifier = modifier, contentSpacing = 12.dp) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconPill(icon = icon)
                 Spacer(modifier = Modifier.width(12.dp))
@@ -451,7 +441,6 @@ private fun HubActionCard(
                     }
                 }
             }
-        }
     }
 }
 
@@ -556,16 +545,7 @@ private fun EmptyHubCard(
 
 @Composable
 private fun HubListCard(content: @Composable ColumnScope.() -> Unit) {
-    val colors = STTheme.colors
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(1.dp, colors.border)
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-            content()
-        }
-    }
+    STSectionCard(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp), content = content)
 }
 
 @Composable

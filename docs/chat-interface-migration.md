@@ -1,8 +1,8 @@
 # SillyTavern Chat 原生界面迁移方案
 
-版本：0.2  
+版本：0.3  
 日期：2026-05-26  
-状态：草案  
+状态：草案（已对照 SillyTavern 源码审查）  
 适用范围：ST-android 下一阶段 Chat 原生化、JS Bridge、SillyTavern 运行时复用、API 对接
 
 ## 1. 背景和目标
@@ -183,19 +183,25 @@ Bridge 消息统一用 JSON 字符串，避免后续方法爆炸。
 
 | 事件 | 方向 | 说明 |
 |---|---|---|
-| `runtime.ready` | JS -> Android | ST 前端初始化完成，可以接收命令 |
+| `runtime.ready` | JS -> Android | ST 前端初始化完成，可以接收命令（对应 ST `APP_READY` 事件） |
 | `runtime.error` | JS -> Android | runtime 初始化或命令执行失败 |
-| `chat.loaded` | JS -> Android | 聊天打开完成，携带 snapshot |
-| `chat.changed` | JS -> Android | 当前聊天文件或角色变化 |
-| `message.added` | JS -> Android | 用户消息或 AI 消息新增 |
-| `message.updated` | JS -> Android | streaming delta、编辑、swipe 切换等 |
-| `message.deleted` | JS -> Android | 消息删除 |
-| `generation.started` | JS -> Android | 生成开始 |
-| `generation.ended` | JS -> Android | 生成完成 |
-| `generation.stopped` | JS -> Android | 用户停止生成 |
+| `chat.loaded` | JS -> Android | 聊天打开完成，携带 snapshot（对应 ST `chatLoaded` 事件） |
+| `chat.changed` | JS -> Android | 当前聊天文件或角色变化（对应 ST `chat_id_changed` 事件） |
+| `message.added` | JS -> Android | 用户消息或 AI 消息新增（对应 ST `MESSAGE_SENT` / `MESSAGE_RECEIVED`） |
+| `message.updated` | JS -> Android | streaming delta、编辑、swipe 切换等（对应 ST `MESSAGE_UPDATED`） |
+| `message.deleted` | JS -> Android | 消息删除（对应 ST `MESSAGE_DELETED`） |
+| `message.swiped` | JS -> Android | swipe 切换（对应 ST `MESSAGE_SWIPED`） |
+| `generation.started` | JS -> Android | 生成开始（对应 ST `generation_started`） |
+| `generation.ended` | JS -> Android | 生成完成（对应 ST `generation_ended`） |
+| `generation.stopped` | JS -> Android | 用户停止生成（对应 ST `generation_stopped`） |
 | `generation.error` | JS -> Android | 生成失败 |
+| `stream.token` | JS -> Android | 单个 streaming token（对应 ST `STREAM_TOKEN_RECEIVED`，需节流） |
 | `bridge.result` | JS -> Android | 命令成功结果 |
 | `bridge.error` | JS -> Android | 命令失败结果 |
+
+> **ST 原生事件映射说明**：adapter 应监听 ST `eventSource` 的事件，转发为 Bridge 事件。注意 ST 事件名有命名不一致问题（如 `chatLoaded` vs `chat_id_changed` vs `generation_started`），adapter 内部需要统一处理。完整事件枚举见 `SillyTavern/public/scripts/events.js`。
+>
+> **P1+ 需关注的额外 ST 事件**：`MESSAGE_EDITED`（编辑确认）、`MESSAGE_SWIPED`（swipe 切换）、`MESSAGE_SWIPE_DELETED`（删除单个 swipe）、`MESSAGE_REASONING_EDITED`/`MESSAGE_REASONING_DELETED`（reasoning 编辑）、`CHAT_CREATED`/`CHAT_DELETED`（聊天文件新建/删除）、`STREAM_REASONING_DONE`（reasoning 流式结束）、`TOOL_CALLS_PERFORMED`/`TOOL_CALLS_RENDERED`（工具调用）。
 
 ### 4.5 Snapshot 数据
 
@@ -236,15 +242,26 @@ P0 snapshot 尽量小，先服务原生 Chat UI：
 | 模块 | 文件 | 迁移关注点 |
 |---|---|---|
 | 主页面结构 | `SillyTavern/public/index.html` | Chat 容器、输入栏、选项菜单、消息模板、聊天文件弹窗、角色/群聊侧栏 |
-| 主聊天逻辑 | `SillyTavern/public/script.js` | 初始化、角色选择、聊天读取/保存、消息渲染、发送、生成、编辑、删除、swipe |
+| 主聊天逻辑 | `SillyTavern/public/script.js` | 初始化（`firstLoadInit`）、角色选择（`selectCharacterById`）、聊天读取/保存（`getChat`/`saveChatConditional`）、消息渲染（`redisplayChat`/`addOneMessage`）、发送（`sendTextareaMessage`/`sendMessageAsUser`）、生成（`Generate`/`StreamingProcessor`/`sendGenerationRequest`/`sendStreamingRequest`）、编辑（`messageEditDone`，注意：非 export）、删除（`deleteMessage`）、swipe（`swipe`/`syncSwipeToMes`）、停止（`stopGeneration`）|
 | 单聊辅助 | `SillyTavern/public/scripts/chats.js` | 附件、文件嵌入、媒体、隐藏消息、Data Bank、聊天工具初始化 |
-| 群聊逻辑 | `SillyTavern/public/scripts/group-chats.js` | 群聊读取/保存、群成员、群聊生成、新建/删除/导入群聊 |
+| 群聊逻辑 | `SillyTavern/public/scripts/group-chats.js` | 群聊读取/保存、群成员、群聊生成（`regenerateGroup`）、新建/删除/导入群聊 |
 | Chat Completion | `SillyTavern/public/scripts/openai.js` | OpenAI/Claude/OpenRouter 等 Chat Completion 提示词组装和请求 |
-| 事件总线 | `SillyTavern/public/scripts/events.js` | 消息、聊天、生成、角色、群聊等生命周期事件 |
-| API 注册 | `SillyTavern/src/server-startup.js` | `/api/chats`、`/api/characters`、`/api/groups`、`/api/backends/*` 路由挂载 |
-| 聊天 API | `SillyTavern/src/endpoints/chats.js` | 聊天文件读写、导入导出、搜索、群聊聊天文件 |
-| 角色 API | `SillyTavern/src/endpoints/characters.js` | 角色列表、角色详情、角色聊天列表、角色增删改导入导出 |
-| 群聊 API | `SillyTavern/src/endpoints/groups.js` | 群聊元数据增删改查 |
+| 工具调用 | `SillyTavern/public/scripts/tool-calling.js` | `ToolManager`：工具调用支持检测、调用执行、渲染。`StreamingProcessor` 内部会收集 `toolCalls` 并在流结束后调用 `ToolManager.invokeFunctionTools` |
+| 事件总线 | `SillyTavern/public/scripts/events.js` | 103 个事件类型，Bridge adapter 需监听的核心事件见 4.4 节 |
+| 世界书 | `SillyTavern/public/scripts/world-info.js` | 世界书扫描和激活逻辑，`Generate()` 内部调用 |
+| 推理/reasoning | `SillyTavern/public/scripts/reasoning.js` | reasoning 展示和编辑，影响消息渲染和 `extra.reasoning` 字段 |
+| Swipe 选择器 | `SillyTavern/public/scripts/swipe-picker.js` | swipe 选择 UI 和跳转逻辑 |
+| Author's Note | `SillyTavern/public/scripts/authors-note.js` | Author's Note 面板和提示词注入 |
+| CFG Scale | `SillyTavern/public/scripts/cfg-scale.js` | CFG 面板和参数 |
+| Slash 命令 | `SillyTavern/public/scripts/slash-commands.js` + `slash-commands/` | slash command 解析、执行，`processCommands()` 在 `Generate()` 前调用 |
+| 常量定义 | `SillyTavern/public/scripts/constants.js` | `SWIPE_STATE`、`SWIPE_DIRECTION`、`SWIPE_SOURCE`、`MEDIA_TYPE` 等枚举 |
+| SSE 流处理 | `SillyTavern/public/scripts/sse-stream.js` | Server-Sent Events 流解析 |
+| API 注册 | `SillyTavern/src/server-startup.js` | 路由挂载：`/api/chats`、`/api/characters`、`/api/groups`、`/api/backends/*`、`/api/settings`、`/api/worldinfo`、`/api/novelai`、`/api/horde` 等 30+ 路由 |
+| 服务主入口 | `SillyTavern/src/server-main.js` | CSRF（`/csrf-token` GET）、ping（`/api/ping` POST）、版本（`/version` GET）、Express 配置 |
+| 聊天 API | `SillyTavern/src/endpoints/chats.js` | 聊天文件读写、导入导出、搜索、最近聊天、群聊聊天文件 |
+| 角色 API | `SillyTavern/src/endpoints/characters.js` | 角色列表、角色详情、角色聊天列表、角色增删改导入导出、重命名、属性编辑 |
+| 群聊 API | `SillyTavern/src/endpoints/groups.js` | 群聊元数据增删改查（all、create、edit、delete） |
+| 设置 API | `SillyTavern/src/endpoints/settings.js` | 设置读写、快照管理 |
 
 ### 5.2 Android 侧入口
 
@@ -294,6 +311,16 @@ Web 端角色入口主要在右侧角色面板：
 
 从原生角色页进入 Chat 时，先通过 API 确定 `avatar_url` 和目标 `chatFile`，再通过 Bridge 发送 `chat.openCharacter`，由 ST runtime 选择角色并打开聊天。
 
+> **`openCharacterChat(file_name)` 内部行为**：
+> 1. 等待当前保存完成（`waitUntilCondition(() => !isChatSaving)`）
+> 2. `clearChat({ clearData: true })` 清空当前聊天 UI 和数据
+> 3. 设置 `characters[this_chid].chat = file_name`
+> 4. 重置 `chat_metadata = {}`
+> 5. `await getChat()` 重新加载聊天
+> 6. `createOrEditCharacter()` 保存角色的当前聊天指向
+>
+> 因此 adapter 调用前必须确保 `this_chid` 已正确设置（通过 `selectCharacterById` 先选中角色）。如果是打开当前角色的不同历史聊天，可以直接调用 `openCharacterChat`；如果是切换角色，必须先 `selectCharacterById` 再等待 `getChat` 完成。
+
 ### 6.3 输入栏入口
 
 Web 端输入栏核心入口：
@@ -333,7 +360,7 @@ Runtime WebView 内部负责把文本放入 ST 输入状态并触发原版发送
 
 | 菜单项 | Web 端动作 | 原生迁移优先级 | 推荐通道 |
 |---|---|---|---|
-| 新建聊天 | `doNewChat()` | P0 | Bridge |
+| 新建聊天 | `doNewChat({ deleteCurrentChat? })`，deleteCurrentChat=true 会删除当前聊天后新建 | P0 | Bridge |
 | 管理聊天文件 | `displayPastChats()` | P1 | API + 活动聊天 Bridge 同步 |
 | 重生成 | `Generate('regenerate')` | P0/P1 | Bridge |
 | 继续 | `Generate('continue')` | P1 | Bridge |
@@ -348,11 +375,11 @@ Runtime WebView 内部负责把文本放入 ST 输入状态并触发原版发送
 | 操作 | Web 端能力 | 迁移优先级 | 推荐通道 |
 |---|---|---|---|
 | 复制 | 复制消息文本 | P0 | 原生 |
-| 编辑 | `messageEditDone()` 后保存 | P1 | Bridge |
+| 编辑 | `messageEditDone(div)` 后保存（注意：此函数非 export，Bridge 需要包装调用） | P1 | Bridge |
 | 删除 | `deleteMessage()` | P1 | Bridge |
 | 隐藏/取消隐藏 | 设置 `message.is_system` | P1/P2 | Bridge |
 | swipe 切换 | `syncSwipeToMes()` | P1/P2 | Bridge |
-| swipe 生成 | `swipe(..., { swipeId })` | P2 | Bridge |
+| swipe 生成 | `swipe(event, direction, { source, repeated, message, forceMesId, forceSwipeId, forceDuration })` | P2 | Bridge |
 | 上移/下移 | 调整消息顺序 | P2 | Bridge |
 | 朗读 | TTS | P3 | 原生或 Bridge |
 | 翻译、生图 | 扩展能力 | P3 | 后续评估 |
@@ -413,8 +440,10 @@ SillyTavern 聊天文件是 JSONL：
 1. `is_user=true` 表示用户消息。
 2. `is_system=true` 表示隐藏或特殊系统消息，不能简单删除。
 3. `extra.reasoning`、`extra.tool_invocations`、`extra.media`、`extra.files` 都会影响渲染或提示词组装。
-4. `swipes` + `swipe_id` 是候选回复机制，切换 swipe 时要同步 `mes`。
+4. `swipes` + `swipe_id` 是候选回复机制，切换 swipe 时 `syncSwipeToMes()` 会将 `swipes[swipe_id]` 同步到 `mes` 字段。
 5. 原生端必须保留未知字段，不要在镜像转换时丢字段。
+6. `saveReply()` 当前签名为 `saveReply({ type, getMessage, fromStreaming, title, swipes, reasoning, imageUrls, reasoningSignature })`，其中 `reasoning` 和 `reasoningSignature` 是新增字段，支持 thinking/reasoning 模型。
+7. `extra.tool_invocations` 是 tool calling 记录数组，`ToolManager` 在流结束后通过 `invokeFunctionTools` 执行工具调用并将结果写入此字段。包含 `tool_invocations` 的系统消息在生成时不会被过滤掉（`canUseTools` 条件判断）。
 
 ## 8. 核心流程
 
@@ -447,31 +476,53 @@ SillyTavern 聊天文件是 JSONL：
 ```text
 用户在原生输入框点击发送
   -> Native ChatController 发送 bridge command chat.send
-  -> JS runtime 复用 sendTextareaMessage / Generate('normal')
-      -> processCommands()
-      -> sendMessageAsUser()
-      -> saveChatConditional()
-      -> 组装提示词、世界书、Author's Note、CFG、扩展注入
-      -> sendGenerationRequest() 或 sendStreamingRequest()
-      -> saveReply()
-      -> saveChatConditional()
-  -> JS runtime 将 message/generation 事件回传原生
+  -> JS runtime adapter 将文本写入 #send_textarea 并调用 sendTextareaMessage()
+      -> sendTextareaMessage() 检查 swipeState，若非 NONE 则拒绝
+      -> Generate('normal', ...)
+          -> emit GENERATION_STARTED
+          -> processCommands()（处理 slash commands，可能中断生成）
+          -> sendMessageAsUser()（将用户消息添加到 chat[]）
+          -> saveChatConditional()
+          -> 组装提示词、世界书扫描（world-info.js）、Author's Note、CFG、扩展注入
+          -> ToolManager.canPerformToolCalls() 检查工具调用
+          -> 流式：new StreamingProcessor() + sendStreamingRequest()
+          -> 非流式：sendGenerationRequest()
+          -> saveReply({type, getMessage, ...})（保存 AI 回复到 chat[]）
+          -> saveChatConditional()
+          -> 若 auto_swipe 启用且回复被过滤 -> 自动调用 swipe()
+          -> emit GENERATION_ENDED
+      -> JS runtime adapter 将 message/generation 事件转发给 Android Bridge
   -> 原生 ChatStore 增量更新 UI
 ```
 
-P0 可以采用“发送后等待 snapshot 刷新”的保守方式；P1 再做 streaming delta 级别更新。
+> **关键注意**：`Generate()` 完整签名为 `Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema, depth }, dryRun)`。adapter 调用时只需传 `type` 即可，其余参数使用默认值。
+>
+> **swipeState 保护**：`sendTextareaMessage()` 在 `swipeState == EDITING` 或 `!= NONE` 时会直接 return，adapter 需要感知此状态以给原生 UI 正确反馈。
+
+P0 可以采用”发送后等待 snapshot 刷新”的保守方式；P1 再做 streaming delta 级别更新。
 
 ### 8.3 停止生成
 
 ```text
 用户点击停止
   -> Android 发送 generation.stop
-  -> JS runtime 调用 stopGeneration()
-      -> streamingProcessor.onStopStreaming()
-      -> abortController.abort()
-      -> emit GENERATION_STOPPED
-  -> JS runtime 回传 generation.stopped + 最新 snapshot
+  -> JS runtime adapter 调用 stopGeneration()（script.js:5518）
+      -> if (streamingProcessor) streamingProcessor.onStopStreaming()
+         -> this.abortController.abort()（StreamingProcessor 自有的 AbortController）
+         -> this.isFinished = true
+      -> if (abortController) abortController.abort('Clicked stop button')
+         （模块级 abortController，用于非流式请求）
+         -> hideStopButton()
+      -> eventSource.emit(GENERATION_STOPPED)
+  -> adapter 监听 GENERATION_STOPPED 事件
+  -> 回传 generation.stopped + 最新 snapshot 给 Android
 ```
+
+> **注意**：`stopGeneration()` 中有两个不同的 `abortController`：
+> 1. `streamingProcessor.abortController` — `StreamingProcessor` 实例自有，用于中止流式生成
+> 2. 模块级 `abortController`（`script.js:628`）— 用于中止非流式请求
+>
+> 两者都会被 abort。adapter 不需要区分，直接调用 `stopGeneration()` 即可。
 
 原生端不要自己取消后端 HTTP 请求，除非后续进入完整原生生成链路。
 
@@ -500,9 +551,13 @@ P1 起，编辑和删除也应通过 Bridge 调用 ST 前端函数，确保：
 |---|---|---|---|
 | `/csrf-token` | GET | 获取 CSRF token | P0 |
 | `/api/ping` | POST | 服务可达检查 | P0 |
-| `/version` | GET | 版本信息 | P0/P1 |
+| `/version` | GET | 版本信息（定义在 `server-main.js`） | P0/P1 |
 | `/api/settings/get` | POST | 获取全局设置 | P0 |
 | `/api/settings/save` | POST | 保存全局设置 | P1 |
+| `/api/settings/get-snapshots` | POST | 获取设置快照列表 | P2 |
+| `/api/settings/make-snapshot` | POST | 创建设置快照 | P2 |
+| `/api/settings/load-snapshot` | POST | 加载设置快照 | P2 |
+| `/api/settings/restore-snapshot` | POST | 恢复设置快照 | P2 |
 
 ### 9.2 角色 API
 
@@ -514,6 +569,12 @@ P1 起，编辑和删除也应通过 Bridge 调用 ST 前端函数，确保：
 | `/api/characters/create` | POST FormData | 新建角色 | API，已由角色原生页承接 |
 | `/api/characters/edit` | POST FormData | 保存角色 | API，已由角色原生页承接 |
 | `/api/characters/import` | POST FormData | 导入角色 | API，已由角色原生页承接 |
+| `/api/characters/rename` | POST | 重命名角色 | API |
+| `/api/characters/edit-avatar` | POST | 修改角色头像 | API |
+| `/api/characters/edit-attribute` | POST | 修改角色单个属性 | API |
+| `/api/characters/merge-attributes` | POST | 批量合并角色属性 | API |
+| `/api/characters/duplicate` | POST | 复制角色 | API |
+| `/api/characters/delete` | POST | 删除角色 | API |
 | `/api/characters/export` | POST | 导出角色 | API，已由角色原生页承接 |
 
 ### 9.3 单聊 Chat API
@@ -559,7 +620,11 @@ P1 起，编辑和删除也应通过 Bridge 调用 ST 前端函数，确保：
 | `novel` | `POST /api/novelai/generate` | NovelAI |
 | `koboldhorde` | `POST /api/horde/generate-text` | Horde 不是普通同步生成 |
 
-注意：这些接口不应作为 Chat 原生迁移 P0 的直接入口。P0/P1 由 Bridge 调用 ST runtime，后续若要做完整原生生成，需要单独设计 Prompt Builder、World Info、Extensions、Streaming Processor 和兼容测试。
+注意：
+
+1. 这些接口不应作为 Chat 原生迁移 P0 的直接入口。P0/P1 由 Bridge 调用 ST runtime，后续若要做完整原生生成，需要单独设计 Prompt Builder、World Info、Extensions、Streaming Processor 和兼容测试。
+2. 所有后端路由在 `server-startup.js` 中挂载，前端通过 `sendGenerationRequest()` 和 `sendStreamingRequest()` 两个统一入口发送请求（`script.js:6027,6058`），内部根据 `main_api` 选择对应路由。
+3. 流式生成使用 Server-Sent Events，前端解析在 `scripts/sse-stream.js`。`StreamingProcessor` 类（`script.js:3461`）负责逐 token 更新 DOM、收集 tool calls、处理 reasoning token，并在结束后触发 `saveReply()` 和 `saveChatConditional()`。
 
 ## 10. 原生模块建议
 
@@ -666,6 +731,24 @@ Streaming 每个 token 都通过 `@JavascriptInterface` 回调可能造成频繁
 
 `Generate()` 在真正发送前会执行 `processCommands()`，扩展也可以阻止或修改生成。只要复用 ST runtime，这些能力能最大程度保留；但原生 UI 必须能展示命令错误、扩展提示或生成被拦截的结果。
 
+### 12.6 Tool Calling 和 Reasoning
+
+当前 ST 前端支持 tool calling（`ToolManager` + `StreamingProcessor.toolCalls`）和 reasoning/thinking（`extra.reasoning`、`reasoningSignature`、`STREAM_REASONING_DONE` 事件）。这两个能力对原生 UI 有以下影响：
+
+1. **Tool calling**：生成可能不直接产生回复文本，而是先执行工具调用，然后递归调用 `Generate(type, {..., depth: depth+1})` 继续生成。原生 UI 需要能展示"工具调用中"状态，以及工具调用结果（`TOOL_CALLS_PERFORMED`/`TOOL_CALLS_RENDERED` 事件）。
+2. **Reasoning**：streaming 期间可能先收到 reasoning tokens（不可见于最终消息），再收到实际回复。原生 UI 需要决定是否展示 reasoning 折叠区域。`extra.reasoning` 字段和 `extra.reasoningSignature` 需要在 snapshot 中传递。
+3. **递归生成深度**：`Generate()` 有 `depth` 参数和 `ToolManager.RECURSE_LIMIT` 限制。Bridge adapter 不需要感知递归，但需要正确传递中间状态事件。
+
+### 12.7 SWIPE_STATE 和并发保护
+
+`script.js` 维护全局 `swipeState`（枚举：`NONE`、`SWIPING`、`EDITING`），多个操作会检查此状态：
+
+- `sendTextareaMessage()` 在 `swipeState != NONE` 时拒绝发送
+- swipe 操作在 `SWIPING` 时互斥
+- 编辑中的 swipe 需要先确认
+
+Bridge adapter 需要在命令失败时向原生端返回明确的错误原因（如"swipe 编辑中，无法发送"），而不是静默丢弃。
+
 ## 13. 验收清单
 
 ### P0 验收
@@ -714,4 +797,38 @@ Streaming 每个 token 都通过 `@JavascriptInterface` 回调可能造成频繁
 6. 补群聊、Author's Note、世界书和扩展相关能力。
 7. 最后再评估是否抽离部分生成链路到原生端。
 
-阶段性目标应该是“原生 UI 体验明显改善，但聊天语义仍和原版 ST 一致”。在没有契约测试前，不建议重写提示词组装和生成请求。
+阶段性目标应该是”原生 UI 体验明显改善，但聊天语义仍和原版 ST 一致”。在没有契约测试前，不建议重写提示词组装和生成请求。
+
+## 15. v0.3 审查变更记录
+
+v0.3 基于对 SillyTavern 源码的逐行审查，修正和补充了以下内容：
+
+### 修正
+
+1. **`messageEditDone` 非 export**：此函数在 `script.js:8288` 定义但未 export，Bridge adapter 无法直接调用，需要在 adapter 注入时包装暴露。
+2. **`swipe()` 签名过时**：从 `swipe(..., { swipeId })` 修正为完整签名 `swipe(event, direction, { source, repeated, message, forceMesId, forceSwipeId, forceDuration })`。
+3. **`stopGeneration()` 双 AbortController 说明**：`StreamingProcessor.abortController`（流式）和模块级 `abortController`（非流式）是两个不同对象，均会被 abort。
+4. **`doNewChat` 签名**：补充 `{ deleteCurrentChat }` 参数说明。
+
+### 补充
+
+1. **事件映射表**：补充了 ST 原生事件名与 Bridge 事件的对应关系，标注了 ST 事件命名不一致问题。
+2. **P1+ 额外事件**：补充 `MESSAGE_EDITED`、`MESSAGE_SWIPED`、`MESSAGE_SWIPE_DELETED`、`MESSAGE_REASONING_*`、`CHAT_CREATED`/`CHAT_DELETED`、`STREAM_TOKEN_RECEIVED`、`STREAM_REASONING_DONE`、`TOOL_CALLS_*` 等事件。
+3. **代码入口地图大幅扩展**：新增 tool-calling.js、reasoning.js、swipe-picker.js、authors-note.js、cfg-scale.js、slash-commands、constants.js、sse-stream.js、server-main.js、settings.js 等模块。
+4. **角色 API 补全**：新增 rename、edit-avatar、edit-attribute、merge-attributes、duplicate、delete 路由。
+5. **设置 API 快照路由**：新增 get-snapshots、make-snapshot、load-snapshot、restore-snapshot。
+6. **新增风险章节**：12.6 Tool Calling 和 Reasoning、12.7 SWIPE_STATE 和并发保护。
+7. **`openCharacterChat` 内部行为**：详细说明了 5 步内部流程和 `this_chid` 前置条件。
+8. **`Generate()` 完整签名和流程**：补充了 swipeState 保护、ToolManager 检查、auto_swipe 等关键步骤。
+9. **`saveReply()` 新增字段**：reasoning、reasoningSignature、imageUrls。
+10. **`extra.tool_invocations`** 对消息过滤的影响说明。
+
+### 验证通过（无需修改）
+
+- 所有 P0 命令和事件的 Bridge 设计
+- 单一事实源分工
+- API 路由路径和方法
+- 核心函数名和所在文件
+- 架构分层和迁移路线建议
+- JSONL 聊天文件结构
+- ChatMessage 核心字段
