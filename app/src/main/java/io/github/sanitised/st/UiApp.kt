@@ -13,10 +13,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -29,10 +27,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.github.sanitised.st.api.CharacterSummary
+import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.ui.screens.DashboardLibrarySections
+import io.github.sanitised.st.ui.screens.DashboardStatusCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -40,7 +41,6 @@ import kotlinx.coroutines.withContext
 @Composable
 fun STAndroidApp(
     status: NodeStatus,
-    busyMessage: String,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpen: () -> Unit,
@@ -82,9 +82,11 @@ fun STAndroidApp(
     customOperationCancelable: Boolean,
     onCancelCustomOperation: () -> Unit,
     onShowSettings: () -> Unit,
-    onShowManageSt: () -> Unit
+    onShowManageSt: () -> Unit,
+    recentChats: List<ChatSummary> = emptyList(),
+    recentCharacters: List<CharacterSummary> = emptyList(),
+    onShowCharacters: () -> Unit = {}
 ) {
-    val isBusy = busyMessage.isNotBlank()
     val readyState = remember { mutableStateOf(false) }
     val wasReadyToAutoOpen = remember { mutableStateOf(false) }
     LaunchedEffect(status.state, status.port) {
@@ -107,7 +109,6 @@ fun STAndroidApp(
         }
     }
     val readyToAutoOpen = status.state == NodeState.RUNNING && readyState.value
-    val canOpen = !isBusy && status.state != NodeState.STARTING && status.state != NodeState.STOPPING
     LaunchedEffect(readyToAutoOpen, autoOpenBrowserWhenReady) {
         val justBecameReady = readyToAutoOpen && !wasReadyToAutoOpen.value
         if (autoOpenBrowserWhenReady && justBecameReady && !autoOpenBrowserTriggeredForCurrentRun) {
@@ -190,6 +191,22 @@ fun STAndroidApp(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
+                    DashboardStatusCard(
+                        status = status,
+                        stLabel = stLabel,
+                        nodeLabel = nodeLabel,
+                        onStart = onStart,
+                        onStop = onStop,
+                        onOpenChat = onOpen
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    DashboardLibrarySections(
+                        recentChats = recentChats,
+                        characters = recentCharacters,
+                        onOpenChat = onOpen,
+                        onOpenCharacters = onShowCharacters
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
                             onClick = onShowLogs,
@@ -282,49 +299,6 @@ fun STAndroidApp(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
-
-                // Fixed bottom controls
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = busyMessage.ifBlank { status.message },
-                    modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Button(
-                        onClick = onStart,
-                        enabled = !isBusy && (status.state == NodeState.STOPPED || status.state == NodeState.ERROR),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(text = stringResource(R.string.start))
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Button(
-                        onClick = onStop,
-                        enabled = status.state == NodeState.RUNNING || status.state == NodeState.STARTING,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(text = stringResource(R.string.stop))
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = onOpen,
-                    enabled = canOpen,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = if (status.state == NodeState.RUNNING && !readyState.value) {
-                            stringResource(R.string.waiting_for_server)
-                        } else {
-                            stringResource(R.string.open_in_browser)
-                        }
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
             }
         }
 }
@@ -334,7 +308,6 @@ fun STAndroidApp(
 private fun STAndroidAppPreview() {
     STAndroidApp(
         status = NodeStatus(NodeState.STOPPED, "Idle"),
-        busyMessage = "",
         onStart = {},
         onStop = {},
         onOpen = {},
@@ -376,6 +349,17 @@ private fun STAndroidAppPreview() {
         customOperationCancelable = false,
         onCancelCustomOperation = {},
         onShowSettings = {},
-        onShowManageSt = {}
+        onShowManageSt = {},
+        recentChats = listOf(
+            ChatSummary(
+                id = "Seraphina/demo",
+                characterId = "Seraphina",
+                characterName = "Seraphina",
+                lastMessage = "Ready to continue."
+            )
+        ),
+        recentCharacters = listOf(
+            CharacterSummary(id = "Seraphina.png", name = "Seraphina")
+        )
     )
 }

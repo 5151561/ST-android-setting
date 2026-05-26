@@ -57,6 +57,9 @@ import androidx.navigation.compose.rememberNavController
 import io.github.sanitised.st.ui.navigation.BottomNavItem
 import io.github.sanitised.st.ui.navigation.STBottomBar
 import io.github.sanitised.st.ui.navigation.STRoutes
+import io.github.sanitised.st.ui.screens.CharacterHubScreen
+import io.github.sanitised.st.ui.screens.ToolsHubScreen
+import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
 import io.github.sanitised.st.ui.theme.STAppTheme
 import io.github.sanitised.st.ui.webview.ChatWebViewScreen
 import io.github.sanitised.st.ui.webview.WebViewTarget
@@ -126,6 +129,7 @@ class MainActivity : ComponentActivity() {
             val navController = rememberNavController()
             val navBackStackEntry by navController.currentBackStackEntryAsState()
             val currentRoute = navBackStackEntry?.destination?.route
+            val appPaths = remember { AppPaths(this@MainActivity) }
 
             val legalDocs = remember {
                 listOf(
@@ -176,6 +180,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            val librarySnapshot by rememberLocalTavernLibrarySnapshot(
+                dataRoot = appPaths.dataDir,
+                refreshKey = statusState.value.state
+            )
 
             val service = nodeServiceState.value
             DisposableEffect(service) {
@@ -200,7 +208,7 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(currentRoute) {
                 if (currentRoute != STRoutes.LOGS) return@LaunchedEffect
-                val paths = AppPaths(this@MainActivity)
+                val paths = appPaths
                 while (true) {
                     val logsDir = paths.logsDir
                     val stdoutFile = File(logsDir, "node_stdout.log")
@@ -315,7 +323,6 @@ class MainActivity : ComponentActivity() {
                             composable(STRoutes.HOME) {
                                 STAndroidApp(
                                     status = statusState.value,
-                                    busyMessage = viewModel.busyMessage,
                                     onStart = { startNode() },
                                     onStop = { stopNode() },
                                     onOpen = { navigateMainTab(STRoutes.CHAT) },
@@ -372,7 +379,10 @@ class MainActivity : ComponentActivity() {
                                     onShowSettings = {
                                         navigateMainTab(STRoutes.SETTINGS)
                                     },
-                                    onShowManageSt = { navController.navigate(STRoutes.MANAGE_ST) }
+                                    onShowManageSt = { navController.navigate(STRoutes.MANAGE_ST) },
+                                    recentChats = librarySnapshot.recentChats,
+                                    recentCharacters = librarySnapshot.characters,
+                                    onShowCharacters = { navigateMainTab(STRoutes.CHARACTERS) }
                                 )
                             }
 
@@ -388,24 +398,23 @@ class MainActivity : ComponentActivity() {
                             }
 
                             composable(STRoutes.CHARACTERS) {
-                                ChatWebViewScreen(
-                                    status = statusState.value,
-                                    target = WebViewTarget.CHARACTERS,
-                                    themeMode = themeMode,
-                                    onStartService = { startNode() },
-                                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
-                                    onBackToHome = { navigateMainTab(STRoutes.HOME) }
+                                CharacterHubScreen(
+                                    characters = librarySnapshot.characters,
+                                    onOpenChat = { navigateMainTab(STRoutes.CHAT) }
                                 )
                             }
 
                             composable(STRoutes.TOOLS) {
-                                ChatWebViewScreen(
-                                    status = statusState.value,
-                                    target = WebViewTarget.TOOLS,
-                                    themeMode = themeMode,
-                                    onStartService = { startNode() },
-                                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
-                                    onBackToHome = { navigateMainTab(STRoutes.HOME) }
+                                ToolsHubScreen(
+                                    serverRunning = statusState.value.state == NodeState.RUNNING ||
+                                            statusState.value.state == NodeState.STARTING ||
+                                            statusState.value.state == NodeState.STOPPING,
+                                    busyMessage = viewModel.busyMessage,
+                                    onExportData = triggerExport,
+                                    onImportData = triggerImport,
+                                    onOpenConfig = { navController.navigate(STRoutes.CONFIG) },
+                                    onOpenLogs = { navController.navigate(STRoutes.LOGS) },
+                                    onOpenManageSt = { navController.navigate(STRoutes.MANAGE_ST) }
                                 )
                             }
 
@@ -438,7 +447,10 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onUpdateDismiss = { viewModel.dismissAvailableUpdatePrompt() },
-                                    onCancelUpdateDownload = { viewModel.cancelUpdateDownload() }
+                                    onCancelUpdateDownload = { viewModel.cancelUpdateDownload() },
+                                    onOpenInBrowser = {
+                                        openSillyTavernInBrowser(statusState.value.port)
+                                    }
                                 )
                             }
 
@@ -457,7 +469,7 @@ class MainActivity : ComponentActivity() {
                                     onBack = { navController.popBackStack() },
                                     onOpenDocs = { openConfigDocs() },
                                     canEdit = statusState.value.state == NodeState.STOPPED || statusState.value.state == NodeState.ERROR,
-                                    configFile = AppPaths(this@MainActivity).configFile,
+                                    configFile = appPaths.configFile,
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
@@ -684,6 +696,10 @@ class MainActivity : ComponentActivity() {
     private fun openUrl(url: String) {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         startActivity(intent)
+    }
+
+    private fun openSillyTavernInBrowser(port: Int) {
+        openUrl(SillyTavernUrl.localWebUrl(port))
     }
 
     private fun readConfiguredPort(): Int {

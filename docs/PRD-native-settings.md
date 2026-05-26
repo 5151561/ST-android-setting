@@ -1,15 +1,15 @@
 # PRD：ST Android 移动端客户端改造
 
-版本：v0.2
+版本：v0.5
 日期：2026-05-26
-状态：Phase 0 已完成，M0 待启动
-变更记录：v0.1 → v0.2 策略转型，从"全量 Compose Native 重写"调整为"内置 WebView + Android Bridge + 移动端前端补丁"
+状态：Phase 0 已完成，M0 已验收，M1 已验收
+变更记录：v0.1 → v0.2 策略转型，从"全量 Compose Native 重写"调整为"内置 WebView + Android Bridge + 移动端前端补丁"；v0.2 → v0.3 更新 M0 完成状态与验收边界；v0.3 → v0.4 调整 M1：不改 SillyTavern 自带移动界面，转向 App 自有页面建设；v0.4 → v0.5 更新 M1 验收结果，移除 Characters/Tools 伪 WebView 深入口，将外部浏览器入口收敛到设置页
 
 ---
 
 ## 1. 一句话定义
 
-将 ST-android 从"启动器 + 外部浏览器"改造为"内置移动端容器 + 移动端优化版 SillyTavern 前端"——App 内运行 SillyTavern 服务，通过内置 WebView、Android Bridge 和移动端 CSS/JS 补丁，提供接近原生 App 的聊天体验。
+将 ST-android 从"启动器 + 外部浏览器"改造为"内置移动端容器 + App 自有管理页面 + 原版 SillyTavern WebView"——App 内运行 SillyTavern 服务，通过内置 WebView 承接完整原版前端，通过 Compose 建设 Android 专属首页、管理页和高频入口。
 
 ---
 
@@ -27,11 +27,11 @@
 | 应用设置（主题、更新、电池） | 已有 |
 | 管理 ST 安装（备份/导入/自定义源/GitHub 安装） | 已有 |
 | 法律信息展示 | 已有 |
-| App 内聊天 | **无**（跳外部浏览器） |
-| 移动端 UI 适配 | **无** |
-| Android 原生能力桥接 | **无** |
+| App 内聊天 | 已有（M0：内置 WebView） |
+| App 自有移动端页面 | 已有（M1：首页工作台、角色入口、工具入口） |
+| Android 原生能力桥接 | 基础文件选择/运行信息已接入，M1+ 继续增强 |
 
-用户启动 Core 后，通过 `Intent(Intent.ACTION_VIEW, Uri.parse("http://127.0.0.1:$port/"))` 跳转系统浏览器访问 SillyTavern。App 本身只是一个启动器。
+M0 之前，用户启动 Core 后通过 `Intent(Intent.ACTION_VIEW, Uri.parse("http://127.0.0.1:$port/"))` 跳转系统浏览器访问 SillyTavern。M0 已改为内置 WebView，App 不再只是一个启动器。
 
 ### 2.2 v0.1 → v0.2 策略调整
 
@@ -44,12 +44,15 @@ v0.1 PRD 计划用 Jetpack Compose 原生重写 SillyTavern 的 22 个屏幕（�
 
 v0.2 策略：**先用 WebView 承接原版 SillyTavern 前端，再用移动端补丁和原生桥接逐步"App 化"。**
 
+v0.4 策略调整：SillyTavern 原版前端已经具备手机适配界面，M1 不再投入 CSS/JS 去改它的自带 UI。WebView 保持接近上游原样；App 化体验改由 Compose 自有页面承担。
+
 ### 2.3 新定位
 
-> SillyTavern Android Native Shell + Mobile Frontend Patch
+> SillyTavern Android Native Shell + App Pages
 
 - 保留原版 SillyTavern 的后端、数据结构、角色卡、聊天记录、API 配置、世界书等全部能力
-- 在 Android 上提供更像 App 的使用体验
+- WebView 内保持 SillyTavern 原版移动端界面，减少上游同步成本
+- 在 WebView 外提供更像 App 的首页、管理页、快捷入口和系统能力
 - 核心聊天、角色、预设、世界书、导入导出必须稳定
 - 第三方扩展作为实验性能力，不承诺完整兼容
 
@@ -57,7 +60,7 @@ v0.2 策略：**先用 WebView 承接原版 SillyTavern 前端，再用移动端
 1. 不需要用户装 Termux 或理解 Node.js
 2. 不需要完全重写 SillyTavern 前端
 3. 可以持续跟随上游版本更新
-4. 前端可渐进式移动端优化
+4. App 自有页面可渐进式增强，不与 SillyTavern 上游 UI 产生长期冲突
 
 ### 2.4 设计来源
 
@@ -67,7 +70,7 @@ Open Design 原型位于项目外部，包含 22 个屏幕的完整设计稿。�
 - 统一的颜色、间距、圆角、字体 Token 系统
 - 每个屏幕的布局结构和交互状态
 
-v0.2 中，设计稿仍作为 Compose Shell 管理页面（首页、设置、管理）和 android-mobile.css 移动端适配的视觉参考。
+v0.5 中，设计稿作为 Compose Shell 和 App 自有页面的视觉参考；不再用于改写 SillyTavern 原版 Web UI。
 
 ---
 
@@ -75,11 +78,11 @@ v0.2 中，设计稿仍作为 Compose Shell 管理页面（首页、设置、管
 
 ### 3.1 WebView First, Native Shell
 
-SillyTavern 完整前端通过内置 WebView 加载。App 的 Compose Shell 负责：启动页、管理页、设置页、日志页、备份/恢复。聊天/角色/工具等复杂 UI 由 WebView 承载。
+SillyTavern 完整前端通过内置 WebView 加载。App 的 Compose Shell 负责：启动页、首页、角色入口、工具入口、设置页、日志页、备份/恢复。聊天和复杂编辑继续由 WebView 承载。
 
-### 3.2 补丁而非重写
+### 3.2 尊重上游 Web UI
 
-不 fork SillyTavern 前端代码。通过 `android-patches/` 目录管理 CSS/JS 补丁，构建时注入，保持与上游同步能力。
+不 fork、不大规模覆盖 SillyTavern 前端界面。原版 Web UI 已有移动端适配，WebView 内保持接近上游原样。必要的补丁只用于兼容、Bridge 胶水或严重设备问题，不作为 M1 主线。
 
 ### 3.3 Bridge 做可选增强
 
@@ -87,7 +90,7 @@ SillyTavern 完整前端通过内置 WebView 加载。App 的 Compose Shell 负�
 
 ### 3.4 Core 负责业务，App 负责体验
 
-App 不重写提示词构建、世界书触发等业务逻辑。这些继续由 SillyTavern Core + 前端 JS 处理。App 只负责进程管理、原生桥接和移动端体验优化。
+App 不重写提示词构建、世界书触发等业务逻辑。这些继续由 SillyTavern Core + 前端 JS 处理。App 负责进程管理、原生桥接、Android 专属入口和自有管理体验。
 
 ### 3.5 渐进式改造
 
@@ -131,12 +134,14 @@ Android App
 │   ├── TTS/STT
 │   └── Theme Sync
 │
-└── SillyTavern Mobile Patch
-    ├── android-mobile.css
-    ├── android-bridge.js
-    ├── mobile-home.js
-    ├── keyboard-fix.js
-    └── feature-flags.js
+└── App Native Pages
+    ├── Android 首页工作台
+    ├── 继续聊天 / 最近聊天 / 最近角色
+    ├── 角色入口页
+    ├── 工具入口页
+    ├── 管理与备份
+    ├── 诊断与日志
+    └── 设置页外部浏览器入口
 ```
 
 ### 4.2 导航结构
@@ -148,14 +153,14 @@ MainActivity
           ├─ STBottomBar（条件显示：WebView 全屏时隐藏）
           └─ NavHost
               ├─ home        → Compose 首页
-              ├─ chat        → ChatWebViewScreen（内置 WebView）
-              ├─ characters  → ChatWebViewScreen（导航到角色页）
-              ├─ tools       → ChatWebViewScreen（导航到工具页）
+              ├─ chat        → ChatWebViewScreen（原版 SillyTavern WebView）
+              ├─ characters  → Compose 角色入口页（M1 起）
+              ├─ tools       → Compose 工具入口页（M1 起）
               ├─ settings    → Compose 设置页
               └─ 子路由       → logs / config / legal / manage 等
 ```
 
-底部导航栏的 Chat / Characters / Tools 三个 Tab 点击时，导航到 `ChatWebViewScreen` 并通过 JS 调用切换到 SillyTavern 对应的面板。
+Chat Tab 进入原版 SillyTavern WebView。Characters / Tools 从 M1 起进入 App 自有 Compose 页面，不提供伪深链到 SillyTavern 内部角色/工具面板；需要使用系统浏览器访问完整原版 Web UI 时，由设置页统一提供"在网页打开"入口。
 
 ### 4.3 关键技术选型
 
@@ -164,17 +169,17 @@ MainActivity
 | 聊天 UI | 内置 WebView | 复用 SillyTavern 完整前端，避免重写 |
 | 管理 UI | Jetpack Compose | 启动/设置/日志/备份等管理页面保持原生体验 |
 | 导航 | Navigation Compose 2.7 | 已实现，支持 back stack、deep link、状态恢复 |
-| 主题 | STTheme + Material3 | 已实现，管理页面用；同时通过 Bridge 同步到 WebView |
+| 主题 | STTheme + Material3 | 已实现，用于管理页面和 App 自有页面；WebView 内优先保留 ST 原版主题 |
 | 网络 | OkHttp 4.12 | 已引入，用于 TavernCoreApi 健康检查等 |
 | JS 桥接 | WebView.addJavascriptInterface | 标准 Android WebView Bridge 方案 |
-| 前端补丁 | CSS/JS 注入 | 构建时打包到 assets，WebView 加载时注入 |
+| 前端补丁 | 最小化兼容补丁 | 不作为 M1 主线，仅用于 Bridge 胶水、严重设备问题或上游无法覆盖的兼容性问题 |
 | 状态管理 | ViewModel + Compose State | 沿用现有模式 |
 
 ---
 
 ## 5. 设计 Token 系统
 
-从设计稿 `common.css` `:root` 提取，已实现在 `ui/theme/STColors.kt` 和 `ui/theme/STTheme.kt`。用于 Compose Shell 管理页面，并通过 Bridge 同步到 WebView 内的 `android-mobile.css`。
+从设计稿 `common.css` `:root` 提取，已实现在 `ui/theme/STColors.kt` 和 `ui/theme/STTheme.kt`。用于 Compose Shell 管理页面和 App 自有页面；WebView 内优先使用 SillyTavern 原版主题体系。
 
 ### 5.1 颜色
 
@@ -222,7 +227,7 @@ MainActivity
 
 ### 6.1 核心行为
 
-ChatWebViewScreen 是 App 的主交互界面，内嵌 WebView 加载 `http://127.0.0.1:{port}/`。
+ChatWebViewScreen 是 App 的完整 SillyTavern 界面入口，内嵌 WebView 加载 `http://127.0.0.1:{port}/`。
 
 **启动流程：**
 1. 用户点击聊天 Tab 或首页"开始聊天"按钮
@@ -237,12 +242,15 @@ ChatWebViewScreen 是 App 的主交互界面，内嵌 WebView 加载 `http://127
 - 文件访问启用（用于角色卡导入等）
 - Mixed Content 允许（localhost）
 - 注入 `STAndroidBridge` JS Interface
-- 加载完成后注入 `android-mobile.css` 和 `android-bridge.js`
+- 加载完成后注入 Android runtime flags
+- 不默认注入移动端 CSS 覆盖；只在兼容问题明确时追加最小补丁
 
 **导航控制：**
 - 返回键优先处理 WebView history（`webView.canGoBack()`）
 - WebView history 耗尽后返回 App 首页
-- 底部导航栏点击 Chat/Characters/Tools 时，通过 JS 调用 SillyTavern 内部导航
+- Chat Tab 进入 WebView；Characters/Tools Tab 从 M1 起进入 Compose 自有入口页
+- Characters/Tools 不再通过 JS 猜测或点击 SillyTavern 内部面板，避免进入不可预期页面后无法自然回到 App 原生页
+- 系统浏览器打开完整原版 Web UI 的入口放在设置页
 
 **错误处理：**
 - 服务未启动 → 本地错误页 + 启动按钮
@@ -252,12 +260,14 @@ ChatWebViewScreen 是 App 的主交互界面，内嵌 WebView 加载 `http://127
 
 ### 6.2 验收标准
 
+M0 验收聚焦"App 内可用，不再依赖外部浏览器"。M1 不再验收 SillyTavern Web UI 的移动端 CSS 改造，而是验收 App 自有页面建设。
+
 1. 用户点击"开始聊天"后，不跳外部浏览器
 2. App 内直接进入 SillyTavern 完整 UI
 3. 返回键正确处理 WebView history
 4. Node 崩溃时，WebView 显示本地错误页
-5. 文件上传、角色卡导入走 Android 文件选择器
-6. 横竖屏、刘海屏、导航栏、键盘弹起不遮挡输入框
+5. 基础文件上传、角色卡导入走 Android 文件选择器
+6. 横竖屏/键盘有基础适配；后续只针对明确设备问题做兼容修复
 
 ---
 
@@ -312,102 +322,99 @@ SillyTavern 前端不强依赖 Android Bridge。在检测到 `window.STAndroid` 
 
 ---
 
-## 8. 移动端前端补丁系统
+## 8. App 自有页面建设策略
 
-### 8.1 android-mobile.css
+M1 开始不再以改造 SillyTavern Web UI 为目标。原版 SillyTavern 已有移动端界面，WebView 负责承载完整能力；App 自有页面负责 Android 专属体验和高频入口。
 
-只在 Android App WebView 内加载的 CSS 补丁，解决 SillyTavern 桌面优先布局在手机上的体验问题。
+### 8.1 M1 页面范围
 
-**核心适配方向：**
-
-```
-android-mobile.css
- ├── 全局 safe-area 适配（刘海屏、导航栏）
- ├── 输入区 keyboard inset 适配
- ├── 触控尺寸最小 44dp
- ├── 顶部栏按钮折叠（桌面版按钮太密）
- ├── 左右抽屉全屏化（桌面版太挤）
- ├── 弹窗 bottom-sheet 化（桌面版弹窗高度过大）
- ├── 聊天气泡宽度优化
- ├── 设置页单列布局
- ├── 角色列表卡片化
- └── 图片/附件预览移动端优化
-```
-
-**验收标准：**
-1. 单手可完成聊天、切角色、切预设
-2. 主要按钮触控面积 ≥ 44dp
-3. 键盘弹出时输入框始终可见
-4. 设置页不横向溢出
-5. 弹窗不超出屏幕
-6. Android 深色/浅色模式同步到 SillyTavern 主题
-
-### 8.2 补丁目录结构
+M1 建设一组 Compose 页面，目标是让用户打开 App 后先看到 Android 客户端自己的工作台，而不是只看到一个网页入口。
 
 ```
-android-patches/
-├── public/
-│   ├── android-mobile.css       # 移动端 CSS 补丁
-│   ├── android-bridge.js        # Bridge 胶水代码
-│   ├── mobile-home.js           # 移动端首页逻辑（M2）
-│   ├── keyboard-fix.js          # 键盘适配
-│   └── feature-flags.js         # 功能开关
-├── patch-loader.js              # 补丁加载入口
-└── patches/
-    ├── inject-android-assets.patch  # 注入 CSS/JS 引用
-    ├── mobile-keyboard-fix.patch    # 键盘相关修改
-    └── mobile-file-picker.patch     # 文件选择器替换
+App 自有页面
+ ├── 首页 / 工作台
+ │   ├── 服务状态
+ │   ├── 启动 / 停止
+ │   ├── 继续聊天
+ │   ├── 最近聊天
+ │   ├── 最近角色
+ │   └── 管理入口（日志 / config / 设置 / Manage ST）
+ ├── 角色入口页
+ │   ├── 最近角色
+ │   ├── 角色空态
+ │   └── 返回聊天入口
+ ├── 工具入口页
+ │   ├── 备份 / 恢复
+ │   ├── 配置编辑
+ │   ├── 日志 / 诊断
+ │   └── Manage ST
+ └── 设置页优化
+     ├── 主题
+     ├── 自动打开
+     ├── 在网页打开
+     ├── 更新
+     └── 电池保活提示
 ```
 
-**构建流程：**
-```
-拉取 SillyTavern 上游
-→ 应用 android-patches/patches/*.patch
-→ 复制 android-patches/public/* 到 SillyTavern public/
-→ 打包进 APK assets
-```
+### 8.2 WebView 边界
 
-这比直接 fork SillyTavern 前端更容易维护，合并上游更新时只需 rebase patches。
+WebView 内保持 SillyTavern 原版移动端界面，不主动覆盖：
+- 聊天页布局
+- 角色编辑页布局
+- 世界书布局
+- 预设与连接设置布局
+- 弹窗、抽屉、按钮密度等原版移动端行为
+
+仅在以下情况下允许加入最小补丁：
+1. Android WebView 与上游前端存在明确兼容问题
+2. 文件选择、下载、分享等能力需要 Bridge 胶水
+3. 某些机型出现键盘或安全区严重遮挡，且无法通过 Activity / WindowInsets 解决
+4. 补丁不改变原版页面信息架构，不长期 fork 上游 UI
+
+### 8.3 数据来源
+
+M1 的自有页面以轻量数据为主：
+- 服务状态、端口、版本来自 `NodeStatus` 和 `STAndroidBridge.getRuntimeInfo()`
+- 最近聊天、角色列表优先通过本地 data 目录读取实现，后续可替换或补充 `TavernCoreApi`
+- 无稳定 API 的复杂操作仍由 Chat WebView 中的原版 SillyTavern UI 或设置页外部浏览器入口处理
+- M1 不提供 Characters/Tools 到原版 SillyTavern 内部面板的伪深入口
+- 不在 M1 重写提示词、世界书触发、预设编辑、扩展管理等复杂业务
 
 ---
 
 ## 9. 功能分层
 
-将 SillyTavern 前端功能分为 4 层，决定移动端投入程度。
+将功能分为 4 层，决定哪些做 App 自有页面，哪些继续交给原版 SillyTavern WebView。
 
-### L1：必须移动端优化
+### L1：App 自有页面优先
 
-直接影响可用性，必须做 CSS/Bridge 适配：
-
-| 功能 | 适配方式 |
-|---|---|
-| 聊天页 | CSS 气泡宽度 + 键盘适配 + 触控优化 |
-| 角色选择 | CSS 卡片化 + 搜索优化 |
-| 输入框 | keyboard-fix.js + safe-area |
-| 消息操作菜单 | CSS bottom-sheet 化 |
-| API 连接设置 | CSS 单列布局 |
-| 预设选择 | CSS 折叠 + 触控优化 |
-| 导入导出 | Bridge 文件选择器 |
-| 图片上传 | Bridge 相册/文件管理器 |
-| 日志/错误提示 | Compose 原生页面（已有） |
-
-### L2：响应式适配，保留 Web UI
-
-功能重要但不值得原生化，做 CSS 响应式补丁：
+高频、稳定、适合 Android 原生体验的功能，优先用 Compose 做入口或完整页面：
 
 | 功能 | 适配方式 |
 |---|---|
-| 世界书 | CSS 单列 + 折叠 |
-| 群聊 | CSS 适配 |
-| 用户 Persona | CSS 适配 |
-| 正则 Regex | CSS 单列 |
-| 文本补全参数 | CSS 折叠 |
-| 聊天记录管理 | CSS 适配 |
-| 角色编辑器 | CSS 表单适配 |
+| 首页 / 工作台 | Compose 原生 |
+| 服务启动/停止/状态 | Compose 原生 |
+| 日志/错误提示 | Compose 原生 |
+| 备份/恢复/导入导出 | Compose 原生 + Android 文件选择器 |
+| 设置（主题、更新、电池、自动打开） | Compose 原生 |
+| 最近聊天/最近角色入口 | Compose 原生 + 轻量数据读取 |
+| 在网页打开完整 SillyTavern | 设置页外部浏览器入口 |
 
-### L3：高级功能，"高级模式"中使用
+### L2：App 快捷入口 + WebView 完整能力
 
-暂时保持原版 Web UI，不做额外适配：
+功能重要，但完整编辑复杂。App 提供快捷入口、摘要或最近项，完整操作交给原版 WebView：
+
+| 功能 | 适配方式 |
+|---|---|
+| 角色管理 | M1 仅 Compose 最近入口；完整管理仍在原版 UI 中手动进入，M2 再增强 |
+| 预设选择/编辑 | M2+ Compose 摘要/入口；完整编辑仍由原版 UI 承载 |
+| 世界书 | M2+ Compose 快捷入口；完整编辑仍由原版 UI 承载 |
+| API 连接设置 | M2+ Compose 提示/入口；完整配置仍由原版 UI 承载 |
+| 图片/附件 | Bridge 能力 + WebView 原版 UI |
+
+### L3：高级模式中使用原版 WebView
+
+保持 SillyTavern 原版 UI，不做 App 原生化：
 
 - 高级提示词管理（Prompt Manager）
 - 复杂调试面板
@@ -441,9 +448,9 @@ android-patches/
 | API Key 管理器 | Compose 原生 | API 管理插件 |
 | 图片发送/压缩/预览 | Bridge | 图片处理插件 |
 | TTS/STT 原生桥接 | Bridge | 语音插件 |
-| 快捷回复栏 | Bridge + CSS | 快捷回复插件 |
-| 正则模板管理 | Bridge + CSS | 正则管理插件 |
-| 世界书快速开关 | Bridge + CSS | 世界书管理插件 |
+| 快捷入口 / 最近项 | Compose 原生 | 常用侧栏/启动页插件 |
+| 正则模板入口 | Compose 入口 + 原版 UI 承载复杂编辑 | 正则管理插件 |
+| 世界书快速入口 | Compose 入口 + 原版 UI 承载复杂编辑 | 世界书管理插件 |
 | 消息收藏 | Bridge | 收藏插件 |
 | 分享到 SillyTavern | Android Intent | 系统分享集成 |
 
@@ -454,8 +461,8 @@ android-patches/
 已定义在 `api/TavernCoreApi.kt`，当前为骨架。在 v0.2 策略下，其角色调整为：
 
 - **健康检查**：WebView 加载前探测 Core 是否 ready
-- **首页数据**：Compose 首页展示最近聊天/角色（轻量读取）
-- **移动端首页**（M2）：Compose 原生首页需要 API 数据
+- **App 首页数据**：Compose 首页展示最近聊天/角色（轻量读取）
+- **自有入口页数据**（M1 起）：角色入口、工具入口、最近聊天等页面需要轻量 API 或本地 data 读取
 
 不再承担驱动全部 UI 的职责。聊天、角色编辑、预设管理等复杂操作由 WebView 内的 SillyTavern 前端 JS 直接处理。
 
@@ -484,58 +491,87 @@ interface TavernCoreApi {
 
 Phase 0 的成果在 v0.2 策略下完全保留：
 - Compose Shell 继续作为管理页面框架
-- STTheme 继续驱动管理页面 + 通过 Bridge 同步到 WebView
-- 导航结构保留，Chat/Characters/Tools Tab 改为导航到 ChatWebViewScreen
+- STTheme 继续驱动管理页面和 App 自有页面
+- 导航结构保留，Chat 进入 ChatWebViewScreen，Characters/Tools 从 M1 起改为 App 自有入口页
 - TavernCoreApi 用于首页数据和健康检查
 
 ---
 
-### M0 — 验证版（预估 1-2 周）
+### M0 — 验证版 ✅ 已验收
 
 **目标：** 证明 App 内聊天可用，关闭外部浏览器依赖。
 
-| 任务 | 优先级 | 描述 |
-|---|---|---|
-| ChatWebViewScreen | P0 | WebView 容器页面，加载 `127.0.0.1:{port}` |
-| 服务 ready 检测 | P0 | Node 启动后轮询 healthCheck，ready 后自动加载 WebView |
-| 返回键处理 | P0 | WebView history 优先，耗尽后返回首页 |
-| 本地错误页 | P0 | 服务未启动/端口不可达/加载失败 三种错误页 |
-| 替换外部浏览器 | P0 | 移除 `Intent(ACTION_VIEW)` 跳转，改为内部导航 |
-| 横竖屏/键盘基础适配 | P1 | WebView 的 `windowSoftInputMode` 配置 |
+| 任务 | 优先级 | 状态 | 描述 |
+|---|---|---|---|
+| ChatWebViewScreen | P0 | ✅ 代码完成 | WebView 容器页面，加载 `127.0.0.1:{port}` |
+| 服务 ready 检测 | P0 | ✅ 代码完成 | Node 启动后轮询 healthCheck，ready 后自动加载 WebView |
+| 返回键处理 | P0 | ✅ 代码完成 | WebView history 优先，耗尽后返回首页 |
+| 本地错误页 | P0 | ✅ 代码完成 | 服务未启动/端口不可达/加载失败/Node 错误时显示本地错误页 |
+| 替换外部浏览器 | P0 | ✅ 代码完成 | 主入口从 `127.0.0.1:{port}` 外部浏览器跳转改为内部导航；外部文档/站点链接仍使用系统浏览器 |
+| 横竖屏/键盘基础适配 | P1 | ✅ 已验收 | `MainActivity` 使用 `windowSoftInputMode="adjustResize"` |
+| 文件上传基础接入 | P1 | ✅ 已验收 | WebView `onShowFileChooser` 接入 Android 文件选择器 |
 
-**验收：** 用户安装 APK 后，点一次就能在 App 内使用 SillyTavern，不跳外部浏览器。
+**代码验证：**
+- 2026-05-26 本地执行 `./gradlew testDebugUnitTest`：通过
+- 2026-05-26 本地执行 `./gradlew assembleDebug`：通过
+- Debug APK 已包含 `lib/arm64-v8a/libnode.so`、`assets/node_payload/st_bundle.tar` 和 `assets/node_payload/npm.tar`
 
----
+**真机验收：**
+1. ✅ 首次安装后点击聊天 Tab 或首页"Open SillyTavern"，自动启动 NodeService 并进入 App 内 WebView
+2. ✅ WebView 内 SillyTavern 首页/聊天页可正常渲染，不出现空白页或长时间 preloader
+3. ✅ 返回键先返回 WebView history，history 耗尽后回到 App 首页
+4. ✅ 角色卡导入、图片/文件上传弹出 Android 文件选择器，并能把选择结果交回 WebView
+5. ✅ 旋转屏幕、键盘弹起、系统导航栏显示时，聊天输入区至少可用
+6. ✅ 强制停止或崩溃 Node 后，WebView 区域显示本地错误页，并可进入日志页
 
-### M1 — 移动端可用版（预估 2-4 周）
-
-**目标：** 让原版 UI 在手机上不难用。
-
-| 任务 | 优先级 | 描述 |
-|---|---|---|
-| android-mobile.css | P0 | 全局 safe-area、触控尺寸、抽屉全屏化、弹窗 bottom-sheet 化 |
-| 键盘适配 | P0 | keyboard-fix.js，输入框始终可见 |
-| 文件桥接 | P0 | Bridge: openFilePicker / saveFile，替代 Web 文件选择 |
-| 主题同步 | P1 | App 深浅色模式同步到 SillyTavern CSS 变量 |
-| 顶部按钮折叠 | P1 | CSS 补丁收纳桌面版密集按钮 |
-| 设置页适配 | P1 | SillyTavern 设置页单列化 |
-| 下载桥接 | P2 | 备份下载走系统文件保存而非浏览器下载 |
-
-**验收：** 用户不再觉得这是"网页塞进 App"。单手可完成聊天、切角色、切预设。
+**M0 验收口径：** 用户安装 APK 后，点一次就能在 App 内使用 SillyTavern，不跳外部浏览器。当前状态为已验收，可进入 M1。
 
 ---
 
-### M2 — 移动端体验版（预估 4-8 周）
+### M1 — App 自有页面起步版 ✅ 已验收
 
-**目标：** 做出 App 感，与浏览器版拉开体验差距。
+**目标：** 在不改动 SillyTavern 原版移动端界面的前提下，建立 Android App 自己的首页、角色入口、工具入口和管理体验。
+
+| 任务 | 优先级 | 状态 | 描述 |
+|---|---|---|---|
+| App 首页 / 工作台 | P0 | ✅ 已验收 | Compose 首页展示 Core Service 卡片、启动/停止、继续聊天、最近聊天、最近角色和管理入口 |
+| 角色入口页 | P0 | ✅ 已验收 | Compose 页面展示最近角色和空态；不再提供不可控的 Full Manager 深入口 |
+| 工具入口页 | P0 | ✅ 已验收 | Compose 页面整合备份/恢复、config、日志、Manage ST |
+| 首页数据读取 | P0 | ✅ 已验收 | 通过本地 data 目录读取最近聊天/角色，失败时优雅降级为空态 |
+| 底部导航重分配 | P1 | ✅ 已验收 | Chat 保持 WebView；Characters/Tools 改为 App 自有页面；移除 WebView 伪深入口 |
+| 设置页整理 | P1 | ✅ 已验收 | 保留主题、更新、电池、自动打开；新增"在网页打开"外部浏览器入口 |
+| 首页底部 dock 去重 | P1 | ✅ 已验收 | 移除旧首页底部固定启动 dock，由 Core Service 卡片承担启动/停止/继续聊天 |
+| 文件桥接补齐 | P1 | ✅ 沿用 M0 | 保留 WebView `onShowFileChooser`；App 自有页暂不新增独立角色导入流程 |
+| WebView 兼容兜底 | P2 | ✅ 无新增补丁 | 只处理真机发现的明确 WebView/键盘/文件问题，不做 UI 覆盖型 CSS 补丁 |
+
+**代码验证：**
+- 2026-05-26 本地执行 `./gradlew testDebugUnitTest`：通过
+- 2026-05-26 本地执行 `./gradlew assembleDebug`：通过
+- 2026-05-26 通过无线调试安装 Debug APK 到真机 `SM_S9310`：成功
+
+**真机验收：**
+1. ✅ 用户打开 App 首屏能看到 Android 自有工作台和 Core Service 卡片
+2. ✅ 首页旧底部固定 dock 已移除，启动/停止/继续聊天由 Core Service 卡片承担
+3. ✅ Chat Tab 仍进入 App 内原版 SillyTavern WebView
+4. ✅ Characters Tab 进入 Compose 角色入口页，不再提供 Full Manager 深入口
+5. ✅ Tools Tab 进入 Compose 工具入口页，不再提供 Full Tools 深入口
+6. ✅ 设置页提供"在网页打开"入口，用系统浏览器访问 `http://127.0.0.1:{port}/`
+7. ✅ 最近聊天/角色读取失败或无数据时显示可理解空态
+
+**M1 验收口径：** 用户打开 App 后先看到 Android 自有工作台；高频管理入口不依赖在 SillyTavern Web UI 中寻找；Chat 保持原版 WebView；Characters/Tools 不做不可控的 WebView 内部深跳转。当前状态为已验收，可进入 M2。
+
+---
+
+### M2 — 高频原生体验版（预估 4-8 周）
+
+**目标：** 在 M1 自有页面基础上，把高频、稳定、适合 Android 的操作继续原生化，与浏览器版拉开体验差距。
 
 | 任务 | 优先级 | 描述 |
 |---|---|---|
-| 移动端首页 | P0 | Compose 或 Web 实现的 Android 专属首页：继续聊天 / 角色 / 预设 / 世界书 / 高级模式入口 |
-| 首页数据 | P0 | TavernCoreApi 实现 listRecentChats / listCharacters |
-| 角色卡片优化 | P1 | CSS 卡片化 + 搜索触控优化 |
-| 长按消息菜单 | P1 | CSS bottom-sheet + 触控优化 |
-| 快捷预设切换 | P1 | Bridge + CSS 快捷面板 |
+| 角色列表增强 | P0 | Compose 角色列表、搜索、标签/收藏、本地头像预览，编辑仍由原版 UI 承载 |
+| 最近聊天增强 | P0 | 最近聊天列表、继续聊天、空态、错误态、数据刷新 |
+| 快捷预设入口 | P1 | Compose 展示当前连接/预设摘要，复杂编辑仍由原版 UI 承载 |
+| 世界书快速入口 | P1 | Compose 展示常用世界书入口，完整编辑仍由原版 UI 承载 |
 | 系统分享导入 | P1 | Android Intent 接收角色卡 / 图片 |
 | 图片发送/预览/保存 | P2 | Bridge: shareImage / saveFile |
 | Android 通知 | P2 | Bridge: notify，生成完成/服务状态通知 |
@@ -556,10 +592,10 @@ Phase 0 的成果在 v0.2 策略下完全保留：
 | 端口冲突处理 | P1 | 检测端口占用，提示或自动切换 |
 | 后台保活引导 | P1 | 引导用户设置电池优化白名单 |
 | 大量机型测试 | P1 | 主流 Android 手机 + 平板适配验证 |
-| 上游同步策略 | P1 | 文档化 patch rebase 流程，CI 自动检测上游更新 |
+| 上游同步策略 | P1 | 文档化 SillyTavern bundle 更新、真机 smoke test 和兼容补丁流程 |
 | 扩展系统标记 | P2 | UI 中明确标记扩展为"实验性" |
 | AGPL 合规 | P2 | 开源合规说明完善 |
-| L2 功能 CSS 适配 | P2 | 世界书/群聊/Persona/正则等响应式补丁 |
+| App 自有页面扩展 | P2 | 继续把稳定高频入口移入 Compose，复杂编辑仍保留原版 WebView |
 
 **验收：** 可作为正式版发布到 GitHub Release。崩溃率 < 1%，核心功能稳定。
 
@@ -570,11 +606,11 @@ Phase 0 的成果在 v0.2 策略下完全保留：
 | 风险 | 等级 | 应对 |
 |---|---|---|
 | WebView 与 SillyTavern 前端 JS 兼容问题 | 高 | M0 阶段尽早验证；关注 WebView 版本差异（Android 8.0+ System WebView） |
-| android-patches 与上游更新冲突 | 中 | 补丁尽量只增不改；用 CSS 覆盖而非修改原文件；CI 自动检测 patch 是否可 apply |
+| App 自有页面数据来源不稳定 | 中 | M1 只读取轻量数据；数据不可用时降级为空态，不阻塞核心聊天 |
 | Bridge 安全性（JS Interface 注入攻击） | 中 | 限制 Bridge 只对 localhost 生效；`@JavascriptInterface` 方法严格校验来源 |
 | 扩展插件在 WebView 中异常 | 中 | 扩展标记为实验性；提供关闭扩展的快捷入口；捕获 JS 错误不崩溃 |
-| 键盘适配在不同机型上表现不一 | 中 | M1 阶段重点测试；使用 `WindowInsets` API；keyboard-fix.js 兜底 |
-| SillyTavern Core 版本更新打破 patch | 中 | 锁定测试过的 Core 版本；更新时先 CI 验证 patch 兼容性 |
+| 键盘适配在不同机型上表现不一 | 中 | 优先使用 Activity / WindowInsets 层解决；只在明确设备问题时做最小 WebView 兼容补丁 |
+| SillyTavern Core 版本更新影响 WebView | 中 | 锁定测试过的 Core 版本；更新时先跑 WebView smoke test 和关键导入/聊天流程 |
 
 ---
 
@@ -583,22 +619,24 @@ Phase 0 的成果在 v0.2 策略下完全保留：
 | 指标 | M0 | M1 | M2 | M3 |
 |---|---|---|---|---|
 | App 内聊天可用 | ✅ | ✅ | ✅ | ✅ |
-| 不跳外部浏览器 | ✅ | ✅ | ✅ | ✅ |
+| 主流程不跳外部浏览器 | ✅ | ✅ | ✅ | ✅ |
 | Core 启动/停止回归 | 100% | 100% | 100% | 100% |
-| 移动端触控适配 | — | L1 完成 | L1+L2 | L1+L2 |
-| Bridge 功能覆盖 | — | 文件 | 文件+分享+TTS | 全部 |
-| 移动端首页 | — | — | ✅ | ✅ |
+| App 自有首页/工作台 | — | ✅ | ✅ | ✅ |
+| App 自有入口页 | — | 角色/工具入口（无伪深跳转） | 高频入口增强 | 稳定发布 |
+| Bridge 功能覆盖 | 文件选择基础 | 文件选择沿用 + 外部浏览器入口 | 文件+分享+TTS | 全部 |
 | 崩溃率 | < 5% | < 2% | < 1% | < 1% |
 | 扩展兼容 | 不承诺 | 不承诺 | 实验性 | 实验性 |
 
 ---
 
-## 15. 文件结构（Phase 0 后 + M0 规划）
+## 15. 文件结构（M1 后）
 
 ```
 app/src/main/java/io/github/sanitised/st/
 ├── api/
 │   └── TavernCoreApi.kt          # API 接口 + 存根实现
+├── data/
+│   └── LocalTavernLibraryReader.kt # 本地最近聊天/角色读取
 ├── ui/
 │   ├── theme/
 │   │   ├── STColors.kt           # 颜色 Token（浅色/深色）
@@ -606,18 +644,18 @@ app/src/main/java/io/github/sanitised/st/
 │   ├── navigation/
 │   │   ├── STNavGraph.kt          # 路由常量
 │   │   ├── STBottomBar.kt         # 底部导航栏
-│   │   └── PlaceholderScreens.kt  # 占位屏幕（M0 后替换为 WebView）
-│   ├── webview/                   # M0 新增
+│   │   └── PlaceholderScreens.kt  # 历史占位屏幕（M0 后不再作为主入口）
+│   ├── webview/                   # M0 新增，代码已落地
 │   │   ├── ChatWebViewScreen.kt   # WebView 容器 Composable
-│   │   ├── STAndroidBridge.kt     # JS Bridge 实现
+│   │   ├── STAndroidBridge.kt     # JS Bridge 基础实现
 │   │   ├── WebViewErrorPage.kt    # 本地错误页
 │   │   └── WebViewNavigator.kt    # WebView 导航控制
-│   └── screens/                   # M2 新增（可选）
-│       └── MobileHomeScreen.kt    # 移动端首页
+│   └── screens/
+│       └── M1HubScreens.kt        # 首页工作台组件、角色入口页、工具入口页、空态/列表组件
 ├── MainActivity.kt                # NavHost + Scaffold + 底部导航
 ├── MainViewModel.kt               # 现有 ViewModel
 ├── UiApp.kt                       # 首页（M1 重构）
-├── UiSettings.kt                  # 设置页
+├── UiSettings.kt                  # 设置页（含外部浏览器入口）
 ├── UiConfig.kt                    # config.yaml 编辑器
 ├── UiLogs.kt                      # 日志查看器
 ├── UiLegal.kt                     # 法律信息
@@ -625,84 +663,80 @@ app/src/main/java/io/github/sanitised/st/
 ├── UiTopBar.kt                    # 通用 TopAppBar
 ├── ... (其他现有文件)
 ├── NodeService.kt                 # Node 前台服务
-└── NodeStatus.kt                  # 状态枚举
+├── NodeStatus.kt                  # 状态枚举
+└── SillyTavernUrl.kt              # 本地 SillyTavern URL 构造
 
-android-patches/                   # M1 新增，项目根目录
-├── public/
-│   ├── android-mobile.css
-│   ├── android-bridge.js
-│   └── keyboard-fix.js
-├── patch-loader.js
-└── patches/
-    └── inject-android-assets.patch
+android-patches/                   # 非 M1 主线；仅在必要兼容问题出现时新增
+└── ...
 ```
 
 ---
 
 ## 16. 设计稿参考索引
 
-v0.2 中设计稿的角色调整——管理页面（Compose）仍以设计稿为视觉合同；WebView 页面以 android-mobile.css 补丁为适配手段，设计稿作为适配方向参考。
+v0.5 中设计稿的角色调整：设计稿主要服务 App 自有 Compose 页面；SillyTavern 原版 WebView 页面不再按设计稿做 CSS 覆盖。
 
-| 屏幕 | 文件 | v0.2 实现方式 | 里程碑 |
+| 屏幕 | 文件 | v0.5 实现方式 | 里程碑 |
 |---|---|---|---|
-| 01 启动与初始化 | `01-startup.html` | Compose 原生 | M2 |
-| 02 首页 | `02-home.html` | Compose 原生 | M2 |
-| 03 聊天页 | `03-chat.html` | WebView + CSS 补丁 | M0(WebView) / M1(CSS) |
-| 04 角色列表 | `04-characters.html` | WebView + CSS 补丁 | M1 |
-| 05 角色编辑 | `05-character-edit.html` | WebView + CSS 补丁 | M1 |
-| 06 世界书 | `06-worldbook.html` | WebView + CSS 补丁（L2） | M3 |
-| 07 模型预设 | `07-presets.html` | WebView + CSS 补丁 | M1 |
-| 08 工具中心 | `08-tools.html` | WebView + CSS 补丁（L2） | M3 |
-| 09 诊断与日志 | `09-diagnostics.html` | Compose 原生 | M2 |
+| 01 启动与初始化 | `01-startup.html` | Compose 原生 | M1 |
+| 02 首页 | `02-home.html` | Compose 原生工作台 | M1 |
+| 03 聊天页 | `03-chat.html` | 原版 SillyTavern WebView | M0 |
+| 04 角色列表 | `04-characters.html` | M1 为 Compose 最近入口；M2 增强搜索/标签/头像预览 | M1 / M2 |
+| 05 角色编辑 | `05-character-edit.html` | 原版 SillyTavern WebView | — |
+| 06 世界书 | `06-worldbook.html` | M2+ Compose 快捷入口；完整编辑仍由原版 UI 承载 | M2 |
+| 07 模型预设 | `07-presets.html` | M2+ Compose 摘要/入口；完整编辑仍由原版 UI 承载 | M2 |
+| 08 工具中心 | `08-tools.html` | Compose 工具入口页 | M1 |
+| 09 诊断与日志 | `09-diagnostics.html` | Compose 原生 | M1 |
 | 10 设置 | `10-settings.html` | Compose 原生 | M1 |
-| 11 Persona | `11-persona.html` | WebView + CSS 补丁（L2） | M3 |
-| 12 群聊 | `12-group-chat.html` | WebView + CSS 补丁（L2） | M3 |
+| 11 Persona | `11-persona.html` | 原版 SillyTavern WebView | — |
+| 12 群聊 | `12-group-chat.html` | 原版 SillyTavern WebView | — |
 | 13 聊天附件 | `13-chat-files.html` | WebView（L3） | — |
 | 14 Author's Note | `14-author-note.html` | WebView（L3） | — |
 | 15 RAG / Data Bank | `15-rag.html` | WebView（L3） | — |
-| 16 快捷回复 | `16-quick-replies.html` | WebView + Bridge（L2） | M3 |
+| 16 快捷回复 | `16-quick-replies.html` | 原版 WebView；后续可做 Compose 快捷入口 | M3 |
 | 17 文本规则 | `17-regex.html` | WebView（L3） | — |
 | 18 图片与语音 | `18-media.html` | Bridge 替代（L1） | M2 |
 | 19 扩展适配 | `19-extensions.html` | WebView（L4 实验性） | — |
-| 20 主题管理 | `20-theme.html` | Bridge 主题同步 | M1 |
-| 21 连接档案 | `21-connection-profiles.html` | WebView + CSS 补丁（L2） | M3 |
+| 20 主题管理 | `20-theme.html` | App 主题走 Compose；ST 主题保留原版设置 | M1 |
+| 21 连接档案 | `21-connection-profiles.html` | 原版 UI；后续可做 Compose 摘要/入口 | M3 |
 | 22 Prompt Manager | `22-prompt-manager.html` | WebView（L3） | — |
 
 ---
 
-## 17. 前端验收清单
+## 17. App 自有页面验收清单
 
-### 聊天页（M1 完成后）
+### 首页 / 工作台（M1 完成后）
 
-1. 首屏直接进入聊天
-2. 输入框不被键盘遮挡
-3. 发送、停止、重生成、继续生成按钮容易点击
-4. 消息长按出现菜单
-5. 图片消息可预览、保存、分享
-6. 滚动到底部逻辑稳定
-7. 大聊天记录不卡死
+1. 首屏能看到服务状态、版本、端口和主要操作
+2. 服务未运行时可一键启动
+3. 服务运行时可继续聊天
+4. 最近聊天/角色数据不可用时显示可理解空态
+5. 关键操作不需要用户理解 Node.js 或端口
+6. 首页不再保留旧底部固定启动 dock，避免与 Core Service 卡片重复
 
-### 角色页（M1 完成后）
+### 角色入口页（M1/M2 完成后）
 
-1. 角色卡网格/列表切换
-2. 搜索角色
-3. 导入 PNG / JSON 角色卡（通过 Bridge）
-4. 从系统分享菜单导入
-5. 编辑角色基础信息
-6. 删除前确认
+1. M1 提供最近角色入口和空态
+2. M1 不提供不可控的 Full Manager / 原版角色管理深入口
+3. M1 角色导入仍通过 Chat WebView 内原版 SillyTavern 文件选择流程完成
+4. M2 增强搜索、标签、头像预览
+5. 角色编辑仍使用原版 SillyTavern WebView
 
 ### 设置页（M1 完成后）
 
-1. API Key 输入安全
-2. 预设切换方便
-3. 常用设置优先
-4. 高级设置折叠
-5. 配置错误能给出可读提示
+1. App 主题、更新、电池、自动打开等设置清晰
+2. 不把 SillyTavern 的复杂模型/API 设置搬到 App 设置页
+3. 配置编辑仍有停止服务保护
+4. 电池保活和通知权限提示可理解
+5. 设置变更有明确反馈
+6. 设置页提供"在网页打开"，用于系统浏览器访问完整原版 SillyTavern
 
-### 数据页（M3 完成后）
+### 工具页 / 数据页（M1/M3 完成后）
 
-1. 导出完整备份
-2. 导入 ST 官方用户备份（.tar.gz / .tar / .zip）
-3. 导入失败显示原因
-4. 备份前提示会覆盖哪些数据
-5. 支持从旧 Termux/PC 迁移数据
+1. M1 可进入备份/恢复、日志、config、ST 管理
+2. M1 不提供不可控的 Full Tools / 原版工具页深入口
+3. 导出完整备份
+4. 导入 ST 官方用户备份（.tar.gz / .tar / .zip）
+5. 导入失败显示原因
+6. 备份前提示会覆盖哪些数据
+7. 支持从旧 Termux/PC 迁移数据

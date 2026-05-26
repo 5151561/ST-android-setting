@@ -55,7 +55,8 @@ fun SettingsScreen(
     isUpdateReadyToInstall: Boolean,
     onUpdatePrimary: () -> Unit,
     onUpdateDismiss: () -> Unit,
-    onCancelUpdateDownload: () -> Unit
+    onCancelUpdateDownload: () -> Unit,
+    onOpenInBrowser: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -79,6 +80,19 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.settings_auto_open_subtitle),
                     checked = autoOpenBrowserEnabled,
                     onCheckedChange = onAutoOpenBrowserChanged
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = onOpenInBrowser,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = stringResource(R.string.settings_open_in_browser_button))
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.settings_open_in_browser_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -392,6 +406,7 @@ private fun SettingsScreenPreview() {
         isUpdateReadyToInstall = false,
         onUpdatePrimary = {},
         onUpdateDismiss = {},
-        onCancelUpdateDownload = {}
+        onCancelUpdateDownload = {},
+        onOpenInBrowser = {}
     )
 }

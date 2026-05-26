@@ -110,6 +110,8 @@
     <string name="settings_auto_check_title">Automatically Check for Updates</string>
     <string name="settings_auto_open_subtitle">When the server is ready, open the in-app SillyTavern view for you.</string>
     <string name="settings_auto_open_title">Open SillyTavern Automatically</string>
+    <string name="settings_open_in_browser_button">Open in Web Browser</string>
+    <string name="settings_open_in_browser_subtitle">Opens the local SillyTavern page in your browser.</string>
     <string name="settings_theme_title">Theme</string>
     <string name="settings_theme_auto_label">Automatic</string>
     <string name="settings_theme_light_label">Light</string>
@@ -143,6 +145,46 @@
     <string name="update_headline_downloading">Downloading update %1$s</string>
     <string name="update_headline_ready">New update %1$s is ready.</string>
     <string name="waiting_for_server">Waiting for server...</string>
+
+    <!-- M1 native pages -->
+    <string name="dashboard_core_service_title">Core Service</string>
+    <string name="dashboard_core_service_subtitle">Local server on 127.0.0.1:%1$d</string>
+    <string name="dashboard_metric_st">SillyTavern</string>
+    <string name="dashboard_metric_node">Node runtime</string>
+    <string name="dashboard_status_running">Running</string>
+    <string name="dashboard_status_busy">Working</string>
+    <string name="dashboard_status_error">Needs attention</string>
+    <string name="dashboard_status_stopped">Stopped</string>
+    <string name="dashboard_continue_chat">Continue Chat</string>
+    <string name="dashboard_recent_chats">Recent Chats</string>
+    <string name="dashboard_recent_chats_empty_title">No recent chats yet</string>
+    <string name="dashboard_recent_chats_empty_body">Start SillyTavern and open a conversation; recent chats will appear here.</string>
+    <string name="dashboard_recent_characters">Recent Characters</string>
+    <string name="dashboard_recent_characters_empty_title">No characters found</string>
+    <string name="dashboard_recent_characters_empty_body">Import or create a character in SillyTavern; this page will pick it up from local data.</string>
+    <string name="dashboard_recent_chat_no_preview">No preview available.</string>
+    <string name="dashboard_continue">Continue</string>
+    <string name="dashboard_open">Open</string>
+    <string name="dashboard_open_all">Open all</string>
+    <string name="character_hub_title">Characters</string>
+    <string name="character_hub_subtitle">Recent cards and quick access back into chat.</string>
+    <string name="character_hub_import_title">Import Character Card</string>
+    <string name="character_hub_import_body">Character import still lives in SillyTavern. Open Chat or use Settings to open the web version when needed.</string>
+    <string name="character_hub_recent_title">Recent Characters</string>
+    <string name="character_hub_open_chat">Chat</string>
+    <string name="character_hub_empty_title">No character cards found</string>
+    <string name="character_hub_empty_body">Character cards from data/default-user/characters will show here when available.</string>
+    <string name="character_hub_character_body">Tap to continue in the chat view.</string>
+    <string name="character_hub_favorite">Favorite</string>
+    <string name="character_hub_recent">Recent</string>
+    <string name="tools_hub_title">Tools</string>
+    <string name="tools_hub_subtitle">Data, config, logs, and advanced SillyTavern entry points.</string>
+    <string name="tools_hub_backup_title">Backup &amp; Restore</string>
+    <string name="tools_hub_backup_body">Export app data or import SillyTavern backups from a system file picker.</string>
+    <string name="tools_hub_backup_disabled">Stop the server and wait for current work to finish before changing data.</string>
+    <string name="tools_hub_config_body">Edit config.yaml with the existing stop-service guard.</string>
+    <string name="tools_hub_logs_body">Inspect stdout, stderr, and service diagnostics.</string>
+    <string name="tools_hub_manage_body">Install a custom SillyTavern source or reset to bundled ST.</string>
 
     <!-- WebView shell -->
     <string name="webview_loading_starting">Starting SillyTavern...</string>
