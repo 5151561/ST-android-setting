@@ -2,14 +2,14 @@
 
 日期：2026-05-26
 检查更新：2026-05-26
-状态：执行中（M2 P0 已全覆盖并通过手机真实 ST 契约测试；高频 P1：标签管理、批量操作、分页、聊天导入/重命名已补齐；剩余为裁剪、格式转换、token counter 和跨系统能力）
+状态：执行中（M2 P0 已全覆盖并通过手机真实 ST 契约测试；高频 P1：标签管理、批量操作、分页、聊天导入/重命名、头像裁剪/格式转换、token counter、Replace/Update 与跨系统入口 UI 已补齐；剩余为跨系统完整编辑器和少量低频增强）
 范围：原版 SillyTavern 角色管理右侧面板到 Android Compose 原生页面的迁移拆解
 
 ## 1. 结论
 
 当前 APP 的 M2 实现已从“角色列表 + 基础编辑 + 新建/保存”的最小闭环推进到“P0 基础承接 + 高频 P1 增强”的可验收状态：API 层和 Compose 页面已覆盖角色列表、分页、详情、新建、保存、重命名、复制、删除、导入、URL 导入、导出、真实头像展示、头像随保存上传、独立 `/api/characters/edit-avatar`、快捷收藏、Search score、embedded tags 与 ST tag map 管理、ST folder/drilldown、HotSwaps、列表/网格/批量模式、真批量收藏/取消收藏/复制/删除/标签，以及角色历史聊天查看、打开、导入、输入式重命名、删除确认和导出。Source URL 现在可从 Chub/Pygmalion/GitHub/source_url 等来源推导打开，并可在编辑页保存 `source_url`。角色 API 主链路已用手机 `SM_S9310` 上的真实 ST dev 实例跑过 `TavernCoreRealContractTest`。
 
-当前剩余不再阻塞 M2 P0：Lorebook / Persona 仍是占位入口，Source 已可打开和编辑基础 URL，但 Replace / Update、token counter、图片裁剪和图片格式转换仍缺。这些继续作为 P1/P2 或跨系统里程碑拆出。
+当前剩余不再阻塞 M2 P0：Lorebook / Persona / Assistant 已在关联页给出清晰入口与状态，Source 可打开、编辑基础 URL，并可从来源更新；Replace / Update、token counter、图片裁剪和图片格式转换已补齐到原生编辑页。完整 World Info、Persona、Assistant 配置编辑器仍属于跨系统里程碑。
 
 核心原则仍然是 API 优先：优先调用 SillyTavern 本地 API，只有文件选择、分享导入、缓存展示、备份恢复和诊断场景允许走本地文件或 Android 文件选择器。本次检查没有发现角色管理代码直接覆盖 `data/default-user/characters` 下的角色卡；当前文件读写主要用于 Android 文件选择器读取导入文件 / 头像文件、把导出结果写到用户选择的位置，以及 M2 之外的备份恢复、缓存或诊断场景。
 
@@ -46,7 +46,7 @@
 
 | 功能 | 原版能力 | 原版 API / 数据 | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
-| 新建角色 | 表单提交，支持头像、裁剪、多开场白、extensions | `/api/characters/create` multipart form | 部分覆盖：已改为 multipart，支持字段和头像随保存上传；未覆盖裁剪，extensions 体验仍弱 | P0 |
+| 新建角色 | 表单提交，支持头像、裁剪、多开场白、extensions | `/api/characters/create` multipart form | 部分覆盖：已改为 multipart，支持字段、多开场白和头像随保存上传；头像可上传前 PNG 转换 / 2:3 裁剪，extensions 体验仍弱 | P0 |
 | 保存角色 | 完整表单保存，保留 chat/create_date/json_data | `/api/characters/edit` multipart form | 已覆盖：已改为 multipart，保留 `chat`、`create_date`、`json_data`，支持头像随保存上传；已通过手机真实 ST 契约测试确认复杂 `json_data` 未知字段不丢 | P0 |
 | 局部更新 | 收藏、批量收藏等局部字段 | `/api/characters/merge-attributes` | 已覆盖：列表/详情快捷收藏、批量收藏/取消收藏走 `/merge-attributes`；embedded tag 独立编辑也走 `/merge-attributes` | P0 |
 | 重命名 | 改角色名、头像文件名、聊天目录；可选择改历史聊天内角色名 | `/api/characters/rename` + `/api/chats/get/save` | 部分覆盖：已调用 `/rename`，ST 会改头像文件名和聊天目录；无历史聊天内角色名更新选项 | P0 |
@@ -54,7 +54,7 @@
 | 删除角色 | 可选择是否删除该角色聊天文件夹 | `/api/characters/delete` | 已覆盖：列表和编辑页均有确认，并支持 `delete_chats` | P0 |
 | 导入角色 | 支持 `.json`、`.png`、`.yaml`、`.yml`、`.charx`、`.byaf`，支持多选 | `/api/characters/import` multipart form | 已覆盖原生入口：Android 多文件选择后调用 `/import` multipart | P0 |
 | 外部 URL 导入 | 从外部 URL 导入角色卡 | 前端 `importFromExternalUrl` + `processDroppedFiles` | 已覆盖：列表页可输入 URL/UUID，先走 `/api/content/importURL` 或 `/api/content/importUUID`，再调用 `/api/characters/import` | P1 |
-| 替换 / 更新 | 用文件或在线来源替换当前角色，保留聊天、资产、群组关系 | 复用导入流程并传 preserved avatar | 未覆盖 | P1 |
+| 替换 / 更新 | 用文件或在线来源替换当前角色，保留聊天、资产、群组关系 | 复用导入流程并传 preserved avatar | 已覆盖：编辑页支持“文件替换”和“来源更新”，通过 `preserved_name` 导入到当前头像文件名，聊天继续挂接当前角色 | P1 |
 | 导出角色 | PNG 或 JSON 导出，导出时清理私有字段 | `/api/characters/export` | 已覆盖：编辑页可导出 JSON / PNG，并写到用户选择的位置 | P0 |
 
 ### 3.3 头像与媒体
@@ -62,10 +62,10 @@
 | 功能 | 原版能力 | 原版 API / 数据 | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
 | 头像预览 | 角色列表和编辑页展示头像 | `/characters/{avatar}` 或 thumbnail | 已覆盖：列表、详情、编辑页统一使用真实头像组件，失败时回退首字母占位；待选头像先显示本地预览 | P0 |
-| 头像上传 | 新建/编辑时选择图片 | `/api/characters/create`、`/api/characters/edit` multipart | 部分覆盖：新建 / 编辑可选择头像，并随 `/create` 或 `/edit` multipart 保存上传；未覆盖裁剪和格式转换 | P0 |
+| 头像上传 | 新建/编辑时选择图片 | `/api/characters/create`、`/api/characters/edit` multipart | 已覆盖：新建 / 编辑可选择头像，并随 `/create` 或 `/edit` multipart 保存上传；上传前可保留原图、转 PNG 或 2:3 裁剪 | P0 |
 | 单独换头像 | 不改角色数据，仅替换 PNG 封面 | `/api/characters/edit-avatar` | 已覆盖：编辑页选择头像后既可随保存上传，也可对已有角色立即调用 `/edit-avatar` 替换封面 | P1 |
-| 图片格式兼容 | 前端会转换不支持格式 | `ensureImageFormatSupported` | 未覆盖 | P1 |
-| 裁剪 | 带 `crop` query 参数保存裁剪结果 | create/edit/edit-avatar `?crop=` | 未覆盖 | P1 |
+| 图片格式兼容 | 前端会转换不支持格式 | `ensureImageFormatSupported` | 已覆盖：头像上传前可转换为 PNG；非 png/jpg/jpeg 会自动转 PNG 后走 create/edit/edit-avatar | P1 |
+| 裁剪 | 带 `crop` query 参数保存裁剪结果 | create/edit/edit-avatar `?crop=` | 已覆盖：编辑页头像处理提供 2:3 居中裁剪并输出 PNG，匹配 ST 512x768 头像比例 | P1 |
 | 外部媒体开关 | 允许/禁止角色描述引用外部媒体 | 角色扩展字段 | 未覆盖 | P2 |
 
 ### 3.4 编辑字段
@@ -79,7 +79,7 @@
 | Character's Note | depth_prompt.prompt、depth_prompt.depth、depth_prompt.role | 已覆盖 | P0 |
 | Talkativeness | group chat 发言倾向 0-1 | 已覆盖：数值输入 + 滑块，保存时限制在 `0.0..1.0` | P1 |
 | Alternate Greetings | 多开场白增删改排序 | 已覆盖：条目式新增、删除、上移、下移，每条独立输入框，保存仍写入 multipart `alternate_greetings` | P0 |
-| Token counters | 各字段 token 计数、总 token、永久 token | 未覆盖 | P1 |
+| Token counters | 各字段 token 计数、总 token、永久 token | 已覆盖：编辑页显示描述、开场白、Prompt/Note、元数据/示例和总量的即时估算；使用 ST byte fallback 算法，非模型精确 tokenizer | P1 |
 | Markdown / macros 辅助 | data-macros、编辑器最大化、帮助链接 | 未覆盖 | P2 |
 | Unknown fields | `json_data` 里非 ST 字段保留 | 已覆盖：详情读取 `json_data`，保存时通过 multipart 原样回传；已通过手机真实 ST 契约测试确认第三方字段、未知顶层字段和未知 `data.extensions` 字段不丢 | P0 |
 
@@ -112,13 +112,13 @@
 
 | 功能 | 原版入口 | 数据 / API | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
-| 角色主 Lorebook | globe / Link to World Info | `data.extensions.world` + worldinfo | 部分覆盖：编辑 `world` 文本字段，详情页有 Lorebook 占位入口；无 World Info 选择器、校验或完整编辑 | P1 |
+| 角色主 Lorebook | globe / Link to World Info | `data.extensions.world` + worldinfo | 部分覆盖：编辑 `world` 文本字段，详情页关联入口显示当前世界书状态；无 World Info 选择器、校验或完整编辑 | P1 |
 | Additional Lorebooks | character extra world info | settings `world_info.charLore` | 未覆盖 | P2 |
 | Chat Lorebook | passport 按钮 | chat metadata / worldinfo | 未覆盖 | P2 |
 | Import Card Lore | 从角色卡导入内嵌世界书 | world-info 前端逻辑 | 未覆盖 | P2 |
-| Connected Personas | Persona 连接弹窗 | persona settings | 未覆盖 | P2 |
-| Link to Source | Chub/Pygmalion/GitHub/source_url 等 | `data.extensions.*` | 部分覆盖：详情页可推导并打开 Chub / Pygmalion / GitHub / `source_url` 等来源，编辑页可保存 `source_url`；无校验、替换/更新流程 | P1 |
-| Set as assistant | 欢迎页助手角色 | welcome settings | 未覆盖 | P2 |
+| Connected Personas | Persona 连接弹窗 | persona settings | 部分覆盖：详情页关联入口显示 Persona 状态和管理入口；完整 Persona 连接仍等 Persona 子系统 | P2 |
+| Link to Source | Chub/Pygmalion/GitHub/source_url 等 | `data.extensions.*` | 已覆盖：详情页可推导并打开 Chub / Pygmalion / GitHub / `source_url` 等来源，编辑页可保存 `source_url`，并支持从来源更新当前角色 | P1 |
+| Set as assistant | 欢迎页助手角色 | welcome settings | 部分覆盖：详情页关联入口显示助手角色状态和设置入口；实际 welcome settings 写入仍等欢迎页/助手子系统 | P2 |
 
 ### 3.8 批量操作
 
@@ -139,21 +139,20 @@
 |---|---|
 | `TavernCoreApi.kt` | `/api/characters/all`、`/get`、`/create`、`/edit`、`/merge-attributes`、`/rename`、`/delete`、`/duplicate`、`/import`、`/export`、`/edit-avatar`、`/characters/chats`、`/api/chats/import`、`/api/chats/rename`、`/api/chats/delete`、`/api/chats/export`、`/api/settings/get`、`/api/settings/save`、`/api/content/importURL`、`/api/content/importUUID`、CSRF token 和 session cookie；其中 `/create`、`/edit`、`/import`、`/edit-avatar`、`/api/chats/import` 均已走 multipart |
 | `CharacterListScreen.kt` | 列表、分页、Search score、All/Favorites/Recent、embedded tag 和 ST tag map 筛选、ST folder/drilldown、标签管理、排序（含 Random）、导入、URL 导入、头像预览、HotSwaps、列表/网格/批量模式、批量收藏/取消收藏/复制/删除/标签、刷新、空态、错误态；仍缺 Shift 范围选择 |
-| `CharacterDetailScreen.kt` | 角色详情、真实头像、快捷收藏、概要/聊天/关联 tab、历史聊天列表、打开指定聊天、导入聊天、输入式聊天重命名、删除确认、导出 JSONL/TXT、Source URL 打开、Lorebook / Persona 占位入口；仍缺完整跨系统入口 |
-| `CharacterEditScreen.kt` | 新建、读取详情、真实头像、本地待选头像预览、字段分组、Source URL 编辑、条目式 Alternate Greetings、Talkativeness 数值/滑块、保存、头像随保存上传、独立 `/edit-avatar`、重命名、复制、删除、导出 JSON/PNG；仍缺裁剪和格式转换 |
+| `CharacterDetailScreen.kt` | 角色详情、真实头像、快捷收藏、概要/聊天/关联 tab、历史聊天列表、打开指定聊天、导入聊天、输入式聊天重命名、删除确认、导出 JSONL/TXT、Source URL 打开、Lorebook / Persona / Assistant 关联入口和状态；仍缺跨系统完整编辑器 |
+| `CharacterEditScreen.kt` | 新建、读取详情、真实头像、本地待选头像预览、头像 PNG 转换和 2:3 裁剪、字段分组、Source URL 编辑、条目式 Alternate Greetings、Talkativeness 数值/滑块、token counter、保存、头像随保存上传、独立 `/edit-avatar`、重命名、复制、删除、文件替换、来源更新、导出 JSON/PNG |
 | `DocumentFileHelpers.kt` | 仅用于 Android 文件选择器读取导入文件 / 头像文件，以及写出导出结果，不直接覆盖 SillyTavern 角色数据目录 |
 | `STNavGraph.kt` / `MainActivity.kt` | Characters tab 进入原生列表，新建/详情/编辑进入原生页面；从详情页聊天入口进入 Chat WebView 并保留返回栈 |
 
-主要缺口：
+剩余边界：
 
-| 缺口 | 影响 |
+| 边界 | 影响 |
 |---|---|
-| 头像增强剩余项 | 真实头像和独立 `/edit-avatar` 已覆盖；裁剪、图片格式转换未完成 |
 | 批量操作剩余项 | 真批量收藏/取消收藏/复制/删除/标签已覆盖；Shift 范围选择和右键菜单未覆盖 |
 | ST 标签系统剩余项 | 管理、folder/drilldown、从卡内导入、批量标签已覆盖；更复杂的颜色/排序 UI 可后续增强 |
 | 历史聊天管理剩余项 | 聊天列表、打开、导入、输入式重命名、删除确认、导出已覆盖；后续可继续补更完整的 Chat WebView 定位 smoke test |
-| Lorebook / Persona / Source 仍不完整 | Lorebook / Persona 只是占位入口；Source 已可打开和编辑基础 URL，但没有校验、Replace / Update |
-| token counter 未覆盖 | 编辑器精细体验仍有差距；Search score 和列表分页已覆盖 |
+| Lorebook / Persona / Assistant 仍不完整 | 关联页已有状态和入口；完整编辑/连接需要对应子系统落地 |
+| Source 校验仍不完整 | Source 已可打开、编辑基础 URL，并可执行来源更新；仍缺原版级来源校验和差异预览 |
 
 ## 5. M2 迁移范围建议
 
@@ -290,7 +289,7 @@ P0 的目标是让用户在 APP 内完成日常角色管理，不再频繁回原
 
 当前偏差：
 
-- 新建和完整编辑已改为 multipart，并可随保存上传头像；编辑页已有真实头像预览和独立 `/edit-avatar` 即时动作；crop query 和图片格式转换仍缺。
+- 新建和完整编辑已改为 multipart，并可随保存上传头像；编辑页已有真实头像预览、独立 `/edit-avatar` 即时动作、上传前 PNG 转换和 2:3 居中裁剪。仍未做原版那种可拖拽裁剪框。
 - 未知字段目前依赖 `/get` 的 `json_data` 原样回传；已补复杂 `json_data` multipart 单元契约测试，并已用手机真实 ST 契约测试回归第三方扩展字段、未知顶层字段和未知 `data.extensions` 字段。
 - 快捷收藏已走 `/merge-attributes` 局部 patch；embedded tags 独立编辑已接 `/merge-attributes`，ST tags 和批量标签已接 `/api/settings/get/save`。
 
@@ -301,7 +300,7 @@ M2 不能只验“能编辑描述和开场白”。建议改为：
 1. 用户可以在 APP 内浏览完整角色库，搜索、排序、筛选结果与原版主要行为一致。
 2. 用户可以在 APP 内新建、编辑、保存、重命名、复制、删除、导入、导出角色。
 3. 用户可以编辑原版角色管理核心字段：description、first_mes、alternate greetings、creator notes、system prompt、post-history instructions、creator、version、tags、personality、scenario、character note、example dialogue。
-4. 用户可以更换头像，保存失败不会破坏原角色卡。
+4. 用户可以更换头像，并在上传前选择原图、PNG 转换或 2:3 裁剪；保存失败不会破坏原角色卡。
 5. 用户可以查看某个角色的历史聊天列表，并至少能进入 Chat WebView 继续聊天。
 6. 收藏、标签、最近、聊天数、token/data size 等列表信息从 API 返回字段或 ST 设置中读取，不再依赖原版角色管理 drawer。
 7. 对群聊、Persona、完整世界书、Chat Lorebook 等跨系统能力，M2 必须给出清晰入口或“后续承接”说明，不能静默消失。
@@ -310,12 +309,12 @@ M2 不能只验“能编辑描述和开场白”。建议改为：
 
 | 顺序 | 目标 | 原因 |
 |---|---|---|
-| 1 | 头像增强剩余项 | 真实头像、待选预览和独立 `/edit-avatar` 已完成；后续只剩裁剪和格式转换 |
+| 1 | 头像增强剩余项 | 已完成：真实头像、待选预览、独立 `/edit-avatar`、PNG 转换和 2:3 裁剪；后续只保留更细的手动裁剪框 |
 | 2 | 批量操作增强剩余项 | 全选、清空、真批量收藏/取消收藏/复制/删除/标签已完成；后续可补 Shift 范围选择和右键菜单 |
 | 3 | 标签管理增强剩余项 | 创建/重命名/删除、folder/drilldown、从角色卡导入、批量标签已完成；后续可补颜色、排序等细节 |
 | 4 | 历史聊天增强剩余项 | 已能看、开、导入、输入式重命名、确认删除、导出；后续继续验证不同 ST 前端状态下的指定聊天定位 |
-| 5 | 补 token counter | 编辑器精细体验仍受影响；Search score 和分页已完成 |
-| 6 | Lorebook、Persona、Source、Replace/Update | 跨系统能力逐步接入，目前 Source 已可打开和编辑基础 URL，Lorebook / Persona 仍保留入口 |
+| 5 | 补 token counter | 已完成：编辑页即时估算各字段与总量；后续可接模型精确 tokenizer |
+| 6 | Lorebook、Persona、Source、Replace/Update | 已完成：关联页入口和状态、Source 打开/编辑/来源更新、文件替换；后续接 World Info / Persona / Assistant 完整编辑器 |
 
 ## 11. 风险与边界
 

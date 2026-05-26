@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -122,6 +123,20 @@ private enum class CharacterEditorTab {
     METADATA
 }
 
+private enum class CharacterReplaceMode {
+    FILE,
+    SOURCE
+}
+
+private val characterReplaceMimeTypes = arrayOf(
+    "application/json",
+    "image/png",
+    "application/x-yaml",
+    "text/yaml",
+    "application/octet-stream",
+    "*/*"
+)
+
 @Composable
 fun CharacterEditScreen(
     status: NodeStatus,
@@ -142,6 +157,8 @@ fun CharacterEditScreen(
     var pendingDelete by remember { mutableStateOf(false) }
     var deleteChats by remember { mutableStateOf(false) }
     var pendingAvatarUpload by remember(avatar) { mutableStateOf<CharacterUpload?>(null) }
+    var avatarProcessingMode by remember { mutableStateOf(CharacterAvatarProcessingMode.ORIGINAL) }
+    var pendingReplaceMode by remember { mutableStateOf<CharacterReplaceMode?>(null) }
     var selectedEditorTab by remember { mutableStateOf(CharacterEditorTab.BASIC) }
     val serverRunning = status.state == NodeState.RUNNING
     val avatarLauncher = rememberLauncherForActivityResult(
@@ -159,6 +176,21 @@ fun CharacterEditScreen(
                 onShowMessage(error.messageOr(context, R.string.character_avatar_failed))
             }
         }
+    }
+    val replaceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        replaceCharacterFromFile(
+            context = context,
+            uri = uri,
+            draft = draft,
+            baseUrl = baseUrl,
+            onShowMessage = onShowMessage,
+            onSavingChanged = { saving = it },
+            onSaved = onSaved,
+            scope = scope
+        )
     }
     val exportJsonLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -263,6 +295,50 @@ fun CharacterEditScreen(
         )
     }
 
+    pendingReplaceMode?.let { mode ->
+        if (!draft.avatar.isNullOrBlank()) {
+            AlertDialog(
+                onDismissRequest = { pendingReplaceMode = null },
+                title = { Text(stringResource(R.string.character_replace_title)) },
+                text = {
+                    Text(
+                        when (mode) {
+                            CharacterReplaceMode.FILE -> stringResource(R.string.character_replace_file_body)
+                            CharacterReplaceMode.SOURCE -> stringResource(R.string.character_replace_source_body)
+                        }
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = !saving,
+                        onClick = {
+                            pendingReplaceMode = null
+                            when (mode) {
+                                CharacterReplaceMode.FILE -> replaceLauncher.launch(characterReplaceMimeTypes)
+                                CharacterReplaceMode.SOURCE -> replaceCharacterFromSource(
+                                    context = context,
+                                    draft = draft,
+                                    baseUrl = baseUrl,
+                                    onShowMessage = onShowMessage,
+                                    onSavingChanged = { saving = it },
+                                    onSaved = onSaved,
+                                    scope = scope
+                                )
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.character_replace_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingReplaceMode = null }, enabled = !saving) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                }
+            )
+        }
+    }
+
     Surface(modifier = modifier.fillMaxSize(), color = colors.bg) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -303,6 +379,7 @@ fun CharacterEditScreen(
                                 onSaved = onSaved,
                                 isNew = avatar.isNullOrBlank(),
                                 avatarUpload = pendingAvatarUpload,
+                                avatarProcessingMode = avatarProcessingMode,
                                 scope = scope
                             )
                         }
@@ -333,6 +410,8 @@ fun CharacterEditScreen(
                     baseUrl = baseUrl,
                     draft = draft,
                     pendingAvatarUpload = pendingAvatarUpload,
+                    avatarProcessingMode = avatarProcessingMode,
+                    onAvatarProcessingChanged = { avatarProcessingMode = it },
                     saving = saving,
                     onChooseAvatar = { avatarLauncher.launch(arrayOf("image/*")) },
                     onUpdateAvatarNow = {
@@ -346,6 +425,7 @@ fun CharacterEditScreen(
                                 onShowMessage = onShowMessage,
                                 onSavingChanged = { saving = it },
                                 onUpdated = { pendingAvatarUpload = null },
+                                avatarProcessingMode = avatarProcessingMode,
                                 scope = scope
                             )
                         }
@@ -363,6 +443,8 @@ fun CharacterEditScreen(
                     selectedTab = selectedEditorTab,
                     onDraftChanged = { draft = it }
                 )
+
+                CharacterTokenCounterSection(draft = draft)
 
                 if (!draft.avatar.isNullOrBlank()) {
                     CharacterManagementActions(
@@ -398,6 +480,13 @@ fun CharacterEditScreen(
                         onExportPng = {
                             exportPngLauncher.launch(defaultExportFileName(draft, CharacterExportFormat.PNG))
                         },
+                        onReplaceFromFile = {
+                            pendingReplaceMode = CharacterReplaceMode.FILE
+                        },
+                        onUpdateFromSource = {
+                            pendingReplaceMode = CharacterReplaceMode.SOURCE
+                        },
+                        sourceAvailable = draft.sourceUrl.isNotBlank(),
                         onDelete = {
                             pendingDelete = true
                             deleteChats = false
@@ -420,11 +509,12 @@ fun CharacterEditScreen(
                                 baseUrl = baseUrl,
                                 onShowMessage = onShowMessage,
                                 onSavingChanged = { saving = it },
-                                onSaved = onSaved,
-                                isNew = avatar.isNullOrBlank(),
-                                avatarUpload = pendingAvatarUpload,
-                                scope = scope
-                            )
+                            onSaved = onSaved,
+                            isNew = avatar.isNullOrBlank(),
+                            avatarUpload = pendingAvatarUpload,
+                            avatarProcessingMode = avatarProcessingMode,
+                            scope = scope
+                        )
                         },
                         modifier = Modifier.weight(1f),
                         enabled = !saving
@@ -443,6 +533,8 @@ private fun CharacterAvatarEditorSection(
     baseUrl: String,
     draft: CharacterEditDraft,
     pendingAvatarUpload: CharacterUpload?,
+    avatarProcessingMode: CharacterAvatarProcessingMode,
+    onAvatarProcessingChanged: (CharacterAvatarProcessingMode) -> Unit,
     saving: Boolean,
     onChooseAvatar: () -> Unit,
     onUpdateAvatarNow: () -> Unit
@@ -473,6 +565,43 @@ private fun CharacterAvatarEditorSection(
                     }
                 }
             }
+        }
+        Text(
+            text = stringResource(R.string.character_avatar_processing_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = STTheme.colors.muted
+        )
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CharacterAvatarProcessingMode.values().forEach { mode ->
+                FilterChip(
+                    selected = avatarProcessingMode == mode,
+                    onClick = { onAvatarProcessingChanged(mode) },
+                    enabled = !saving,
+                    label = {
+                        Text(
+                            when (mode) {
+                                CharacterAvatarProcessingMode.ORIGINAL ->
+                                    stringResource(R.string.character_avatar_processing_original)
+                                CharacterAvatarProcessingMode.PNG ->
+                                    stringResource(R.string.character_avatar_processing_png)
+                                CharacterAvatarProcessingMode.CENTER_CROP_PNG ->
+                                    stringResource(R.string.character_avatar_processing_crop)
+                            }
+                        )
+                    }
+                )
+            }
+        }
+        pendingAvatarUpload?.let { upload ->
+            val outputName = CharacterEditTools.avatarOutputFileName(upload.fileName, avatarProcessingMode)
+            Text(
+                text = stringResource(R.string.character_avatar_processing_output, outputName),
+                style = MaterialTheme.typography.bodySmall,
+                color = STTheme.colors.muted
+            )
         }
     }
 }
@@ -759,6 +888,52 @@ private fun CharacterTalkativenessField(
 }
 
 @Composable
+private fun CharacterTokenCounterSection(draft: CharacterEditDraft) {
+    val stats = CharacterEditTools.tokenStats(
+        CharacterTokenInput(
+            description = draft.description,
+            firstMessage = draft.firstMessage,
+            alternateGreetings = draft.alternateGreetings,
+            systemPrompt = draft.systemPrompt,
+            postHistoryInstructions = draft.postHistoryInstructions,
+            depthPrompt = draft.depthPrompt,
+            creatorNotes = draft.creatorNotes,
+            personality = draft.personality,
+            scenario = draft.scenario,
+            messageExample = draft.messageExample
+        )
+    )
+    CharacterEditorSection(title = stringResource(R.string.character_token_section)) {
+        Text(
+            text = stringResource(R.string.character_token_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = STTheme.colors.muted
+        )
+        CharacterTokenRow(stringResource(R.string.character_token_total), stats.total)
+        CharacterTokenRow(stringResource(R.string.character_token_description), stats.description)
+        CharacterTokenRow(stringResource(R.string.character_token_greetings), stats.greetings)
+        CharacterTokenRow(stringResource(R.string.character_token_prompt_note), stats.promptAndNote)
+        CharacterTokenRow(stringResource(R.string.character_token_metadata_examples), stats.metadataAndExamples)
+    }
+}
+
+@Composable
+private fun CharacterTokenRow(label: String, count: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = stringResource(R.string.character_token_count, count),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
 private fun CharacterEditorSection(
     title: String,
     content: @Composable () -> Unit
@@ -826,6 +1001,9 @@ private fun CharacterManagementActions(
     onChangeAvatar: () -> Unit,
     onExportJson: () -> Unit,
     onExportPng: () -> Unit,
+    onReplaceFromFile: () -> Unit,
+    onUpdateFromSource: () -> Unit,
+    sourceAvailable: Boolean,
     onDelete: () -> Unit
 ) {
     CharacterEditorSection(title = stringResource(R.string.character_edit_management_section)) {
@@ -879,6 +1057,25 @@ private fun CharacterManagementActions(
         ) {
             Text(stringResource(R.string.character_action_export_png))
         }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onReplaceFromFile,
+                enabled = !saving,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(stringResource(R.string.character_action_replace_file))
+            }
+            OutlinedButton(
+                onClick = onUpdateFromSource,
+                enabled = !saving && sourceAvailable,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(stringResource(R.string.character_action_update_source))
+            }
+        }
         OutlinedButton(
             onClick = onDelete,
             enabled = !saving,
@@ -927,6 +1124,7 @@ private fun saveCharacter(
     onSaved: (String) -> Unit,
     isNew: Boolean,
     avatarUpload: CharacterUpload?,
+    avatarProcessingMode: CharacterAvatarProcessingMode,
     scope: kotlinx.coroutines.CoroutineScope
 ) {
     if (draft.name.isBlank()) {
@@ -937,10 +1135,13 @@ private fun saveCharacter(
         onSavingChanged(true)
         runCatching {
             val client = TavernCoreClient(baseUrl = baseUrl)
+            val preparedAvatar = avatarUpload?.let {
+                context.prepareCharacterAvatarUpload(it, avatarProcessingMode)
+            }
             if (isNew) {
-                client.createCharacter(draft.toSaveRequest(), avatarUpload)
+                client.createCharacter(draft.toSaveRequest(), preparedAvatar)
             } else {
-                client.updateCharacter(draft.toSaveRequest(), avatarUpload)
+                client.updateCharacter(draft.toSaveRequest(), preparedAvatar)
                 draft.avatar.orEmpty()
             }
         }.onSuccess { avatar ->
@@ -961,6 +1162,7 @@ private fun updateCharacterAvatar(
     onShowMessage: (String) -> Unit,
     onSavingChanged: (Boolean) -> Unit,
     onUpdated: () -> Unit,
+    avatarProcessingMode: CharacterAvatarProcessingMode,
     scope: kotlinx.coroutines.CoroutineScope
 ) {
     val avatar = draft.avatar?.takeIf { it.isNotBlank() }
@@ -971,12 +1173,84 @@ private fun updateCharacterAvatar(
     scope.launch {
         onSavingChanged(true)
         runCatching {
-            TavernCoreClient(baseUrl = baseUrl).updateCharacterAvatar(avatar, upload.fileName, upload.bytes)
+            val preparedAvatar = context.prepareCharacterAvatarUpload(upload, avatarProcessingMode)
+            TavernCoreClient(baseUrl = baseUrl).updateCharacterAvatar(
+                avatar,
+                preparedAvatar.fileName,
+                preparedAvatar.bytes
+            )
         }.onSuccess {
             onUpdated()
             onShowMessage(context.getString(R.string.character_avatar_success))
         }.onFailure { error ->
             onShowMessage(error.messageOr(context, R.string.character_avatar_failed))
+        }
+        onSavingChanged(false)
+    }
+}
+
+private fun replaceCharacterFromFile(
+    context: Context,
+    uri: Uri,
+    draft: CharacterEditDraft,
+    baseUrl: String,
+    onShowMessage: (String) -> Unit,
+    onSavingChanged: (Boolean) -> Unit,
+    onSaved: (String) -> Unit,
+    scope: kotlinx.coroutines.CoroutineScope
+) {
+    val avatar = draft.avatar?.takeIf { it.isNotBlank() }
+    if (avatar == null) {
+        onShowMessage(context.getString(R.string.character_save_before_replace))
+        return
+    }
+    scope.launch {
+        onSavingChanged(true)
+        runCatching {
+            val document = context.readPickedDocument(uri)
+            TavernCoreClient(baseUrl = baseUrl).importCharacter(
+                fileName = document.fileName,
+                bytes = document.bytes,
+                preservedName = avatar
+            )
+        }.onSuccess { newAvatar ->
+            onShowMessage(context.getString(R.string.character_replace_success))
+            onSaved(newAvatar.ifBlank { avatar })
+        }.onFailure { error ->
+            onShowMessage(error.messageOr(context, R.string.character_replace_failed))
+        }
+        onSavingChanged(false)
+    }
+}
+
+private fun replaceCharacterFromSource(
+    context: Context,
+    draft: CharacterEditDraft,
+    baseUrl: String,
+    onShowMessage: (String) -> Unit,
+    onSavingChanged: (Boolean) -> Unit,
+    onSaved: (String) -> Unit,
+    scope: kotlinx.coroutines.CoroutineScope
+) {
+    val avatar = draft.avatar?.takeIf { it.isNotBlank() }
+    val sourceUrl = draft.sourceUrl.trim()
+    if (avatar == null) {
+        onShowMessage(context.getString(R.string.character_save_before_replace))
+        return
+    }
+    if (sourceUrl.isBlank()) {
+        onShowMessage(context.getString(R.string.character_replace_source_missing))
+        return
+    }
+    scope.launch {
+        onSavingChanged(true)
+        runCatching {
+            TavernCoreClient(baseUrl = baseUrl).importExternalCharacter(sourceUrl, preservedName = avatar)
+        }.onSuccess { newAvatar ->
+            onShowMessage(context.getString(R.string.character_replace_success))
+            onSaved(newAvatar.ifBlank { avatar })
+        }.onFailure { error ->
+            onShowMessage(error.messageOr(context, R.string.character_replace_failed))
         }
         onSavingChanged(false)
     }
