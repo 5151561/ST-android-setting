@@ -15,9 +15,15 @@ import org.json.JSONObject
 class STAndroidBridge(
     private val context: Context,
     private val portProvider: () -> Int,
-    private val themeModeProvider: () -> ThemeMode
+    private val themeModeProvider: () -> ThemeMode,
+    private val chatEventHandler: ((String) -> Unit)? = null
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun postChatEvent(json: String) {
+        chatEventHandler?.invoke(json)
+    }
 
     @JavascriptInterface
     fun getAppInfo(): String {
