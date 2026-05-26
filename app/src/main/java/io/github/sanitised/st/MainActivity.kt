@@ -19,7 +19,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
@@ -28,7 +27,6 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -41,9 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -59,10 +55,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.sanitised.st.ui.navigation.BottomNavItem
-import io.github.sanitised.st.ui.navigation.PlaceholderScreen
 import io.github.sanitised.st.ui.navigation.STBottomBar
 import io.github.sanitised.st.ui.navigation.STRoutes
 import io.github.sanitised.st.ui.theme.STAppTheme
+import io.github.sanitised.st.ui.webview.ChatWebViewScreen
+import io.github.sanitised.st.ui.webview.WebViewTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -79,14 +76,6 @@ private val bottomNavItems = listOf(
     BottomNavItem(STRoutes.CHARACTERS, "角色", Icons.Filled.Person),
     BottomNavItem(STRoutes.TOOLS, "工具", Icons.Filled.Build),
     BottomNavItem(STRoutes.SETTINGS, "设置", Icons.Filled.Settings)
-)
-
-private val mainTabRoutes = setOf(
-    STRoutes.HOME,
-    STRoutes.CHAT,
-    STRoutes.CHARACTERS,
-    STRoutes.TOOLS,
-    STRoutes.SETTINGS
 )
 
 class MainActivity : ComponentActivity() {
@@ -290,6 +279,15 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
+            val navigateMainTab: (String) -> Unit = { route ->
+                navController.navigate(route) {
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
 
             STAppTheme(useDarkTheme = useDarkTheme) {
                 Scaffold(
@@ -297,15 +295,7 @@ class MainActivity : ComponentActivity() {
                         STBottomBar(
                             items = bottomNavItems,
                             currentRoute = currentRoute,
-                            onNavigate = { route ->
-                                navController.navigate(route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
+                            onNavigate = navigateMainTab
                         )
                     },
                     snackbarHost = {
@@ -328,7 +318,7 @@ class MainActivity : ComponentActivity() {
                                     busyMessage = viewModel.busyMessage,
                                     onStart = { startNode() },
                                     onStop = { stopNode() },
-                                    onOpen = { openNodeUi(statusState.value.port) },
+                                    onOpen = { navigateMainTab(STRoutes.CHAT) },
                                     autoOpenBrowserWhenReady = viewModel.autoOpenBrowserWhenReady.value,
                                     autoOpenBrowserTriggeredForCurrentRun = autoOpenBrowserTriggeredForCurrentRun.value,
                                     onAutoOpenBrowserTriggered = { autoOpenBrowserTriggeredForCurrentRun.value = true },
@@ -380,39 +370,42 @@ class MainActivity : ComponentActivity() {
                                     customOperationCancelable = viewModel.customOperationCard.value.cancelable,
                                     onCancelCustomOperation = { viewModel.cancelCustomSourceDownload() },
                                     onShowSettings = {
-                                        navController.navigate(STRoutes.SETTINGS) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                        navigateMainTab(STRoutes.SETTINGS)
                                     },
                                     onShowManageSt = { navController.navigate(STRoutes.MANAGE_ST) }
                                 )
                             }
 
                             composable(STRoutes.CHAT) {
-                                PlaceholderScreen(
-                                    title = "聊天",
-                                    subtitle = "需要 TavernApiAdapter 接入 Core API（Phase 2）",
-                                    icon = Icons.AutoMirrored.Filled.Chat
+                                ChatWebViewScreen(
+                                    status = statusState.value,
+                                    target = WebViewTarget.CHAT,
+                                    themeMode = themeMode,
+                                    onStartService = { startNode() },
+                                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
+                                    onBackToHome = { navigateMainTab(STRoutes.HOME) }
                                 )
                             }
 
                             composable(STRoutes.CHARACTERS) {
-                                PlaceholderScreen(
-                                    title = "角色管理",
-                                    subtitle = "需要 TavernApiAdapter 接入 Core API（Phase 2）",
-                                    icon = Icons.Filled.Person
+                                ChatWebViewScreen(
+                                    status = statusState.value,
+                                    target = WebViewTarget.CHARACTERS,
+                                    themeMode = themeMode,
+                                    onStartService = { startNode() },
+                                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
+                                    onBackToHome = { navigateMainTab(STRoutes.HOME) }
                                 )
                             }
 
                             composable(STRoutes.TOOLS) {
-                                PlaceholderScreen(
-                                    title = "工具中心",
-                                    subtitle = "世界书、预设、Prompt Manager 等（Phase 3）",
-                                    icon = Icons.Filled.Build
+                                ChatWebViewScreen(
+                                    status = statusState.value,
+                                    target = WebViewTarget.TOOLS,
+                                    themeMode = themeMode,
+                                    onStartService = { startNode() },
+                                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
+                                    onBackToHome = { navigateMainTab(STRoutes.HOME) }
                                 )
                             }
 
@@ -647,11 +640,6 @@ class MainActivity : ComponentActivity() {
     private fun stopNode() {
         val intent = Intent(this, NodeService::class.java).apply { action = NodeService.ACTION_STOP }
         startService(intent)
-    }
-
-    private fun openNodeUi(port: Int) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("http://127.0.0.1:$port/"))
-        startActivity(intent)
     }
 
     private fun openNotificationSettings() {

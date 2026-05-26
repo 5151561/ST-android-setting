@@ -100,7 +100,7 @@
     <string name="notification_access_body">Allow notifications so SillyTavern server can keep running in the background. This permission is not used for anything else.</string>
     <string name="notification_access_title">Notification access needed</string>
     <string name="notification_settings">Notification Settings</string>
-    <string name="open_in_browser">Open in Browser</string>
+    <string name="open_in_browser">Open SillyTavern</string>
     <string name="percent_value">%1$d%%</string>
     <string name="remove">Remove</string>
     <string name="reset">Reset</string>
@@ -108,8 +108,8 @@
     <string name="saving">Saving...</string>
     <string name="settings_auto_check_subtitle">Checks on app startup, no more than once per day.</string>
     <string name="settings_auto_check_title">Automatically Check for Updates</string>
-    <string name="settings_auto_open_subtitle">When the server is ready, open SillyTavern in your browser for you.</string>
-    <string name="settings_auto_open_title">Open Browser Automatically</string>
+    <string name="settings_auto_open_subtitle">When the server is ready, open the in-app SillyTavern view for you.</string>
+    <string name="settings_auto_open_title">Open SillyTavern Automatically</string>
     <string name="settings_theme_title">Theme</string>
     <string name="settings_theme_auto_label">Automatic</string>
     <string name="settings_theme_light_label">Light</string>
@@ -143,6 +143,21 @@
     <string name="update_headline_downloading">Downloading update %1$s</string>
     <string name="update_headline_ready">New update %1$s is ready.</string>
     <string name="waiting_for_server">Waiting for server...</string>
+
+    <!-- WebView shell -->
+    <string name="webview_loading_starting">Starting SillyTavern...</string>
+    <string name="webview_loading_connecting">Connecting to SillyTavern...</string>
+    <string name="webview_error_service_stopped_title">SillyTavern is stopped</string>
+    <string name="webview_error_service_stopped_body">The local server is not running yet.</string>
+    <string name="webview_error_service_error_title">SillyTavern stopped unexpectedly</string>
+    <string name="webview_error_service_error_body">The local server reported an error.</string>
+    <string name="webview_error_server_unavailable_title">SillyTavern is not reachable</string>
+    <string name="webview_error_server_unavailable_body">The app started the service, but 127.0.0.1:%1$d did not become ready.</string>
+    <string name="webview_error_page_failed_title">Page failed to load</string>
+    <string name="webview_error_page_failed_body">The embedded SillyTavern page could not be loaded.</string>
+    <string name="webview_start_service">Start</string>
+    <string name="webview_retry">Retry</string>
+    <string name="webview_view_logs">View Logs</string>
 
     <!-- Backup operation cards -->
     <string name="backup_op_exporting_title">Exporting Backup</string>

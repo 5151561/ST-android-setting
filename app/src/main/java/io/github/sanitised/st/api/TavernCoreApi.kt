@@ -1,6 +1,11 @@
 package io.github.sanitised.st.api
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 data class CoreHealth(
     val ok: Boolean,
@@ -38,12 +43,28 @@ interface TavernCoreApi {
 }
 
 class TavernCoreClient(
-    private val baseUrl: String = "http://127.0.0.1:8000"
+    baseUrl: String = "http://127.0.0.1:8000",
+    private val httpClient: OkHttpClient = defaultHttpClient
 ) : TavernCoreApi {
+    private val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
 
     override suspend fun healthCheck(): CoreHealth {
-        // TODO: Implement when Core API endpoints are mapped
-        return CoreHealth(ok = false)
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val request = Request.Builder()
+                    .url(normalizedBaseUrl)
+                    .get()
+                    .build()
+                httpClient.newCall(request).execute().use { response ->
+                    CoreHealth(
+                        ok = response.code in 200..399,
+                        version = response.header("X-SillyTavern-Version")
+                    )
+                }
+            }.getOrElse {
+                CoreHealth(ok = false)
+            }
+        }
     }
 
     override suspend fun listCharacters(): List<CharacterSummary> {
@@ -63,5 +84,19 @@ class TavernCoreClient(
 
     override suspend fun stopGeneration(chatId: String) {
         // TODO: POST /api/chats/{chatId}/stop
+    }
+
+    private companion object {
+        val defaultHttpClient: OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(750, TimeUnit.MILLISECONDS)
+            .readTimeout(1500, TimeUnit.MILLISECONDS)
+            .callTimeout(2, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
+
+        fun normalizeBaseUrl(baseUrl: String): String {
+            val trimmed = baseUrl.trim()
+            return if (trimmed.endsWith("/")) trimmed else "$trimmed/"
+        }
     }
 }

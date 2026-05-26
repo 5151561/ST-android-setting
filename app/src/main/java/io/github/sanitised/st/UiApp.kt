@@ -32,11 +32,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.github.sanitised.st.api.TavernCoreClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.net.InetSocketAddress
-import java.net.Socket
 
 @Composable
 fun STAndroidApp(
@@ -86,36 +85,38 @@ fun STAndroidApp(
     onShowManageSt: () -> Unit
 ) {
     val isBusy = busyMessage.isNotBlank()
-        val readyState = remember { mutableStateOf(false) }
-        val wasCanOpen = remember { mutableStateOf(false) }
-        LaunchedEffect(status.state, status.port) {
-            if (status.state != NodeState.RUNNING) {
-                readyState.value = false
-                return@LaunchedEffect
-            }
+    val readyState = remember { mutableStateOf(false) }
+    val wasReadyToAutoOpen = remember { mutableStateOf(false) }
+    LaunchedEffect(status.state, status.port) {
+        if (status.state != NodeState.RUNNING) {
             readyState.value = false
-            val deadline = System.currentTimeMillis() + 60_000L
-            while (status.state == NodeState.RUNNING && !readyState.value && System.currentTimeMillis() < deadline) {
-                val ok = withContext(Dispatchers.IO) {
-                    probeServer(status.port)
-                }
-                if (ok) {
-                    readyState.value = true
-                    break
-                }
-                delay(1000)
-            }
+            return@LaunchedEffect
         }
-        val canOpen = status.state == NodeState.RUNNING && readyState.value
-        LaunchedEffect(canOpen, autoOpenBrowserWhenReady) {
-            val justBecameActive = canOpen && !wasCanOpen.value
-            if (autoOpenBrowserWhenReady && justBecameActive && !autoOpenBrowserTriggeredForCurrentRun) {
-                onOpen()
-                onAutoOpenBrowserTriggered()
+        readyState.value = false
+        val client = TavernCoreClient(baseUrl = "http://127.0.0.1:${status.port}/")
+        val deadline = System.currentTimeMillis() + 60_000L
+        while (status.state == NodeState.RUNNING && !readyState.value && System.currentTimeMillis() < deadline) {
+            val ok = withContext(Dispatchers.IO) {
+                client.healthCheck().ok
             }
-            wasCanOpen.value = canOpen
+            if (ok) {
+                readyState.value = true
+                break
+            }
+            delay(1000)
         }
-        Surface(modifier = Modifier.fillMaxSize()) {
+    }
+    val readyToAutoOpen = status.state == NodeState.RUNNING && readyState.value
+    val canOpen = !isBusy && status.state != NodeState.STARTING && status.state != NodeState.STOPPING
+    LaunchedEffect(readyToAutoOpen, autoOpenBrowserWhenReady) {
+        val justBecameReady = readyToAutoOpen && !wasReadyToAutoOpen.value
+        if (autoOpenBrowserWhenReady && justBecameReady && !autoOpenBrowserTriggeredForCurrentRun) {
+            onOpen()
+            onAutoOpenBrowserTriggered()
+        }
+        wasReadyToAutoOpen.value = readyToAutoOpen
+    }
+    Surface(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -326,17 +327,6 @@ fun STAndroidApp(
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
-}
-
-private fun probeServer(port: Int): Boolean {
-    return try {
-        Socket().use { socket ->
-            socket.connect(InetSocketAddress("127.0.0.1", port), 500)
-            true
-        }
-    } catch (_: Exception) {
-        false
-    }
 }
 
 @Preview(showBackground = true)

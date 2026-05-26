@@ -30,7 +30,27 @@ class NodePayload(private val context: Context) {
         private const val PREF_CUSTOM_SOURCE_REF_TYPE = "custom_source_ref_type"
         private const val PREF_CUSTOM_SOURCE_REF_NAME = "custom_source_ref_name"
         private const val PREF_CUSTOM_SOURCE_COMMIT = "custom_source_commit"
+
+        internal fun selectBundledNodeAsset(
+            supportedAbis: Array<String>,
+            assetExists: (String) -> Boolean
+        ): BundledNodeAsset? {
+            for (abi in supportedAbis) {
+                for (fileName in listOf("node", "libnode.so")) {
+                    val assetPath = "node_payload/bin/$abi/$fileName"
+                    if (assetExists(assetPath)) {
+                        return BundledNodeAsset(abi = abi, assetPath = assetPath)
+                    }
+                }
+            }
+            return null
+        }
     }
+
+    data class BundledNodeAsset(
+        val abi: String,
+        val assetPath: String
+    )
 
     data class ManifestInfo(
         val payloadVersion: String?,
@@ -64,13 +84,17 @@ class NodePayload(private val context: Context) {
         return runCatching {
             val paths = AppPaths(context)
             val nativeNode = File(context.applicationInfo.nativeLibraryDir, "libnode.so")
+            val bundledNodeAsset = if (nativeNode.exists()) {
+                null
+            } else {
+                selectBundledNodeAsset() ?: throw IllegalStateException(
+                    "No matching Node.js binary found in assets for this ABI"
+                )
+            }
             val nodeBin = if (nativeNode.exists()) {
                 nativeNode
             } else {
-                val abi = selectAbi() ?: throw IllegalStateException(
-                    "No matching Node.js binary found in assets for this ABI"
-                )
-                paths.nodeBin(abi)
+                paths.nodeBin(bundledNodeAsset!!.abi)
             }
             val appDir = paths.stDir
             val appEntry = File(appDir, "server.js")
@@ -80,6 +104,14 @@ class NodePayload(private val context: Context) {
             val dataDir = paths.dataDir
             val payloadVersion = readPayloadVersion()
             var payloadUpdated = false
+
+            if (!nodeBin.exists()) {
+                val nodeAsset = bundledNodeAsset ?: throw IllegalStateException(
+                    "No matching Node.js binary found in assets for this ABI"
+                )
+                copyAssetToFile(nodeAsset.assetPath, nodeBin)
+                makeExecutable(nodeBin)
+            }
 
             // If user has a custom version installed, skip bundle extraction entirely.
             if (isCustomInstalled() && appEntry.exists()) {
@@ -98,14 +130,6 @@ class NodePayload(private val context: Context) {
                     payloadUpdated = false,
                     payloadVersion = null
                 )
-            }
-
-            if (!nodeBin.exists()) {
-                val abi = selectAbi() ?: throw IllegalStateException(
-                    "No matching Node.js binary found in assets for this ABI"
-                )
-                copyAssetToFile("node_payload/bin/$abi/node", nodeBin)
-                makeExecutable(nodeBin)
             }
 
             val bundleAsset = when {
@@ -178,15 +202,8 @@ class NodePayload(private val context: Context) {
         }
     }
 
-    private fun selectAbi(): String? {
-        val candidates = Build.SUPPORTED_ABIS
-        for (abi in candidates) {
-            val assetPath = "node_payload/bin/$abi/node"
-            if (assetExists(assetPath)) {
-                return abi
-            }
-        }
-        return null
+    private fun selectBundledNodeAsset(): BundledNodeAsset? {
+        return selectBundledNodeAsset(Build.SUPPORTED_ABIS) { path -> assetExists(path) }
     }
 
     private fun assetExists(path: String): Boolean {
@@ -338,7 +355,7 @@ class NodePayload(private val context: Context) {
                     while (true) {
                         val archiveEntry = tar.nextEntry ?: break
                         val entry = archiveEntry as? TarArchiveEntry ?: continue
-                        val name = entry.name ?: continue
+                        if (entry.name == null) continue
                         val target = TarUtils.resolveArchiveEntry(destDir, entry)
                         when {
                             entry.isDirectory -> {
@@ -545,9 +562,9 @@ class NodePayload(private val context: Context) {
     private fun findNodeBin(): File {
         val nativeNode = File(context.applicationInfo.nativeLibraryDir, "libnode.so")
         if (nativeNode.exists()) return nativeNode
-        val abi = selectAbi()
+        val nodeAsset = selectBundledNodeAsset()
             ?: throw IllegalStateException("No matching Node.js binary found for this device ABI.")
-        return AppPaths(context).nodeBin(abi)
+        return AppPaths(context).nodeBin(nodeAsset.abi)
     }
 
     private fun ensureNpmExtracted(): File {
