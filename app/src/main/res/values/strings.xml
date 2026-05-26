@@ -132,6 +132,10 @@
     <string name="settings_theme_auto_label">Automatic</string>
     <string name="settings_theme_light_label">Light</string>
     <string name="settings_theme_dark_label">Dark</string>
+    <string name="settings_color_source_title">Color Source</string>
+    <string name="settings_color_source_subtitle">Dynamic color follows your Android wallpaper on supported devices; brand color keeps the ST palette.</string>
+    <string name="settings_color_source_dynamic_label">Dynamic</string>
+    <string name="settings_color_source_brand_label">ST Brand</string>
     <string name="settings_battery_button_enable">Set to Unrestricted</string>
     <string name="settings_battery_button_review">Open Battery Settings</string>
     <string name="settings_battery_status_optimized">Status: Optimized / restricted</string>

@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -59,7 +58,6 @@ import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.data.LocalTavernLibraryReader
 import io.github.sanitised.st.ui.components.STSectionCard
 import io.github.sanitised.st.ui.theme.STAppTheme
-import io.github.sanitised.st.ui.theme.STTheme
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -361,8 +359,8 @@ private fun HubScaffold(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val colors = STTheme.colors
-    Surface(modifier = modifier.fillMaxSize(), color = colors.bg) {
+    val colors = MaterialTheme.colorScheme
+    Surface(modifier = modifier.fillMaxSize(), color = colors.background) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -382,7 +380,7 @@ private fun HubScaffold(
                         text = title,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        color = colors.fg,
+                        color = colors.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -390,7 +388,7 @@ private fun HubScaffold(
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = colors.muted,
+                        color = colors.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -398,7 +396,7 @@ private fun HubScaffold(
                 Icon(
                     imageVector = Icons.Filled.Info,
                     contentDescription = null,
-                    tint = colors.muted,
+                    tint = colors.onSurfaceVariant,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -420,7 +418,7 @@ private fun HubActionCard(
     enabled: Boolean = true,
     disabledHint: String? = null
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     STSectionCard(modifier = modifier, contentSpacing = 12.dp) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconPill(icon = icon)
@@ -442,7 +440,7 @@ private fun HubActionCard(
                 Text(
                     text = disabledHint,
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.warn
+                    color = colors.secondary
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -474,14 +472,14 @@ private fun ToolTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(1.dp, colors.border),
-        shape = RoundedCornerShape(12.dp)
+        border = BorderStroke(1.dp, colors.outline),
+        shape = MaterialTheme.shapes.medium
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -537,11 +535,11 @@ private fun EmptyHubCard(
     title: String,
     body: String
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(1.dp, colors.borderSoft)
+        border = BorderStroke(1.dp, colors.outlineVariant)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -578,7 +576,7 @@ private fun HubListRow(
     trailingLabel: String,
     onClick: () -> Unit
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -589,14 +587,14 @@ private fun HubListRow(
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .background(colors.surfaceWarm, CircleShape),
+                .background(colors.primaryContainer, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = avatarLabel,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = colors.fg2
+                color = colors.onSurface
             )
         }
         Spacer(modifier = Modifier.width(12.dp))
@@ -620,7 +618,7 @@ private fun HubListRow(
         Text(
             text = trailingLabel,
             style = MaterialTheme.typography.labelSmall,
-            color = colors.accent,
+            color = colors.primary,
             maxLines = 1
         )
     }
@@ -628,17 +626,17 @@ private fun HubListRow(
 
 @Composable
 private fun IconPill(icon: ImageVector) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     Box(
         modifier = Modifier
             .size(40.dp)
-            .background(colors.surfaceWarm, CircleShape),
+            .background(colors.primaryContainer, CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = colors.accent,
+            tint = colors.primary,
             modifier = Modifier.size(20.dp)
         )
     }
@@ -650,12 +648,12 @@ private fun DashboardMetric(
     value: String,
     modifier: Modifier = Modifier
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = colors.bg,
-        border = BorderStroke(1.dp, colors.borderSoft)
+        shape = MaterialTheme.shapes.medium,
+        color = colors.surfaceContainerLow,
+        border = BorderStroke(1.dp, colors.outlineVariant)
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Text(
@@ -676,30 +674,30 @@ private fun DashboardMetric(
 
 @Composable
 private fun StatusChip(status: NodeStatus) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     val (label, fg, bg) = when (status.state) {
         NodeState.RUNNING -> Triple(
             stringResource(R.string.dashboard_status_running),
-            colors.success,
-            colors.success.copy(alpha = 0.12f)
+            colors.onTertiaryContainer,
+            colors.tertiaryContainer
         )
         NodeState.STARTING, NodeState.STOPPING -> Triple(
             stringResource(R.string.dashboard_status_busy),
-            colors.warn,
-            colors.warn.copy(alpha = 0.18f)
+            colors.onSecondaryContainer,
+            colors.secondaryContainer
         )
         NodeState.ERROR -> Triple(
             stringResource(R.string.dashboard_status_error),
-            colors.danger,
-            colors.danger.copy(alpha = 0.12f)
+            colors.onErrorContainer,
+            colors.errorContainer
         )
         NodeState.STOPPED -> Triple(
             stringResource(R.string.dashboard_status_stopped),
-            colors.muted,
-            colors.borderSoft
+            colors.onSurfaceVariant,
+            colors.surfaceContainerHighest
         )
     }
-    Surface(shape = RoundedCornerShape(999.dp), color = bg) {
+    Surface(shape = CircleShape, color = bg) {
         Text(
             text = label,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),

@@ -22,7 +22,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import io.github.sanitised.st.ui.theme.STTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -37,7 +36,7 @@ fun CharacterAvatarImage(
     size: Dp = 48.dp,
     localBytes: ByteArray? = null
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     val image by produceState<ImageBitmap?>(initialValue = null, baseUrl, avatar, localBytes) {
         value = withContext(Dispatchers.IO) {
             localBytes?.decodeBitmap() ?: loadAvatarBitmap(baseUrl, avatar)
@@ -47,7 +46,7 @@ fun CharacterAvatarImage(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(colors.surfaceWarm),
+            .background(colors.primaryContainer),
         contentAlignment = Alignment.Center
     ) {
         if (image != null) {
@@ -62,7 +61,7 @@ fun CharacterAvatarImage(
                 text = label.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = colors.fg2
+                color = colors.onSurface
             )
         }
     }

@@ -25,7 +25,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.sanitised.st.R
-import io.github.sanitised.st.ui.theme.STTheme
 
 enum class WebViewErrorKind {
     SERVICE_STOPPED,
@@ -47,7 +46,7 @@ fun WebViewErrorPage(
     onShowLogs: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     val title = when (error.kind) {
         WebViewErrorKind.SERVICE_STOPPED -> stringResource(R.string.webview_error_service_stopped_title)
         WebViewErrorKind.SERVICE_ERROR -> stringResource(R.string.webview_error_service_error_title)
@@ -77,21 +76,21 @@ fun WebViewErrorPage(
         Icon(
             imageVector = Icons.Filled.Warning,
             contentDescription = null,
-            tint = colors.warn,
+            tint = colors.secondary,
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
-            color = colors.fg,
+            color = colors.onSurface,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = body,
             style = MaterialTheme.typography.bodyMedium,
-            color = colors.muted,
+            color = colors.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(24.dp))

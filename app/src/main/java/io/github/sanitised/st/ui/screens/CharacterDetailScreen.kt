@@ -72,7 +72,6 @@ import io.github.sanitised.st.ui.components.FavoriteIconButton
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STInfoCard
 import io.github.sanitised.st.ui.components.STSectionCard
-import io.github.sanitised.st.ui.theme.STTheme
 import kotlinx.coroutines.launch
 
 private enum class CharacterDetailTab {
@@ -102,7 +101,7 @@ fun CharacterDetailScreen(
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
@@ -244,7 +243,7 @@ fun CharacterDetailScreen(
         )
     }
 
-    Surface(modifier = modifier.fillMaxSize(), color = colors.bg) {
+    Surface(modifier = modifier.fillMaxSize(), color = colors.background) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
@@ -357,7 +356,7 @@ private fun CharacterDetailTopBar(
     onBack: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -371,12 +370,12 @@ private fun CharacterDetailTopBar(
                 text = stringResource(R.string.character_detail_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = colors.fg
+                color = colors.onSurface
             )
             Text(
                 text = stringResource(R.string.character_detail_subtitle, detail?.id ?: avatar),
                 style = MaterialTheme.typography.bodySmall,
-                color = colors.muted,
+                color = colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -396,11 +395,11 @@ private fun CharacterDetailHero(
     onEdit: () -> Unit,
     onOpenChat: () -> Unit
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.surfaceWarm),
-        border = BorderStroke(1.dp, colors.borderSoft)
+        colors = CardDefaults.cardColors(containerColor = colors.primaryContainer),
+        border = BorderStroke(1.dp, colors.outlineVariant)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -415,14 +414,14 @@ private fun CharacterDetailHero(
                         text = detail.name,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        color = colors.fg,
+                        color = colors.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = detail.creatorNotes.ifBlank { detail.description },
                         style = MaterialTheme.typography.bodySmall,
-                        color = colors.muted,
+                        color = colors.onSurfaceVariant,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -470,12 +469,12 @@ private fun CharacterMetrics(detail: CharacterDetail, chats: List<CharacterChatS
 private fun CharacterMetric(value: String, label: String, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
-        border = BorderStroke(1.dp, STTheme.colors.borderSoft)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(text = value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(text = label, style = MaterialTheme.typography.labelSmall, color = STTheme.colors.muted)
+            Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -505,7 +504,7 @@ private fun CharacterDetailTabs(selectedTab: CharacterDetailTab, onSelected: (Ch
 private fun CharacterOverviewPanel(detail: CharacterDetail) {
     STSectionCard(
         title = stringResource(R.string.character_detail_core_fields),
-        borderColor = STTheme.colors.borderSoft,
+        borderColor = MaterialTheme.colorScheme.outlineVariant,
         contentSpacing = 10.dp
     ) {
         CharacterInfoRow(stringResource(R.string.character_edit_description), detail.description)
@@ -516,7 +515,7 @@ private fun CharacterOverviewPanel(detail: CharacterDetail) {
     Spacer(modifier = Modifier.height(2.dp))
     STSectionCard(
         title = stringResource(R.string.character_detail_migration_status),
-        borderColor = STTheme.colors.borderSoft,
+        borderColor = MaterialTheme.colorScheme.outlineVariant,
         contentSpacing = 10.dp
     ) {
         CharacterInfoRow(stringResource(R.string.character_edit_alternate_greetings), detail.alternateGreetings.size.toString())
@@ -537,7 +536,7 @@ private fun CharacterChatsPanel(
 ) {
     STSectionCard(
         title = stringResource(R.string.character_detail_chats_title),
-        borderColor = STTheme.colors.borderSoft,
+        borderColor = MaterialTheme.colorScheme.outlineVariant,
         contentSpacing = 10.dp
     ) {
         OutlinedButton(
@@ -557,7 +556,7 @@ private fun CharacterChatsPanel(
             Text(
                 text = stringResource(R.string.character_detail_chats_empty),
                 style = MaterialTheme.typography.bodySmall,
-                color = STTheme.colors.muted
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
             chats.forEach { chat ->
@@ -597,7 +596,7 @@ private fun CharacterChatRow(
                     .filter { it.isNotBlank() }
                     .joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
-                color = STTheme.colors.muted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -605,7 +604,7 @@ private fun CharacterChatRow(
                 Text(
                     text = chat.lastMessage,
                     style = MaterialTheme.typography.bodySmall,
-                    color = STTheme.colors.fg2,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -644,7 +643,7 @@ private fun CharacterChatRow(
                 )
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.character_chat_delete)) },
-                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = STTheme.colors.danger) },
+                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                     onClick = {
                         menuExpanded = false
                         onDeleteChat()
@@ -666,7 +665,7 @@ private fun CharacterLinksPanel(
     val sourceUrl = detail.sourceUrl.trim()
     STSectionCard(
         title = stringResource(R.string.character_detail_links_title),
-        borderColor = STTheme.colors.borderSoft,
+        borderColor = MaterialTheme.colorScheme.outlineVariant,
         contentSpacing = 10.dp
     ) {
         CharacterLinkRow(
@@ -717,12 +716,12 @@ private fun CharacterLinkRow(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = STTheme.colors.muted
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (enabled) STTheme.colors.fg else STTheme.colors.muted,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -739,13 +738,13 @@ private fun CharacterInfoRow(label: String, value: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
-            color = STTheme.colors.muted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(0.36f)
         )
         Text(
             text = value.ifBlank { stringResource(R.string.unknown_short) },
             style = MaterialTheme.typography.bodySmall,
-            color = STTheme.colors.fg,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(0.64f)
         )
     }
@@ -758,10 +757,10 @@ private fun CharacterTagLine(tags: List<String>) {
             Text(
                 text = tag,
                 style = MaterialTheme.typography.labelSmall,
-                color = STTheme.colors.accent,
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(STTheme.colors.accent.copy(alpha = 0.12f))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             )
         }

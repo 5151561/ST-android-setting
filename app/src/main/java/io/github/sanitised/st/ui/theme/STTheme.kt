@@ -1,20 +1,29 @@
 package io.github.sanitised.st.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.Typography as MaterialTypography
+import io.github.sanitised.st.ThemeColorSource
 
 @Immutable
 data class STSpacing(
@@ -71,11 +80,19 @@ object STTheme {
         get() = LocalSTTypography.current
 }
 
-private val LightMaterialColorScheme = lightColorScheme(
+private val LightBrandColorScheme = lightColorScheme(
     primary = STLightColors.accent,
     onPrimary = STLightColors.accentOn,
     primaryContainer = STLightColors.surfaceWarm,
     onPrimaryContainer = STLightColors.fg,
+    secondary = STLightColors.fg2,
+    onSecondary = STLightColors.accentOn,
+    secondaryContainer = STLightColors.borderSoft,
+    onSecondaryContainer = STLightColors.fg,
+    tertiary = STLightColors.success,
+    onTertiary = STLightColors.accentOn,
+    tertiaryContainer = STLightColors.success.copy(alpha = 0.14f),
+    onTertiaryContainer = STLightColors.success,
     surface = STLightColors.surface,
     onSurface = STLightColors.fg,
     surfaceVariant = STLightColors.bg,
@@ -90,11 +107,19 @@ private val LightMaterialColorScheme = lightColorScheme(
     onErrorContainer = STLightColors.danger
 )
 
-private val DarkMaterialColorScheme = darkColorScheme(
+private val DarkBrandColorScheme = darkColorScheme(
     primary = STDarkColors.accent,
     onPrimary = STDarkColors.accentOn,
     primaryContainer = STDarkColors.surfaceWarm,
     onPrimaryContainer = STDarkColors.fg,
+    secondary = STDarkColors.fg2,
+    onSecondary = STDarkColors.accentOn,
+    secondaryContainer = STDarkColors.borderSoft,
+    onSecondaryContainer = STDarkColors.fg,
+    tertiary = STDarkColors.success,
+    onTertiary = STDarkColors.accentOn,
+    tertiaryContainer = STDarkColors.success.copy(alpha = 0.14f),
+    onTertiaryContainer = STDarkColors.success,
     surface = STDarkColors.surface,
     onSurface = STDarkColors.fg,
     surfaceVariant = STDarkColors.bg,
@@ -109,23 +134,61 @@ private val DarkMaterialColorScheme = darkColorScheme(
     onErrorContainer = STDarkColors.danger
 )
 
+private val AppTypography = MaterialTypography()
+
+private val AppShapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(28.dp)
+)
+
 @Composable
 fun STAppTheme(
     useDarkTheme: Boolean = isSystemInDarkTheme(),
+    colorSource: ThemeColorSource = ThemeColorSource.DYNAMIC,
     content: @Composable () -> Unit
 ) {
-    val stColors = if (useDarkTheme) STDarkColors else STLightColors
-    val materialColorScheme = if (useDarkTheme) DarkMaterialColorScheme else LightMaterialColorScheme
+    val context = LocalContext.current
+    val materialColorScheme = when {
+        colorSource == ThemeColorSource.DYNAMIC && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            if (useDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+
+        useDarkTheme -> DarkBrandColorScheme
+        else -> LightBrandColorScheme
+    }
 
     CompositionLocalProvider(
-        LocalSTColors provides stColors,
+        LocalSTColors provides materialColorScheme.asLegacySTColors(),
         LocalSTSpacing provides STSpacing(),
         LocalSTRadius provides STRadius(),
         LocalSTTypography provides STTypography()
     ) {
         MaterialTheme(
             colorScheme = materialColorScheme,
+            typography = AppTypography,
+            shapes = AppShapes,
             content = content
         )
     }
+}
+
+private fun ColorScheme.asLegacySTColors(): STColors {
+    return STColors(
+        bg = background,
+        surface = surface,
+        surfaceWarm = primaryContainer,
+        fg = onBackground,
+        fg2 = onSurface,
+        muted = onSurfaceVariant,
+        border = outline,
+        borderSoft = outlineVariant,
+        accent = primary,
+        accentOn = onPrimary,
+        success = tertiary,
+        warn = secondary,
+        danger = error
+    )
 }

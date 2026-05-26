@@ -71,7 +71,6 @@ import io.github.sanitised.st.ui.components.CharacterTagCheckboxList
 import io.github.sanitised.st.ui.components.FavoriteIconButton
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STInfoCard
-import io.github.sanitised.st.ui.theme.STTheme
 import kotlinx.coroutines.launch
 
 private data class CharacterListLoadState(
@@ -109,7 +108,7 @@ fun CharacterListScreen(
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var refreshKey by remember { mutableIntStateOf(0) }
@@ -364,7 +363,7 @@ fun CharacterListScreen(
                     Text(
                         text = stringResource(R.string.character_external_import_hint),
                         style = MaterialTheme.typography.bodySmall,
-                        color = colors.muted
+                        color = colors.onSurfaceVariant
                     )
                     OutlinedTextField(
                         value = externalImportText,
@@ -414,7 +413,7 @@ fun CharacterListScreen(
         )
     }
 
-    Surface(modifier = modifier.fillMaxSize(), color = colors.bg) {
+    Surface(modifier = modifier.fillMaxSize(), color = colors.background) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -432,14 +431,14 @@ fun CharacterListScreen(
                     text = stringResource(R.string.character_hub_title),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = colors.fg,
+                    color = colors.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = stringResource(R.string.character_list_subtitle),
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.muted,
+                    color = colors.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -801,11 +800,11 @@ private fun CharacterListCard(
     onDuplicateCharacter: (CharacterSummary) -> Unit,
     onDeleteCharacter: (CharacterSummary) -> Unit
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(1.dp, colors.border)
+        border = BorderStroke(1.dp, colors.outline)
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
             when (viewMode) {
@@ -863,7 +862,7 @@ private fun CharacterRow(
     onDuplicateCharacter: () -> Unit,
     onDeleteCharacter: () -> Unit
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     var menuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
@@ -903,7 +902,7 @@ private fun CharacterRow(
                     Text(
                         text = character.characterVersion,
                         style = MaterialTheme.typography.labelSmall,
-                        color = colors.muted,
+                        color = colors.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -914,7 +913,7 @@ private fun CharacterRow(
                     stringResource(R.string.character_list_no_tags)
                 },
                 style = MaterialTheme.typography.bodySmall,
-                color = colors.muted,
+                color = colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -922,7 +921,7 @@ private fun CharacterRow(
                 Text(
                     text = character.creatorNotes,
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.fg2,
+                    color = colors.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -987,14 +986,14 @@ private fun CharacterGridCell(
     onEditTags: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     Surface(
         modifier = modifier
             .height(190.dp)
             .clip(RoundedCornerShape(18.dp))
             .clickable(onClick = onOpenCharacter),
-        color = colors.surfaceWarm,
-        border = BorderStroke(1.dp, colors.borderSoft)
+        color = colors.primaryContainer,
+        border = BorderStroke(1.dp, colors.outlineVariant)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -1022,7 +1021,7 @@ private fun CharacterGridCell(
                     stringResource(R.string.character_list_no_tags)
                 },
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.muted,
+                color = colors.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1041,11 +1040,11 @@ private fun CharacterHotSwaps(
     onToggleExpanded: () -> Unit,
     onOpenCharacter: (CharacterSummary) -> Unit
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.surfaceWarm),
-        border = BorderStroke(1.dp, colors.borderSoft)
+        colors = CardDefaults.cardColors(containerColor = colors.primaryContainer),
+        border = BorderStroke(1.dp, colors.outlineVariant)
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
@@ -1062,7 +1061,7 @@ private fun CharacterHotSwaps(
                     Text(
                         text = stringResource(R.string.character_list_hotswaps_body),
                         style = MaterialTheme.typography.bodySmall,
-                        color = colors.muted
+                        color = colors.onSurfaceVariant
                     )
                 }
                 TextButton(onClick = onToggleExpanded) {
@@ -1094,7 +1093,7 @@ private fun CharacterHotSwaps(
                             Text(
                                 text = character.name,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = colors.fg,
+                                color = colors.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -1120,8 +1119,8 @@ private fun CharacterBatchBar(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
-        border = BorderStroke(1.dp, STTheme.colors.border)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
@@ -1201,8 +1200,8 @@ private fun CharacterPaginationBar(
     var pageSizeMenuExpanded by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
-        border = BorderStroke(1.dp, STTheme.colors.borderSoft)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(
             modifier = Modifier
@@ -1220,7 +1219,7 @@ private fun CharacterPaginationBar(
                     page.totalItems
                 ),
                 style = MaterialTheme.typography.bodySmall,
-                color = STTheme.colors.muted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )

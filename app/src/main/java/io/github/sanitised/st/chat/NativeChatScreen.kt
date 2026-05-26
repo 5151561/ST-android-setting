@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,8 +25,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -50,7 +50,6 @@ import androidx.compose.ui.unit.dp
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.ThemeMode
-import io.github.sanitised.st.ui.theme.STTheme
 import io.github.sanitised.st.ui.webview.ChatWebViewScreen
 import io.github.sanitised.st.ui.webview.WebViewTarget
 
@@ -117,8 +116,8 @@ private fun ChatHeader(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = STTheme.colors.surface,
-        shadowElevation = 1.dp
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp
     ) {
         Row(
             modifier = Modifier
@@ -143,7 +142,7 @@ private fun ChatHeader(
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (runtimeState == RuntimeState.ERROR) STTheme.colors.danger else STTheme.colors.muted
+                        color = if (runtimeState == RuntimeState.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -166,7 +165,7 @@ private fun ChatLoadingView(modifier: Modifier = Modifier) {
             Text(
                 text = "Waiting for SillyTavern runtime...",
                 style = MaterialTheme.typography.bodyMedium,
-                color = STTheme.colors.muted
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -216,7 +215,7 @@ private fun MessageBubble(
 ) {
     val isUser = message.isUser
     val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
-    val bubbleColor = if (isUser) STTheme.colors.surfaceWarm else STTheme.colors.surface
+    val bubbleColor = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
     val shape = RoundedCornerShape(
         topStart = 16.dp,
         topEnd = 16.dp,
@@ -239,7 +238,7 @@ private fun MessageBubble(
                 Text(
                     text = message.name,
                     style = MaterialTheme.typography.labelMedium,
-                    color = STTheme.colors.accent,
+                    color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -248,7 +247,7 @@ private fun MessageBubble(
             Text(
                 text = message.mes,
                 style = MaterialTheme.typography.bodyMedium,
-                color = STTheme.colors.fg
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
     }
@@ -266,8 +265,8 @@ private fun ChatInputBar(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = STTheme.colors.surface,
-        shadowElevation = 4.dp
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 3.dp
     ) {
         Row(
             modifier = Modifier
@@ -287,10 +286,10 @@ private fun ChatInputBar(
                 },
                 enabled = runtimeReady && !isGenerating,
                 maxLines = 5,
-                shape = RoundedCornerShape(24.dp),
+                shape = MaterialTheme.shapes.extraLarge,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = STTheme.colors.accent,
-                    unfocusedBorderColor = STTheme.colors.border
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
                 ),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(
@@ -307,21 +306,21 @@ private fun ChatInputBar(
             Spacer(modifier = Modifier.width(8.dp))
 
             if (isGenerating) {
-                IconButton(
+                FilledIconButton(
                     onClick = onStop,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(STTheme.colors.danger)
+                    modifier = Modifier.size(48.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Close,
-                        contentDescription = "Stop",
-                        tint = STTheme.colors.accentOn
+                        contentDescription = "Stop"
                     )
                 }
             } else {
-                IconButton(
+                FilledIconButton(
                     onClick = {
                         val msg = text.trim()
                         if (msg.isNotEmpty()) {
@@ -330,18 +329,17 @@ private fun ChatInputBar(
                         }
                     },
                     enabled = text.isNotBlank() && runtimeReady,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (text.isNotBlank() && runtimeReady) STTheme.colors.accent
-                            else STTheme.colors.border
-                        )
+                    modifier = Modifier.size(48.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send",
-                        tint = STTheme.colors.accentOn
+                        contentDescription = "Send"
                     )
                 }
             }

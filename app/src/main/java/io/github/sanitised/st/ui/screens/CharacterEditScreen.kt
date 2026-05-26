@@ -56,7 +56,6 @@ import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STInfoCard
 import io.github.sanitised.st.ui.components.STSectionCard
-import io.github.sanitised.st.ui.theme.STTheme
 import kotlinx.coroutines.launch
 
 private data class CharacterEditDraft(
@@ -146,7 +145,7 @@ fun CharacterEditScreen(
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var draft by remember(avatar) { mutableStateOf(CharacterEditDraft(avatar = avatar)) }
@@ -312,7 +311,7 @@ fun CharacterEditScreen(
         }
     }
 
-    Surface(modifier = modifier.fillMaxSize(), color = colors.bg) {
+    Surface(modifier = modifier.fillMaxSize(), color = colors.background) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
@@ -332,12 +331,12 @@ fun CharacterEditScreen(
                             },
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
-                            color = colors.fg
+                            color = colors.onSurface
                         )
                         Text(
                             text = stringResource(R.string.character_edit_subtitle),
                             style = MaterialTheme.typography.bodySmall,
-                            color = colors.muted
+                            color = colors.onSurfaceVariant
                         )
                     }
                     IconButton(
@@ -520,7 +519,7 @@ private fun CharacterAvatarEditorSection(
                         stringResource(R.string.unknown_short)
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = STTheme.colors.muted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 OutlinedButton(onClick = onChooseAvatar, enabled = !saving) {
                     Text(stringResource(R.string.character_avatar_choose))
@@ -535,14 +534,14 @@ private fun CharacterAvatarEditorSection(
         Text(
             text = stringResource(R.string.character_avatar_processing_hint),
             style = MaterialTheme.typography.bodySmall,
-            color = STTheme.colors.muted
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         pendingAvatarUpload?.let { upload ->
             val outputName = CharacterEditTools.avatarOutputFileName(upload.fileName)
             Text(
                 text = stringResource(R.string.character_avatar_processing_output, outputName),
                 style = MaterialTheme.typography.bodySmall,
-                color = STTheme.colors.muted
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -740,13 +739,13 @@ private fun CharacterAlternateGreetingsEditor(
         Text(
             text = stringResource(R.string.character_edit_alternate_greetings),
             style = MaterialTheme.typography.labelLarge,
-            color = STTheme.colors.muted
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         if (greetings.isEmpty()) {
             Text(
                 text = stringResource(R.string.character_greeting_empty),
                 style = MaterialTheme.typography.bodySmall,
-                color = STTheme.colors.muted
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         greetings.forEachIndexed { index, greeting ->
@@ -849,7 +848,7 @@ private fun CharacterTokenCounterSection(draft: CharacterEditDraft) {
         Text(
             text = stringResource(R.string.character_token_body),
             style = MaterialTheme.typography.bodySmall,
-            color = STTheme.colors.muted
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         CharacterTokenRow(stringResource(R.string.character_token_total), stats.total)
         CharacterTokenRow(stringResource(R.string.character_token_description), stats.description)
@@ -911,7 +910,7 @@ private fun CharacterManagementActions(
         Text(
             text = stringResource(R.string.character_edit_management_body),
             style = MaterialTheme.typography.bodySmall,
-            color = STTheme.colors.muted
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Row(
             modifier = Modifier.fillMaxWidth(),

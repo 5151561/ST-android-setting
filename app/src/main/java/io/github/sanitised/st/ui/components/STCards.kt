@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.sanitised.st.R
-import io.github.sanitised.st.ui.theme.STTheme
 
 internal enum class STDialogButtonStyle {
     TEXT,
@@ -40,16 +39,16 @@ internal fun STInfoCard(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
-    borderColor: Color = STTheme.colors.border
+    borderColor: Color = MaterialTheme.colorScheme.outline
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, borderColor)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(text = body, style = MaterialTheme.typography.bodySmall, color = STTheme.colors.muted)
+            Text(text = body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (actionLabel != null && onAction != null) {
                 Button(onClick = onAction) {
                     Text(actionLabel)
@@ -62,7 +61,7 @@ internal fun STInfoCard(
 @Composable
 internal fun STSectionCard(
     title: String? = null,
-    borderColor: Color = STTheme.colors.border,
+    borderColor: Color = MaterialTheme.colorScheme.outline,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(16.dp),
     contentSpacing: Dp = 12.dp,
@@ -70,7 +69,7 @@ internal fun STSectionCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, borderColor)
     ) {
         Column(modifier = Modifier.padding(contentPadding), verticalArrangement = Arrangement.spacedBy(contentSpacing)) {

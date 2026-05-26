@@ -43,6 +43,17 @@ enum class ThemeMode(val storageValue: String) {
     }
 }
 
+enum class ThemeColorSource(val storageValue: String) {
+    DYNAMIC("dynamic"),
+    BRAND("brand");
+
+    companion object {
+        fun fromStorage(value: String?): ThemeColorSource {
+            return entries.firstOrNull { it.storageValue == value } ?: DYNAMIC
+        }
+    }
+}
+
 data class CustomRepoRefOption(
     val key: String,
     val label: String,

@@ -41,6 +41,8 @@ fun SettingsScreen(
     onAutoOpenBrowserChanged: (Boolean) -> Unit,
     themeMode: ThemeMode,
     onThemeModeChanged: (ThemeMode) -> Unit,
+    colorSource: ThemeColorSource,
+    onColorSourceChanged: (ThemeColorSource) -> Unit,
     isBatteryUnrestricted: Boolean,
     onOpenBatterySettings: () -> Unit,
     channel: UpdateChannel,
@@ -104,6 +106,23 @@ fun SettingsScreen(
                 ThemeModeSelector(
                     selectedMode = themeMode,
                     onThemeModeChanged = onThemeModeChanged
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.settings_color_source_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.settings_color_source_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                ThemeColorSourceSelector(
+                    selectedSource = colorSource,
+                    onColorSourceChanged = onColorSourceChanged
                 )
                 Spacer(modifier = Modifier.height(20.dp))
                 Text(
@@ -301,6 +320,38 @@ private fun ThemeModeSelector(
 }
 
 @Composable
+private fun ThemeColorSourceSelector(
+    selectedSource: ThemeColorSource,
+    onColorSourceChanged: (ThemeColorSource) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp)
+                .selectableGroup()
+        ) {
+            ThemeModeSegment(
+                label = stringResource(R.string.settings_color_source_dynamic_label),
+                selected = selectedSource == ThemeColorSource.DYNAMIC,
+                onClick = { onColorSourceChanged(ThemeColorSource.DYNAMIC) },
+                modifier = Modifier.weight(1f)
+            )
+            ThemeModeSegment(
+                label = stringResource(R.string.settings_color_source_brand_label),
+                selected = selectedSource == ThemeColorSource.BRAND,
+                onClick = { onColorSourceChanged(ThemeColorSource.BRAND) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
 private fun ThemeModeSegment(
     label: String,
     selected: Boolean,
@@ -392,6 +443,8 @@ private fun SettingsScreenPreview() {
         onAutoOpenBrowserChanged = {},
         themeMode = ThemeMode.AUTO,
         onThemeModeChanged = {},
+        colorSource = ThemeColorSource.DYNAMIC,
+        onColorSourceChanged = {},
         isBatteryUnrestricted = false,
         onOpenBatterySettings = {},
         channel = UpdateChannel.RELEASE,

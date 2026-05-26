@@ -40,7 +40,7 @@ class NativeHubScreensContractTest {
     }
 
     @Test
-    fun m2CharacterRoutesUseSharedMainBottomBar() {
+    fun m2CharacterRoutesUseSharedMainNavigationScaffold() {
         val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
         val listScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt").readText()
         val detailScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterDetailScreen.kt")
@@ -50,7 +50,7 @@ class NativeHubScreensContractTest {
         assertFalse(mainActivity.contains("isCharacterManagementRoute"))
         assertFalse(mainActivity.contains("if (!isCharacterManagementRoute)"))
         assertTrue(mainActivity.contains("bottomBarSelectedRoute"))
-        assertTrue(mainActivity.contains("STBottomBar("))
+        assertTrue(mainActivity.contains("STNavigationScaffold("))
         assertFalse(listScreen.contains("CharacterLocalBottomBar"))
         assertTrue(detailScreen.exists())
         assertFalse(detailScreen.readText().contains("CharacterLocalBottomBar"))

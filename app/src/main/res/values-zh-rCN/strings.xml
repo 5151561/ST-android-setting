@@ -132,6 +132,10 @@
     <string name="settings_theme_auto_label">跟随系统</string>
     <string name="settings_theme_light_label">浅色</string>
     <string name="settings_theme_dark_label">深色</string>
+    <string name="settings_color_source_title">颜色来源</string>
+    <string name="settings_color_source_subtitle">动态色会在支持的 Android 设备上跟随壁纸；品牌色保留 ST 固定配色。</string>
+    <string name="settings_color_source_dynamic_label">动态色</string>
+    <string name="settings_color_source_brand_label">ST 品牌色</string>
     <string name="settings_battery_button_enable">设为不受限制</string>
     <string name="settings_battery_button_review">打开电池设置</string>
     <string name="settings_battery_status_optimized">状态：已优化 / 受限制</string>

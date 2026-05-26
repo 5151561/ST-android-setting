@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -57,7 +56,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.sanitised.st.ui.navigation.BottomNavItem
-import io.github.sanitised.st.ui.navigation.STBottomBar
+import io.github.sanitised.st.ui.navigation.STNavigationScaffold
 import io.github.sanitised.st.ui.navigation.STRoutes
 import io.github.sanitised.st.ui.screens.CharacterDetailScreen
 import io.github.sanitised.st.ui.screens.CharacterEditScreen
@@ -272,6 +271,7 @@ class MainActivity : ComponentActivity() {
             val isUpdateReadyToInstall = viewModel.isAvailableUpdateDownloaded()
             val systemInDarkTheme = isSystemInDarkTheme()
             val themeMode by viewModel.themeMode
+            val themeColorSource by viewModel.themeColorSource
             val useDarkTheme = themeMode.shouldUseDarkTheme(systemInDarkTheme)
             val currentStLabel = if (viewModel.isCustomInstalled.value) {
                 val customLabel = viewModel.customInstallLabel.value
@@ -388,15 +388,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            STAppTheme(useDarkTheme = useDarkTheme) {
-                Scaffold(
-                    bottomBar = {
-                        STBottomBar(
-                            items = bottomNavItems,
-                            currentRoute = bottomBarSelectedRoute,
-                            onNavigate = navigateMainTab
-                        )
-                    },
+            STAppTheme(useDarkTheme = useDarkTheme, colorSource = themeColorSource) {
+                STNavigationScaffold(
+                    items = bottomNavItems,
+                    currentRoute = bottomBarSelectedRoute,
+                    onNavigate = navigateMainTab,
                     snackbarHost = {
                         SnackbarHost(
                             hostState = snackbarHostState,
@@ -645,6 +641,8 @@ class MainActivity : ComponentActivity() {
                                     onAutoOpenBrowserChanged = { enabled -> viewModel.setAutoOpenBrowserWhenReady(enabled) },
                                     themeMode = themeMode,
                                     onThemeModeChanged = { mode -> viewModel.setThemeMode(mode) },
+                                    colorSource = themeColorSource,
+                                    onColorSourceChanged = { source -> viewModel.setThemeColorSource(source) },
                                     isBatteryUnrestricted = batteryUnrestrictedState.value,
                                     onOpenBatterySettings = { openBatteryOptimizationSettings() },
                                     channel = viewModel.updateChannel.value,

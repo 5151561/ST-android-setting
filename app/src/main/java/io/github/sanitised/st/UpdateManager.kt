@@ -47,6 +47,7 @@ internal class UpdateManager(
         private const val PREF_AUTO_CHECK = "auto_check"
         private const val PREF_AUTO_OPEN_BROWSER = "auto_open_browser"
         private const val PREF_THEME_MODE = "theme_mode"
+        private const val PREF_THEME_COLOR_SOURCE = "theme_color_source"
         private const val PREF_CHANNEL = "channel"
         private const val PREF_FIRST_LAUNCH_MS = "first_launch_ms"
         private const val PREF_AUTO_OPTIN_PROMPT_SHOWN = "auto_optin_prompt_shown"
@@ -73,6 +74,9 @@ internal class UpdateManager(
     )
     val themeMode = mutableStateOf(
         resolveInitialThemeMode()
+    )
+    val themeColorSource = mutableStateOf(
+        resolveInitialThemeColorSource()
     )
     val updateChannel = mutableStateOf(
         resolveInitialUpdateChannel()
@@ -114,6 +118,11 @@ internal class UpdateManager(
     fun setThemeMode(mode: ThemeMode) {
         themeMode.value = mode
         appPrefs.edit().putString(PREF_THEME_MODE, mode.storageValue).apply()
+    }
+
+    fun setThemeColorSource(source: ThemeColorSource) {
+        themeColorSource.value = source
+        appPrefs.edit().putString(PREF_THEME_COLOR_SOURCE, source.storageValue).apply()
     }
 
     fun setUpdateChannel(channel: UpdateChannel) {
@@ -357,6 +366,10 @@ internal class UpdateManager(
 
     private fun resolveInitialThemeMode(): ThemeMode {
         return ThemeMode.fromStorage(appPrefs.getString(PREF_THEME_MODE, null))
+    }
+
+    private fun resolveInitialThemeColorSource(): ThemeColorSource {
+        return ThemeColorSource.fromStorage(appPrefs.getString(PREF_THEME_COLOR_SOURCE, null))
     }
 
     private fun ensureFirstLaunchTimestamp(): Long {

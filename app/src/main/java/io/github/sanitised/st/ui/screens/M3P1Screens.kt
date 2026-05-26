@@ -75,7 +75,6 @@ import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STInfoCard
 import io.github.sanitised.st.ui.components.STSectionCard
-import io.github.sanitised.st.ui.theme.STTheme
 import kotlinx.coroutines.launch
 
 private enum class PersonaViewMode {
@@ -788,7 +787,7 @@ fun ConnectionProfilesScreen(
             }
         )
         val selected = secrets.firstOrNull { it.key == selectedKey }
-        STSectionCard(title = selected?.label ?: stringResource(R.string.m3_connections_title), borderColor = STTheme.colors.borderSoft) {
+        STSectionCard(title = selected?.label ?: stringResource(R.string.m3_connections_title), borderColor = MaterialTheme.colorScheme.outlineVariant) {
             selected?.entries.orEmpty().forEach { entry ->
                 M3ListRow(
                     avatarLabel = if (entry.active) "*" else entry.label.avatarInitial(),
@@ -878,7 +877,7 @@ fun ConnectionProfilesScreen(
                 Text(stringResource(R.string.m3_connections_delete))
             }
         }
-        STSectionCard(title = stringResource(R.string.m3_connections_endpoint_label), borderColor = STTheme.colors.borderSoft) {
+        STSectionCard(title = stringResource(R.string.m3_connections_endpoint_label), borderColor = MaterialTheme.colorScheme.outlineVariant) {
             connections.take(6).forEach { profile ->
                 M3ListRow(
                     avatarLabel = profile.label.avatarInitial(),
@@ -1028,12 +1027,12 @@ fun ChatBackupsScreen(
         modifier = modifier
     ) {
         if (!serverRunning) return@M3ManagerScaffold
-        STSectionCard(borderColor = STTheme.colors.borderSoft, contentSpacing = 8.dp) {
+        STSectionCard(borderColor = MaterialTheme.colorScheme.outlineVariant, contentSpacing = 8.dp) {
             if (backups.isEmpty()) {
                 Text(
                     text = stringResource(R.string.m3_chat_backups_empty),
                     style = MaterialTheme.typography.bodySmall,
-                    color = STTheme.colors.muted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             if (selectedBackupNames.isNotEmpty()) {
@@ -1045,7 +1044,7 @@ fun ChatBackupsScreen(
                     Text(
                         text = stringResource(R.string.m3_chat_backups_selected_count, selectedBackupNames.size),
                         style = MaterialTheme.typography.bodySmall,
-                        color = STTheme.colors.muted,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(onClick = { selectedBackupNames = emptySet() }) {
@@ -1058,7 +1057,7 @@ fun ChatBackupsScreen(
                 Text(
                     text = stringResource(R.string.m3_chat_backups_select_hint),
                     style = MaterialTheme.typography.bodySmall,
-                    color = STTheme.colors.muted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             backups.forEach { backup ->
@@ -1096,9 +1095,9 @@ private fun M3ManagerScaffold(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    val colors = STTheme.colors
+    val colors = MaterialTheme.colorScheme
     val serverRunning = status.state == NodeState.RUNNING
-    Surface(modifier = modifier.fillMaxSize(), color = colors.bg) {
+    Surface(modifier = modifier.fillMaxSize(), color = colors.background) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -1120,14 +1119,14 @@ private fun M3ManagerScaffold(
                         text = title,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = colors.fg,
+                        color = colors.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = colors.muted,
+                        color = colors.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1168,12 +1167,12 @@ private fun WorldListCard(
     loading: Boolean,
     onSelect: (WorldInfoSummary) -> Unit
 ) {
-    STSectionCard(title = stringResource(R.string.m3_world_info_title), borderColor = STTheme.colors.borderSoft) {
+    STSectionCard(title = stringResource(R.string.m3_world_info_title), borderColor = MaterialTheme.colorScheme.outlineVariant) {
         if (loading) {
-            Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodySmall, color = STTheme.colors.muted)
+            Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (worlds.isEmpty()) {
-            Text(stringResource(R.string.m3_empty), style = MaterialTheme.typography.bodySmall, color = STTheme.colors.muted)
+            Text(stringResource(R.string.m3_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         worlds.forEach { world ->
             M3ListRow(
@@ -1197,7 +1196,7 @@ private fun WorldEntryEditor(
     onDelete: () -> Unit
 ) {
     val entry = book.entries.firstOrNull { it.uid == selectedEntryUid } ?: book.entries.firstOrNull()
-    STSectionCard(title = stringResource(R.string.m3_world_info_entries), borderColor = STTheme.colors.borderSoft) {
+    STSectionCard(title = stringResource(R.string.m3_world_info_entries), borderColor = MaterialTheme.colorScheme.outlineVariant) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             book.entries.take(8).forEach { item ->
                 FilterChip(
@@ -1208,7 +1207,7 @@ private fun WorldEntryEditor(
             }
         }
         if (entry == null) {
-            Text(stringResource(R.string.m3_empty), style = MaterialTheme.typography.bodySmall, color = STTheme.colors.muted)
+            Text(stringResource(R.string.m3_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             WorldEntryFields(
                 entry = entry,
@@ -1318,12 +1317,12 @@ private fun PersonaDetailEditor(
     onDelete: () -> Unit,
     onBackToList: () -> Unit
 ) {
-    STSectionCard(title = name.ifBlank { stringResource(R.string.m3_persona_title) }, borderColor = STTheme.colors.borderSoft) {
+    STSectionCard(title = name.ifBlank { stringResource(R.string.m3_persona_title) }, borderColor = MaterialTheme.colorScheme.outlineVariant) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Surface(
                 shape = CircleShape,
-                color = STTheme.colors.surfaceWarm,
-                border = BorderStroke(1.dp, STTheme.colors.borderSoft),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.size(64.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -1331,7 +1330,7 @@ private fun PersonaDetailEditor(
                         text = name.avatarInitial(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = STTheme.colors.accent
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -1339,7 +1338,7 @@ private fun PersonaDetailEditor(
                 Text(
                     text = avatar.orEmpty().ifBlank { stringResource(R.string.m3_persona_missing_avatar) },
                     style = MaterialTheme.typography.bodySmall,
-                    color = STTheme.colors.muted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1395,12 +1394,12 @@ private fun PersonaListCard(
     onOpen: (PersonaProfile) -> Unit,
     onEnable: (PersonaProfile) -> Unit
 ) {
-    STSectionCard(title = stringResource(R.string.m3_persona_title), borderColor = STTheme.colors.borderSoft) {
+    STSectionCard(title = stringResource(R.string.m3_persona_title), borderColor = MaterialTheme.colorScheme.outlineVariant) {
         if (loading) {
-            Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodySmall, color = STTheme.colors.muted)
+            Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (personas.isEmpty()) {
-            Text(stringResource(R.string.m3_empty), style = MaterialTheme.typography.bodySmall, color = STTheme.colors.muted)
+            Text(stringResource(R.string.m3_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         personas.forEach { persona ->
             M3ListRow(
@@ -1454,9 +1453,9 @@ private fun PresetListCard(
     val presets = categories.firstOrNull { it.apiId == selectedApiId }?.presets
         ?: categories.firstOrNull()?.presets
         ?: emptyList()
-    STSectionCard(borderColor = STTheme.colors.borderSoft) {
+    STSectionCard(borderColor = MaterialTheme.colorScheme.outlineVariant) {
         if (presets.isEmpty()) {
-            Text(stringResource(R.string.m3_empty), style = MaterialTheme.typography.bodySmall, color = STTheme.colors.muted)
+            Text(stringResource(R.string.m3_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         presets.forEach { preset ->
             M3ListRow(
@@ -1492,11 +1491,11 @@ private fun PresetDetailEditor(
     onEnable: () -> Unit,
     onBackToList: () -> Unit
 ) {
-    STSectionCard(title = presetName.ifBlank { stringResource(R.string.m3_presets_title) }, borderColor = STTheme.colors.borderSoft) {
+    STSectionCard(title = presetName.ifBlank { stringResource(R.string.m3_presets_title) }, borderColor = MaterialTheme.colorScheme.outlineVariant) {
         Text(
             text = apiId.orEmpty().ifBlank { stringResource(R.string.unknown_short) },
             style = MaterialTheme.typography.bodySmall,
-            color = STTheme.colors.muted
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         M3EnableRow(
             label = stringResource(R.string.m3_presets_title),
@@ -1599,8 +1598,8 @@ private fun ChatBackupListRow(
     ) {
         Surface(
             shape = CircleShape,
-            color = STTheme.colors.surfaceWarm,
-            border = BorderStroke(1.dp, STTheme.colors.borderSoft),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.size(42.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -1608,7 +1607,7 @@ private fun ChatBackupListRow(
                     text = "C",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = STTheme.colors.accent
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
@@ -1625,7 +1624,7 @@ private fun ChatBackupListRow(
                     .filter { it.isNotBlank() }
                     .joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
-                color = STTheme.colors.muted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1692,8 +1691,8 @@ private fun M3ListRow(
     ) {
         Surface(
             shape = CircleShape,
-            color = STTheme.colors.surfaceWarm,
-            border = BorderStroke(1.dp, STTheme.colors.borderSoft),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.size(42.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -1701,7 +1700,7 @@ private fun M3ListRow(
                     text = avatarLabel.take(1).ifBlank { "?" },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = STTheme.colors.accent
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
@@ -1716,7 +1715,7 @@ private fun M3ListRow(
             Text(
                 text = body.ifBlank { stringResource(R.string.unknown_short) },
                 style = MaterialTheme.typography.bodySmall,
-                color = STTheme.colors.muted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1727,7 +1726,7 @@ private fun M3ListRow(
             Text(
                 text = trailing,
                 style = MaterialTheme.typography.labelSmall,
-                color = STTheme.colors.accent,
+                color = MaterialTheme.colorScheme.primary,
                 maxLines = 1
             )
         }
