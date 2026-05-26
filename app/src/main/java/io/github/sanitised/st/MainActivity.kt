@@ -50,14 +50,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import io.github.sanitised.st.ui.navigation.BottomNavItem
 import io.github.sanitised.st.ui.navigation.STBottomBar
 import io.github.sanitised.st.ui.navigation.STRoutes
-import io.github.sanitised.st.ui.screens.CharacterHubScreen
+import io.github.sanitised.st.ui.screens.CharacterEditScreen
+import io.github.sanitised.st.ui.screens.CharacterListScreen
 import io.github.sanitised.st.ui.screens.ToolsHubScreen
 import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
 import io.github.sanitised.st.ui.theme.STAppTheme
@@ -398,9 +401,49 @@ class MainActivity : ComponentActivity() {
                             }
 
                             composable(STRoutes.CHARACTERS) {
-                                CharacterHubScreen(
-                                    characters = librarySnapshot.characters,
-                                    onOpenChat = { navigateMainTab(STRoutes.CHAT) }
+                                CharacterListScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onStartService = { startNode() },
+                                    onOpenCharacter = { avatar ->
+                                        navController.navigate(STRoutes.characterEdit(avatar))
+                                    },
+                                    onCreateCharacter = {
+                                        navController.navigate(STRoutes.CHARACTER_NEW)
+                                    },
+                                    onOpenChat = { navigateMainTab(STRoutes.CHAT) },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.CHARACTER_NEW) {
+                                CharacterEditScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    avatar = null,
+                                    onStartService = { startNode() },
+                                    onBack = { navController.popBackStack() },
+                                    onSaved = { avatar ->
+                                        navController.navigate(STRoutes.characterEdit(avatar)) {
+                                            popUpTo(STRoutes.CHARACTERS)
+                                        }
+                                    },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(
+                                route = STRoutes.CHARACTER_EDIT,
+                                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
+                            ) { backStackEntry ->
+                                CharacterEditScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) },
+                                    onStartService = { startNode() },
+                                    onBack = { navController.popBackStack() },
+                                    onSaved = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
