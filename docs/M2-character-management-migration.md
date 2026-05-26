@@ -2,7 +2,7 @@
 
 日期：2026-05-26
 检查更新：2026-05-26
-状态：执行中（M2 P0 已全覆盖并通过手机真实 ST 契约测试；高频 P1：标签管理、批量操作、分页、聊天导入/重命名、头像格式兜底、token counter、Replace/Update 与跨系统入口 UI 已补齐；剩余为跨系统完整编辑器和少量低频增强）
+状态：执行中（M2 P0 已全覆盖并通过手机真实 ST 契约测试；高频 P1：标签管理、批量操作、分页、聊天导入/重命名、头像格式兜底、token counter、Replace/Update 与跨系统入口 UI 已补齐；本次回查确认角色主入口已从未覆盖/占位状态进入原生列表，剩余为跨系统完整编辑器和少量低频增强）
 范围：原版 SillyTavern 角色管理右侧面板到 Android Compose 原生页面的迁移拆解
 
 ## 1. 结论
@@ -10,6 +10,8 @@
 当前 APP 的 M2 实现已从“角色列表 + 基础编辑 + 新建/保存”的最小闭环推进到“P0 基础承接 + 高频 P1 增强”的可验收状态：API 层和 Compose 页面已覆盖角色列表、分页、详情、新建、保存、重命名、复制、删除、导入、URL 导入、导出、真实头像展示、头像随保存上传、独立 `/api/characters/edit-avatar`、快捷收藏、Search score、embedded tags 与 ST tag map 管理、ST folder/drilldown、HotSwaps、列表/网格/批量模式、真批量收藏/取消收藏/复制/删除/标签，以及角色历史聊天查看、打开、导入、输入式重命名、删除确认和导出。Source URL 现在可从 Chub/Pygmalion/GitHub/source_url 等来源推导打开，并可在编辑页保存 `source_url`。角色 API 主链路已用手机 `SM_S9310` 上的真实 ST dev 实例跑过 `TavernCoreRealContractTest`。
 
 当前剩余不再阻塞 M2 P0：Lorebook / Persona / Assistant 已在关联页给出清晰入口与状态，Source 可打开、编辑基础 URL，并可从来源更新；Replace / Update、token counter 和图片格式兜底已补齐到原生编辑页。头像裁剪入口因当前价值不足先撤回，完整 World Info、Persona、Assistant 配置编辑器仍属于跨系统里程碑。
+
+本次未覆盖界面回查结论：`Characters` 主导航现在直接进入 `CharacterListScreen`，不再停留在 M1 的轻量角色 Hub 或历史 `PlaceholderScreen`；新建、详情、编辑也都挂到原生路由。`Tools` / `Settings` / `Manage ST` 已由 App 自有页面承接，不属于本 M2 角色管理未覆盖项。仍未做成原生完整页面的是群聊、完整 World Info、Persona 连接、Welcome Assistant、Chat Lorebook / Author's Note overrides 这类跨系统编辑器；当前处理方式是在角色详情 Links tab 给出可见状态、入口按钮或明确不可用提示，避免用户以为功能消失。
 
 核心原则仍然是 API 优先：优先调用 SillyTavern 本地 API，只有文件选择、分享导入、缓存展示、备份恢复和诊断场景允许走本地文件或 Android 文件选择器。本次检查没有发现角色管理代码直接覆盖 `data/default-user/characters` 下的角色卡；当前文件读写主要用于 Android 文件选择器读取导入文件 / 头像文件、把导出结果写到用户选择的位置，以及 M2 之外的备份恢复、缓存或诊断场景。
 
@@ -100,7 +102,7 @@
 | 功能 | 原版能力 | 原版 API | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
 | 查看角色历史聊天 | 展示文件名、日期、大小、消息数、摘要 | `/api/characters/chats` | 已覆盖：详情页 Chats tab 调用 API 并展示历史聊天摘要 | P1 |
-| 打开聊天 | 切到该角色指定 chat | 原版前端状态 + `/api/chats/get` | 部分覆盖：可进入 Chat WebView，并通过 bridge 尝试选择角色和指定 chat | P1 |
+| 打开聊天 | 切到该角色指定 chat | 原版前端状态 + `/api/chats/get` | 已覆盖原生入口：详情页可进入 Chat WebView，并通过 bridge 尝试选择角色和指定 chat；稳定性仍归入 WebView smoke test | P1 |
 | 删除聊天文件 | 删除单个 jsonl | `/api/chats/delete` | 已覆盖：详情页聊天行菜单会先确认，成功后移出列表 | P1 |
 | 重命名聊天文件 | 改 jsonl 文件名 | `/api/chats/rename` | 已覆盖：详情页弹出输入框，不再硬编码 `-renamed`，成功后刷新当前聊天列表项 | P1 |
 | 导出聊天 | JSONL / TXT | `/api/chats/export` | 已覆盖：详情页可导出 JSONL / TXT 到 Android 文档选择器指定位置 | P1 |
@@ -112,13 +114,13 @@
 
 | 功能 | 原版入口 | 数据 / API | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
-| 角色主 Lorebook | globe / Link to World Info | `data.extensions.world` + worldinfo | 部分覆盖：编辑 `world` 文本字段，详情页关联入口显示当前世界书状态；无 World Info 选择器、校验或完整编辑 | P1 |
-| Additional Lorebooks | character extra world info | settings `world_info.charLore` | 未覆盖 | P2 |
-| Chat Lorebook | passport 按钮 | chat metadata / worldinfo | 未覆盖 | P2 |
-| Import Card Lore | 从角色卡导入内嵌世界书 | world-info 前端逻辑 | 未覆盖 | P2 |
-| Connected Personas | Persona 连接弹窗 | persona settings | 部分覆盖：详情页关联入口显示 Persona 状态和管理入口；完整 Persona 连接仍等 Persona 子系统 | P2 |
+| 角色主 Lorebook | globe / Link to World Info | `data.extensions.world` + worldinfo | 部分覆盖：编辑页可维护 `world` 文本字段，详情页 Links tab 显示当前世界书状态；打开动作目前给出不可用提示，无 World Info 选择器、校验或完整编辑 | P1 |
+| Additional Lorebooks | character extra world info | settings `world_info.charLore` | 未覆盖：无原生列表或关联编辑器；归入 World Info 子系统 | P2 |
+| Chat Lorebook | passport 按钮 | chat metadata / worldinfo | 未覆盖：Chat 运行时仍交给 WebView，原生侧无 Chat Lorebook 编辑器 | P2 |
+| Import Card Lore | 从角色卡导入内嵌世界书 | world-info 前端逻辑 | 未覆盖：无内嵌世界书抽取 / 导入流程 | P2 |
+| Connected Personas | Persona 连接弹窗 | persona settings | 部分覆盖：详情页 Links tab 显示 Persona 行和管理入口，点击给出不可用提示；完整 Persona 连接仍等 Persona 子系统 | P2 |
 | Link to Source | Chub/Pygmalion/GitHub/source_url 等 | `data.extensions.*` | 已覆盖：详情页可推导并打开 Chub / Pygmalion / GitHub / `source_url` 等来源，编辑页可保存 `source_url`，并支持从来源更新当前角色 | P1 |
-| Set as assistant | 欢迎页助手角色 | welcome settings | 部分覆盖：详情页关联入口显示助手角色状态和设置入口；实际 welcome settings 写入仍等欢迎页/助手子系统 | P2 |
+| Set as assistant | 欢迎页助手角色 | welcome settings | 部分覆盖：详情页 Links tab 显示助手角色行和设置入口，点击给出不可用提示；实际 welcome settings 写入仍等欢迎页/助手子系统 | P2 |
 
 ### 3.8 批量操作
 
@@ -143,6 +145,18 @@
 | `CharacterEditScreen.kt` | 新建、读取详情、真实头像、本地待选头像预览、非支持格式头像静默转 PNG、字段分组、Source URL 编辑、条目式 Alternate Greetings、Talkativeness 数值/滑块、token counter、保存、头像随保存上传、独立 `/edit-avatar`、重命名、复制、删除、文件替换、来源更新、导出 JSON/PNG |
 | `DocumentFileHelpers.kt` | 仅用于 Android 文件选择器读取导入文件 / 头像文件，以及写出导出结果，不直接覆盖 SillyTavern 角色数据目录 |
 | `STNavGraph.kt` / `MainActivity.kt` | Characters tab 进入原生列表，新建/详情/编辑进入原生页面；从详情页聊天入口进入 Chat WebView 并保留返回栈 |
+| `ui/components/STCards.kt` / `CharacterSharedComponents.kt` | 角色列表、详情、编辑和全局确认/进度弹窗已复用 `STInfoCard`、`STSectionCard`、`STConfirmDialog`、`FavoriteIconButton`、`CharacterTagCheckboxList`，避免角色页面各自保留重复占位组件 |
+
+未覆盖界面完成情况：
+
+| 界面 / 入口 | 当前处理 | 后续判断 |
+|---|---|---|
+| Characters 主入口 | 已完成：底部 Characters tab 直接进入 `CharacterListScreen`，不是 M1 轻量 Hub，也不是原版 Full Manager 深跳 | 属于 M2 已覆盖 |
+| 角色新建 / 详情 / 编辑 | 已完成：`CHARACTER_NEW`、`CHARACTER_DETAIL`、`CHARACTER_EDIT` 均为 Compose 原生路由，并共用主底部导航选中态 | 属于 M2 已覆盖 |
+| 历史 `PlaceholderScreen` | 仍保留文件，但当前主 `NavHost` 未把它作为角色管理入口使用 | 可作为历史兜底清理项，不影响 M2 |
+| Tools / Settings / Manage ST | 已有 App 自有页面承接，且不再提供不可控的 `WEBVIEW_CHARACTERS` / `WEBVIEW_TOOLS` 伪深入口 | 不计入 M2 角色未覆盖项 |
+| Lorebook / Persona / Assistant | 详情 Links tab 已显示状态和入口；非 Source 的动作目前提示不可用，未写入对应系统配置 | 跨系统里程碑 |
+| 群聊 / 完整 World Info / Chat Lorebook | 未做原生完整页面；Chat 运行时和群聊逻辑仍留在 WebView 或后续子系统 | P2 / 后续里程碑 |
 
 剩余边界：
 
@@ -150,8 +164,8 @@
 |---|---|
 | 批量操作剩余项 | 真批量收藏/取消收藏/复制/删除/标签已覆盖；Shift 范围选择和右键菜单未覆盖 |
 | ST 标签系统剩余项 | 管理、folder/drilldown、从卡内导入、批量标签已覆盖；更复杂的颜色/排序 UI 可后续增强 |
-| 历史聊天管理剩余项 | 聊天列表、打开、导入、输入式重命名、删除确认、导出已覆盖；后续可继续补更完整的 Chat WebView 定位 smoke test |
-| Lorebook / Persona / Assistant 仍不完整 | 关联页已有状态和入口；完整编辑/连接需要对应子系统落地 |
+| 历史聊天管理剩余项 | 聊天列表、打开、导入、输入式重命名、删除确认、导出已覆盖；后续可继续补更完整的 Chat WebView 指定角色/聊天定位 smoke test |
+| Lorebook / Persona / Assistant 仍不完整 | 关联页已有状态、入口和不可用提示；完整编辑/连接需要对应子系统落地 |
 | Source 校验仍不完整 | Source 已可打开、编辑基础 URL，并可执行来源更新；仍缺原版级来源校验和差异预览 |
 
 ## 5. M2 迁移范围建议
@@ -191,7 +205,7 @@ P0 的目标是让用户在 APP 内完成日常角色管理，不再频繁回原
 | Connected Personas / Convert to Persona | 与 Persona 管理耦合，建议 Persona 页面建立后再做 |
 | Welcome Assistant | 与欢迎页配置耦合，低频 |
 | Chat Lorebook / Author's Note overrides | 与聊天上下文和世界书触发链路耦合，先保留 Chat WebView 处理 |
-| Token counter / editor macro helpers | 有体验价值，但不阻塞基础管理闭环 |
+| Markdown / editor macro helpers | data-macros、编辑器最大化、帮助链接有体验价值，但不阻塞基础管理闭环；token counter 已在 P1 完成 |
 
 ## 6. API 迁移契约
 
@@ -274,6 +288,16 @@ P0 的目标是让用户在 APP 内完成日常角色管理，不再频繁回原
 | 管理 | 重命名、删除、导出 |
 | 导入 | 已覆盖：使用 Android 文件选择器导入 json/jsonl |
 
+### 7.4 未覆盖界面的 UI 口径
+
+角色管理范围内不能再出现“点进去只是占位”的主路径。当前检查结果：
+
+| 路径 | UI 口径 |
+|---|---|
+| `Characters` tab | 直接进入原生角色列表，服务未启动时显示可启动服务的错误/空态卡片 |
+| 角色详情 Links tab | Source 可打开；Lorebook / Persona / Assistant 显示当前状态或后续承接提示，不伪装成已完成编辑器 |
+| 跨系统页面 | 群聊、完整 World Info、Persona、Assistant、Chat Lorebook 不在 M2 内强塞；后续独立页面落地前，角色管理只给可见入口和明确提示 |
+
 ## 8. 保存策略
 
 | 场景 | 推荐策略 |
@@ -303,7 +327,7 @@ M2 不能只验“能编辑描述和开场白”。建议改为：
 4. 用户可以更换头像；非支持格式会静默转 PNG，保存失败不会破坏原角色卡。
 5. 用户可以查看某个角色的历史聊天列表，并至少能进入 Chat WebView 继续聊天。
 6. 收藏、标签、最近、聊天数、token/data size 等列表信息从 API 返回字段或 ST 设置中读取，不再依赖原版角色管理 drawer。
-7. 对群聊、Persona、完整世界书、Chat Lorebook 等跨系统能力，M2 必须给出清晰入口或“后续承接”说明，不能静默消失。
+7. 对群聊、Persona、完整世界书、Chat Lorebook 等跨系统能力，M2 必须给出清晰入口、状态或“后续承接”提示，不能静默消失，也不能用不可控的原版 Full Manager 深跳伪装成完成。
 
 ## 10. 实施顺序建议
 
@@ -314,7 +338,7 @@ M2 不能只验“能编辑描述和开场白”。建议改为：
 | 3 | 标签管理增强剩余项 | 创建/重命名/删除、folder/drilldown、从角色卡导入、批量标签已完成；后续可补颜色、排序等细节 |
 | 4 | 历史聊天增强剩余项 | 已能看、开、导入、输入式重命名、确认删除、导出；后续继续验证不同 ST 前端状态下的指定聊天定位 |
 | 5 | 补 token counter | 已完成：编辑页即时估算各字段与总量；后续可接模型精确 tokenizer |
-| 6 | Lorebook、Persona、Source、Replace/Update | 已完成：关联页入口和状态、Source 打开/编辑/来源更新、文件替换；后续接 World Info / Persona / Assistant 完整编辑器 |
+| 6 | Lorebook、Persona、Source、Replace/Update | 已完成：关联页入口和状态、Source 打开/编辑/来源更新、文件替换；Lorebook / Persona / Assistant 入口会明确提示后续承接，完整编辑器另立子系统 |
 
 ## 11. 风险与边界
 
@@ -325,7 +349,8 @@ M2 不能只验“能编辑描述和开场白”。建议改为：
 | 标签系统不只在角色卡内 | 区分 embedded tags 和 ST tag map，不能把二者混为一谈 |
 | 重命名影响聊天、群组、标签、世界书关联 | 重命名单独做任务，必须有契约测试和回滚提示 |
 | Chat WebView 状态无法从原生精确定位 | 当前 bridge 会尝试选择角色和指定聊天；这属于 WebView 运行时 smoke test，不属于本轮角色 API 契约测试，仍需单独验证不同 ST 前端状态下是否稳定 |
-| 群聊和世界书过大 | M2 只保留入口和字段，不把完整 group/world editor 塞进角色管理任务 |
+| 未覆盖入口造成误解 | 角色主路径不再使用占位页；跨系统入口必须显示当前状态或不可用提示，避免用户误认为已完整支持 |
+| 群聊和世界书过大 | M2 只保留入口、字段和后续承接说明，不把完整 group/world editor 塞进角色管理任务 |
 
 ## 12. 真实 ST 契约测试
 

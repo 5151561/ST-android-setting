@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.github.sanitised.st.ui.components.STOperationProgressCard
 
 @Composable
 fun ManageStScreen(
@@ -145,13 +146,12 @@ fun ManageStScreen(
                             backupOperationAnchor == BackupOperationAnchor.IMPORT)
                     ) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        CustomSourceDownloadCard(
-                            visible = true,
+                        STOperationProgressCard(
                             title = backupOperationTitle,
                             details = backupOperationDetails,
-                            downloadProgressPercent = backupOperationProgressPercent,
+                            progressPercent = backupOperationProgressPercent,
                             showCancel = false,
-                            onCancelDownload = {}
+                            onCancel = {}
                         )
                     }
                     Spacer(modifier = Modifier.height(24.dp))
@@ -263,13 +263,12 @@ fun ManageStScreen(
                     }
                     if (showCustomOperationCard && customOperationAnchor == CustomOperationAnchor.RESET_TO_BUNDLED) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        CustomSourceDownloadCard(
-                            visible = true,
+                        STOperationProgressCard(
                             title = customOperationTitle,
                             details = customOperationDetails,
-                            downloadProgressPercent = customOperationProgressPercent,
+                            progressPercent = customOperationProgressPercent,
                             showCancel = customOperationCancelable,
-                            onCancelDownload = onCancelCustomOperation
+                            onCancel = onCancelCustomOperation
                         )
                     }
                     Spacer(modifier = Modifier.height(20.dp))
@@ -391,13 +390,12 @@ fun ManageStScreen(
 
                     if (showCustomOperationCard && customOperationAnchor == CustomOperationAnchor.GITHUB_INSTALL) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        CustomSourceDownloadCard(
-                            visible = true,
+                        STOperationProgressCard(
                             title = customOperationTitle,
                             details = customOperationDetails,
-                            downloadProgressPercent = customOperationProgressPercent,
+                            progressPercent = customOperationProgressPercent,
                             showCancel = customOperationCancelable,
-                            onCancelDownload = onCancelCustomOperation
+                            onCancel = onCancelCustomOperation
                         )
                     }
 
@@ -428,13 +426,12 @@ fun ManageStScreen(
                     }
                     if (showCustomOperationCard && customOperationAnchor == CustomOperationAnchor.ZIP_INSTALL) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        CustomSourceDownloadCard(
-                            visible = true,
+                        STOperationProgressCard(
                             title = customOperationTitle,
                             details = customOperationDetails,
-                            downloadProgressPercent = customOperationProgressPercent,
+                            progressPercent = customOperationProgressPercent,
                             showCancel = customOperationCancelable,
-                            onCancelDownload = onCancelCustomOperation
+                            onCancel = onCancelCustomOperation
                         )
                     }
 

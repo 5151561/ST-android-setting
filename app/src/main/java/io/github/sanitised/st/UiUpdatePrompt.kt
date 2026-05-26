@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -19,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.github.sanitised.st.ui.components.STOperationProgressCard
+import io.github.sanitised.st.ui.components.STProgressBlock
 
 @Composable
 fun UpdatePromptCard(
@@ -61,20 +62,10 @@ fun UpdatePromptCard(
             }
             Spacer(modifier = Modifier.height(10.dp))
             if (isDownloading) {
-                if (downloadProgressPercent == null) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                } else {
-                    LinearProgressIndicator(
-                        progress = { downloadProgressPercent.coerceIn(0, 100) / 100f },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = stringResource(R.string.percent_value, downloadProgressPercent),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
+                STProgressBlock(
+                    progressPercent = downloadProgressPercent,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
                 Spacer(modifier = Modifier.height(10.dp))
                 OutlinedButton(onClick = onCancelDownload) {
                     Text(text = stringResource(R.string.cancel))
@@ -235,7 +226,7 @@ fun BatteryOptimizationCard(
 }
 
 @Composable
-fun CustomSourceDownloadCard(
+fun OperationProgressCard(
     visible: Boolean,
     title: String,
     details: String,
@@ -244,48 +235,11 @@ fun CustomSourceDownloadCard(
     onCancelDownload: () -> Unit
 ) {
     if (!visible) return
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        ),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-            if (details.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = details,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            if (downloadProgressPercent == null) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            } else {
-                LinearProgressIndicator(
-                    progress = { downloadProgressPercent.coerceIn(0, 100) / 100f },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = stringResource(R.string.percent_value, downloadProgressPercent),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-            if (showCancel) {
-                Spacer(modifier = Modifier.height(10.dp))
-                OutlinedButton(onClick = onCancelDownload) {
-                    Text(text = stringResource(R.string.cancel))
-                }
-            }
-        }
-    }
+    STOperationProgressCard(
+        title = title,
+        details = details,
+        progressPercent = downloadProgressPercent,
+        showCancel = showCancel,
+        onCancel = onCancelDownload
+    )
 }

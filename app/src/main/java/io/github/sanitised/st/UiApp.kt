@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.ui.components.STOperationProgressCard
 import io.github.sanitised.st.ui.screens.DashboardLibrarySections
 import io.github.sanitised.st.ui.screens.DashboardStatusCard
 import kotlinx.coroutines.Dispatchers
@@ -277,24 +278,22 @@ fun STAndroidApp(
                     }
                     if (showBackupOperationCard) {
                         Spacer(modifier = Modifier.height(16.dp))
-                        CustomSourceDownloadCard(
-                            visible = true,
+                        STOperationProgressCard(
                             title = backupOperationTitle,
                             details = backupOperationDetails,
-                            downloadProgressPercent = backupOperationProgressPercent,
+                            progressPercent = backupOperationProgressPercent,
                             showCancel = false,
-                            onCancelDownload = {}
+                            onCancel = {}
                         )
                     }
                     if (showCustomOperationCard) {
                         Spacer(modifier = Modifier.height(16.dp))
-                        CustomSourceDownloadCard(
-                            visible = true,
+                        STOperationProgressCard(
                             title = customOperationTitle,
                             details = customOperationDetails,
-                            downloadProgressPercent = customOperationProgressPercent,
+                            progressPercent = customOperationProgressPercent,
                             showCancel = customOperationCancelable,
-                            onCancelDownload = onCancelCustomOperation
+                            onCancel = onCancelCustomOperation
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))

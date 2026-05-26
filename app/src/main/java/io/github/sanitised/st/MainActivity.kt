@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -65,6 +64,8 @@ import io.github.sanitised.st.ui.screens.CharacterEditScreen
 import io.github.sanitised.st.ui.screens.CharacterListScreen
 import io.github.sanitised.st.ui.screens.ToolsHubScreen
 import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
+import io.github.sanitised.st.ui.components.STConfirmDialog
+import io.github.sanitised.st.ui.components.STDialogButtonStyle
 import io.github.sanitised.st.ui.theme.STAppTheme
 import io.github.sanitised.st.ui.webview.ChatWebViewScreen
 import io.github.sanitised.st.ui.webview.WebViewTarget
@@ -647,66 +648,45 @@ class MainActivity : ComponentActivity() {
                     // Dialogs are rendered above the NavHost
                     when (val dialog = pendingDialogState.value) {
                         PendingDialog.ResetToDefault -> {
-                            androidx.compose.material3.AlertDialog(
-                                onDismissRequest = { pendingDialogState.value = null },
-                                title = { Text(text = getString(R.string.dialog_reset_title)) },
-                                text = { Text(text = getString(R.string.dialog_reset_body)) },
-                                confirmButton = {
-                                    Button(onClick = {
-                                        pendingDialogState.value = null
-                                        viewModel.resetToDefault()
-                                    }) {
-                                        Text(text = getString(R.string.reset))
-                                    }
+                            STConfirmDialog(
+                                title = getString(R.string.dialog_reset_title),
+                                confirmLabel = getString(R.string.reset),
+                                onConfirm = {
+                                    pendingDialogState.value = null
+                                    viewModel.resetToDefault()
                                 },
-                                dismissButton = {
-                                    Button(onClick = { pendingDialogState.value = null }) {
-                                        Text(text = getString(R.string.cancel))
-                                    }
-                                }
+                                onDismiss = { pendingDialogState.value = null },
+                                body = { Text(text = getString(R.string.dialog_reset_body)) },
+                                buttonStyle = STDialogButtonStyle.FILLED
                             )
                         }
 
                         PendingDialog.RemoveUserData -> {
-                            androidx.compose.material3.AlertDialog(
-                                onDismissRequest = { pendingDialogState.value = null },
-                                title = { Text(text = getString(R.string.dialog_remove_data_title)) },
-                                text = { Text(text = getString(R.string.dialog_remove_data_body)) },
-                                confirmButton = {
-                                    Button(onClick = {
-                                        pendingDialogState.value = null
-                                        viewModel.removeUserData()
-                                    }) {
-                                        Text(text = getString(R.string.remove))
-                                    }
+                            STConfirmDialog(
+                                title = getString(R.string.dialog_remove_data_title),
+                                confirmLabel = getString(R.string.remove),
+                                onConfirm = {
+                                    pendingDialogState.value = null
+                                    viewModel.removeUserData()
                                 },
-                                dismissButton = {
-                                    Button(onClick = { pendingDialogState.value = null }) {
-                                        Text(text = getString(R.string.cancel))
-                                    }
-                                }
+                                onDismiss = { pendingDialogState.value = null },
+                                body = { Text(text = getString(R.string.dialog_remove_data_body)) },
+                                buttonStyle = STDialogButtonStyle.FILLED
                             )
                         }
 
                         is PendingDialog.ConfirmImport -> {
-                            androidx.compose.material3.AlertDialog(
-                                onDismissRequest = { pendingDialogState.value = null },
-                                title = { Text(text = getString(R.string.dialog_import_title)) },
-                                text = { Text(text = getString(R.string.dialog_import_body)) },
-                                confirmButton = {
-                                    Button(onClick = {
-                                        val importUri = dialog.uri
-                                        pendingDialogState.value = null
-                                        viewModel.import(importUri)
-                                    }) {
-                                        Text(text = getString(R.string.import_action))
-                                    }
+                            STConfirmDialog(
+                                title = getString(R.string.dialog_import_title),
+                                confirmLabel = getString(R.string.import_action),
+                                onConfirm = {
+                                    val importUri = dialog.uri
+                                    pendingDialogState.value = null
+                                    viewModel.import(importUri)
                                 },
-                                dismissButton = {
-                                    Button(onClick = { pendingDialogState.value = null }) {
-                                        Text(text = getString(R.string.cancel))
-                                    }
-                                }
+                                onDismiss = { pendingDialogState.value = null },
+                                body = { Text(text = getString(R.string.dialog_import_body)) },
+                                buttonStyle = STDialogButtonStyle.FILLED
                             )
                         }
 

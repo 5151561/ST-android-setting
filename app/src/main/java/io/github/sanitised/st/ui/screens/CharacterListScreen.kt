@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -68,6 +67,10 @@ import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.STTag
 import io.github.sanitised.st.api.STTagSettings
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.ui.components.CharacterTagCheckboxList
+import io.github.sanitised.st.ui.components.FavoriteIconButton
+import io.github.sanitised.st.ui.components.STConfirmDialog
+import io.github.sanitised.st.ui.components.STInfoCard
 import io.github.sanitised.st.ui.theme.STTheme
 import kotlinx.coroutines.launch
 
@@ -202,13 +205,30 @@ fun CharacterListScreen(
     }
 
     pendingDelete?.let { character ->
-        AlertDialog(
-            onDismissRequest = {
+        STConfirmDialog(
+            title = stringResource(R.string.character_delete_title),
+            confirmLabel = stringResource(R.string.delete),
+            onConfirm = {
+                val target = character.id
+                val removeChats = deleteChats
+                pendingDelete = null
+                deleteChats = false
+                scope.launch {
+                    runCatching {
+                        TavernCoreClient(baseUrl = baseUrl).deleteCharacter(target, removeChats)
+                    }.onSuccess {
+                        onShowMessage(context.getString(R.string.character_delete_success))
+                        refreshKey++
+                    }.onFailure { error ->
+                        onShowMessage(error.message ?: context.getString(R.string.character_delete_failed))
+                    }
+                }
+            },
+            onDismiss = {
                 pendingDelete = null
                 deleteChats = false
             },
-            title = { Text(stringResource(R.string.character_delete_title)) },
-            text = {
+            body = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.character_delete_body, character.name))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -219,50 +239,33 @@ fun CharacterListScreen(
                         Text(stringResource(R.string.character_delete_chats))
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val target = character.id
-                        val removeChats = deleteChats
-                        pendingDelete = null
-                        deleteChats = false
-                        scope.launch {
-                            runCatching {
-                                TavernCoreClient(baseUrl = baseUrl).deleteCharacter(target, removeChats)
-                            }.onSuccess {
-                                onShowMessage(context.getString(R.string.character_delete_success))
-                                refreshKey++
-                            }.onFailure { error ->
-                                onShowMessage(error.message ?: context.getString(R.string.character_delete_failed))
-                            }
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.delete))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        pendingDelete = null
-                        deleteChats = false
-                    }
-                ) {
-                    Text(stringResource(R.string.cancel))
-                }
             }
         )
     }
 
     if (pendingBatchDelete.isNotEmpty()) {
-        AlertDialog(
-            onDismissRequest = {
+        STConfirmDialog(
+            title = stringResource(R.string.character_batch_delete_title),
+            confirmLabel = stringResource(R.string.delete),
+            onConfirm = {
+                val targets = pendingBatchDelete
+                val removeChats = deleteChats
+                pendingBatchDelete = emptySet()
+                deleteChats = false
+                scope.launch {
+                    val result = runBatch(targets) { avatar ->
+                        TavernCoreClient(baseUrl = baseUrl).deleteCharacter(avatar, removeChats)
+                    }
+                    onShowMessage(context.getString(R.string.character_batch_result, result.successes, result.failures))
+                    selectedCharacters = emptySet()
+                    refreshKey++
+                }
+            },
+            onDismiss = {
                 pendingBatchDelete = emptySet()
                 deleteChats = false
             },
-            title = { Text(stringResource(R.string.character_batch_delete_title)) },
-            text = {
+            body = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.character_batch_delete_body, pendingBatchDelete.size))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -272,36 +275,6 @@ fun CharacterListScreen(
                         )
                         Text(stringResource(R.string.character_delete_chats))
                     }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val targets = pendingBatchDelete
-                        val removeChats = deleteChats
-                        pendingBatchDelete = emptySet()
-                        deleteChats = false
-                        scope.launch {
-                            val result = runBatch(targets) { avatar ->
-                                TavernCoreClient(baseUrl = baseUrl).deleteCharacter(avatar, removeChats)
-                            }
-                            onShowMessage(context.getString(R.string.character_batch_result, result.successes, result.failures))
-                            selectedCharacters = emptySet()
-                            refreshKey++
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.delete))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        pendingBatchDelete = emptySet()
-                        deleteChats = false
-                    }
-                ) {
-                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -703,19 +676,19 @@ fun CharacterListScreen(
 	            }
 
             when {
-                loadState.loading -> CharacterInfoCard(
+                loadState.loading -> STInfoCard(
                     title = stringResource(R.string.character_list_loading),
                     body = stringResource(R.string.waiting_for_server)
                 )
 
-                loadState.error != null -> CharacterInfoCard(
+                loadState.error != null -> STInfoCard(
                     title = stringResource(R.string.character_list_error_title),
                     body = loadState.error.orEmpty(),
                     actionLabel = stringResource(R.string.webview_retry),
                     onAction = { refreshKey++ }
                 )
 
-                visibleCharacters.isEmpty() -> CharacterInfoCard(
+                visibleCharacters.isEmpty() -> STInfoCard(
                     title = stringResource(R.string.character_hub_empty_title),
                     body = stringResource(R.string.character_list_empty_body)
                 )
@@ -804,37 +777,12 @@ private fun characterSortLabel(sort: CharacterListSort): String {
 
 @Composable
 private fun CharacterServiceCard(onStartService: () -> Unit) {
-    CharacterInfoCard(
+    STInfoCard(
         title = stringResource(R.string.webview_error_service_stopped_title),
         body = stringResource(R.string.webview_error_service_stopped_body),
         actionLabel = stringResource(R.string.webview_start_service),
         onAction = onStartService
     )
-}
-
-@Composable
-private fun CharacterInfoCard(
-    title: String,
-    body: String,
-    actionLabel: String? = null,
-    onAction: (() -> Unit)? = null
-) {
-    val colors = STTheme.colors
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(1.dp, colors.border)
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(text = body, style = MaterialTheme.typography.bodySmall, color = colors.muted)
-            if (actionLabel != null && onAction != null) {
-                Button(onClick = onAction) {
-                    Text(actionLabel)
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -939,14 +887,12 @@ private fun CharacterRow(
                     modifier = Modifier.weight(1f, fill = false)
                 )
 	                Spacer(modifier = Modifier.width(6.dp))
-	                IconButton(onClick = onToggleFavorite, modifier = Modifier.size(32.dp)) {
-	                    Icon(
-	                        imageVector = Icons.Filled.Star,
-	                        contentDescription = stringResource(R.string.character_filter_favorites),
-	                        tint = if (character.isFavorite) colors.warn else colors.muted,
-	                        modifier = Modifier.size(16.dp)
-	                    )
-	                }
+	                FavoriteIconButton(
+	                    isFavorite = character.isFavorite,
+	                    onToggleFavorite = onToggleFavorite,
+	                    modifier = Modifier.size(32.dp),
+	                    iconSize = 16.dp
+	                )
                 if (character.characterVersion.isNotBlank()) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -1043,14 +989,12 @@ private fun CharacterGridCell(
         ) {
             Box {
                 CharacterAvatarImage(baseUrl = baseUrl, avatar = character.avatarUrl, label = character.name)
-                IconButton(onClick = onToggleFavorite, modifier = Modifier.align(Alignment.TopEnd).size(28.dp)) {
-                    Icon(
-                        Icons.Filled.Star,
-                        contentDescription = stringResource(R.string.character_filter_favorites),
-                        tint = if (character.isFavorite) colors.warn else colors.muted,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+                FavoriteIconButton(
+                    isFavorite = character.isFavorite,
+                    onToggleFavorite = onToggleFavorite,
+                    modifier = Modifier.align(Alignment.TopEnd).size(28.dp),
+                    iconSize = 16.dp
+                )
             }
             Text(
                 text = character.name,
@@ -1359,21 +1303,11 @@ private fun CharacterTagsDialog(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
-                settings.tags.forEach { tag ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = tag.id in selectedStTagIds,
-                            onCheckedChange = { checked ->
-                                selectedStTagIds = if (checked) {
-                                    selectedStTagIds + tag.id
-                                } else {
-                                    selectedStTagIds - tag.id
-                                }
-                            }
-                        )
-                        Text(if (tag.isFolder) stringResource(R.string.character_filter_folder, tag.name) else tag.name)
-                    }
-                }
+                CharacterTagCheckboxList(
+                    tags = settings.tags,
+                    selectedIds = selectedStTagIds,
+                    onSelectedIdsChange = { selectedStTagIds = it }
+                )
             }
         },
         confirmButton = {
@@ -1425,21 +1359,11 @@ private fun CharacterBatchTagsDialog(
                         label = { Text(stringResource(R.string.character_batch_tags_remove)) }
                     )
                 }
-                settings.tags.forEach { tag ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = tag.id in selectedTagIds,
-                            onCheckedChange = { checked ->
-                                selectedTagIds = if (checked) {
-                                    selectedTagIds + tag.id
-                                } else {
-                                    selectedTagIds - tag.id
-                                }
-                            }
-                        )
-                        Text(if (tag.isFolder) stringResource(R.string.character_filter_folder, tag.name) else tag.name)
-                    }
-                }
+                CharacterTagCheckboxList(
+                    tags = settings.tags,
+                    selectedIds = selectedTagIds,
+                    onSelectedIdsChange = { selectedTagIds = it }
+                )
             }
         },
         confirmButton = {
