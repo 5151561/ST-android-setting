@@ -151,6 +151,7 @@ class TavernCoreClientTest {
                         "alternate_greetings": ["Again.", "Once more."],
                         "extensions": {
                           "fav": true,
+                          "chub": { "full_path": "lore/seraphina" },
                           "world": "Archive World",
                           "talkativeness": 0.7,
                           "depth_prompt": {
@@ -196,6 +197,7 @@ class TavernCoreClientTest {
         assertEquals("Seraphina - 2026.jsonl", character.chat)
         assertEquals("2026-05-26T10:00:00.000Z", character.createDate)
         assertEquals("{\"foreign_field\":true}", character.rawJsonData)
+        assertEquals("https://chub.ai/characters/lore/seraphina", character.sourceUrl)
         assertTrue(character.isFavorite)
     }
 
@@ -240,6 +242,9 @@ class TavernCoreClientTest {
         enqueueCsrf()
         server.enqueue(MockResponse().setResponseCode(200).setBody(""))
         val client = TavernCoreClient(baseUrl = server.url("/").toString())
+        val complexJsonData = """
+            {"foreign_field":{"nested":[1,true,{"keep":"原样"}]},"data":{"extensions":{"third_party":{"enabled":true}}}}
+        """.trimIndent()
 
         client.updateCharacter(
             CharacterSaveRequest(
@@ -264,7 +269,8 @@ class TavernCoreClientTest {
                 depthPromptRole = "user",
                 chat = "Seraphina - 2026.jsonl",
                 createDate = "2026-05-26T10:00:00.000Z",
-                rawJsonData = "{\"foreign_field\":true}",
+                rawJsonData = complexJsonData,
+                sourceUrl = "https://example.test/seraphina",
                 isFavorite = false
             ),
             CharacterUpload(fileName = "avatar.png", bytes = "avatar-data".toByteArray())
@@ -319,7 +325,9 @@ class TavernCoreClientTest {
         assertTrue(body, body.contains("name=\"create_date\""))
         assertTrue(body, body.contains("2026-05-26T10:00:00.000Z"))
         assertTrue(body, body.contains("name=\"json_data\""))
-        assertTrue(body, body.contains("{\"foreign_field\":true}"))
+        assertTrue(body, body.contains(complexJsonData))
+        assertTrue(body, body.contains("name=\"extensions\""))
+        assertTrue(body, body.contains("\"source_url\":\"https://example.test/seraphina\""))
         assertTrue(body, body.contains("name=\"fav\""))
         assertTrue(body, body.contains("false"))
     }
@@ -355,7 +363,7 @@ class TavernCoreClientTest {
                 .setBody(
                     """
                     {
-                      "settings": "{\"tags\":[{\"id\":\"tag-1\",\"name\":\"Lore\",\"color\":\"#1A73E8\",\"folder_type\":\"character\"}],\"tag_map\":{\"Seraphina.png\":[\"tag-1\"]},\"other\":42}",
+                      "settings": "{\"tags\":[{\"id\":\"tag-1\",\"name\":\"Lore\",\"color\":\"#1A73E8\",\"folder_type\":\"character\"},{\"id\":\"tag-remove\",\"name\":\"Old\",\"color\":\"#888888\"}],\"tag_map\":{\"Seraphina.png\":[\"tag-1\",\"tag-remove\"]},\"other\":42}",
                       "world_names": ["Archive World"]
                     }
                     """.trimIndent()
@@ -365,21 +373,31 @@ class TavernCoreClientTest {
         val client = TavernCoreClient(baseUrl = server.url("/").toString())
 
         val settings = client.getTagSettings()
-        client.saveTagSettings(settings.copy(tagMap = mapOf("Seraphina.png" to listOf("tag-1"))))
+        client.saveTagSettings(
+            settings.copy(
+                tags = listOf(
+                    STTag(id = "tag-1", name = "Renamed Lore", color = "#1A73E8", isFolder = true),
+                    STTag(id = "tag-new", name = "New Tag", color = "#22AA66")
+                ),
+                tagMap = mapOf("Seraphina.png" to listOf("tag-1", "tag-new"))
+            )
+        )
 
         assertCsrfRequest()
         assertEquals("/api/settings/get", server.takeRequest().path)
         assertEquals(listOf("Archive World"), settings.worldNames)
         assertEquals("tag-1", settings.tags.first().id)
         assertEquals("Lore", settings.tags.first().name)
-        assertEquals(listOf("tag-1"), settings.tagMap.getValue("Seraphina.png"))
+        assertEquals(listOf("tag-1", "tag-remove"), settings.tagMap.getValue("Seraphina.png"))
 
         val saveRequest = server.takeRequest()
         assertEquals("/api/settings/save", saveRequest.path)
         val saveBody = saveRequest.body.readUtf8()
         assertTrue(saveBody.contains("\"other\":42"))
-        assertTrue(saveBody.contains("\"tag_map\":{\"Seraphina.png\":[\"tag-1\"]}"))
-        assertTrue(saveBody.contains("\"tags\":[{\"id\":\"tag-1\""))
+        assertTrue(saveBody.contains("\"tag_map\":{\"Seraphina.png\":[\"tag-1\",\"tag-new\"]}"))
+        assertTrue(saveBody.contains("\"name\":\"Renamed Lore\""))
+        assertTrue(saveBody.contains("\"id\":\"tag-new\""))
+        assertFalse(saveBody.contains("tag-remove"))
     }
 
     @Test
@@ -445,6 +463,34 @@ class TavernCoreClientTest {
         assertTrue(exportBody.contains("\"format\":\"jsonl\""))
         assertEquals("renamed.jsonl", exported.fileName)
         assertEquals("""{"mes":"hello"}""", exported.bytes.toString(Charsets.UTF_8))
+    }
+
+    @Test
+    fun importCharacterChatPostsMultipartChatImportPayload() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"res":true,"fileNames":["Seraphina imported.jsonl"]}"""))
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val imported = client.importCharacterChat(
+            avatar = "Seraphina.png",
+            characterName = "Seraphina",
+            fileName = "chat.jsonl",
+            bytes = """{"user_name":"User"}""".toByteArray()
+        )
+
+        assertCsrfRequest()
+        val request = server.takeRequest()
+        assertEquals("/api/chats/import", request.path)
+        assertTrue(request.getHeader("Content-Type").orEmpty().startsWith("multipart/form-data"))
+        val body = request.body.readUtf8()
+        assertTrue(body.contains("name=\"avatar\"; filename=\"chat.jsonl\""))
+        assertTrue(body.contains("name=\"file_type\""))
+        assertTrue(body.contains("jsonl"))
+        assertTrue(body.contains("name=\"avatar_url\""))
+        assertTrue(body.contains("Seraphina.png"))
+        assertTrue(body.contains("name=\"character_name\""))
+        assertTrue(body.contains("Seraphina"))
+        assertEquals(listOf("Seraphina imported.jsonl"), imported)
     }
 
     @Test

@@ -2,14 +2,14 @@
 
 日期：2026-05-26
 检查更新：2026-05-26
-状态：执行中（P0 主链路大半落地，保存请求形态和若干入口待补）
+状态：执行中（M2 P0 已全覆盖并通过手机真实 ST 契约测试；高频 P1：标签管理、批量操作、分页、聊天导入/重命名已补齐；剩余为裁剪、格式转换、token counter 和跨系统能力）
 范围：原版 SillyTavern 角色管理右侧面板到 Android Compose 原生页面的迁移拆解
 
 ## 1. 结论
 
-当前 APP 的 M2 实现已从“角色列表 + 基础编辑 + 新建/保存”的最小闭环推进到“角色管理基础承接”的大半主链路：API 层和 Compose 页面已覆盖角色列表、详情、新建、保存、重命名、复制、删除、导入、导出和单独换头像。
+当前 APP 的 M2 实现已从“角色列表 + 基础编辑 + 新建/保存”的最小闭环推进到“P0 基础承接 + 高频 P1 增强”的可验收状态：API 层和 Compose 页面已覆盖角色列表、分页、详情、新建、保存、重命名、复制、删除、导入、URL 导入、导出、真实头像展示、头像随保存上传、独立 `/api/characters/edit-avatar`、快捷收藏、Search score、embedded tags 与 ST tag map 管理、ST folder/drilldown、HotSwaps、列表/网格/批量模式、真批量收藏/取消收藏/复制/删除/标签，以及角色历史聊天查看、打开、导入、输入式重命名、删除确认和导出。Source URL 现在可从 Chub/Pygmalion/GitHub/source_url 等来源推导打开，并可在编辑页保存 `source_url`。角色 API 主链路已用手机 `SM_S9310` 上的真实 ST dev 实例跑过 `TavernCoreRealContractTest`。
 
-但当前状态仍不能算 M2 完整验收：`/api/characters/create` 和 `/api/characters/edit` 现在由 APP 以 JSON body 调用，尚未改成文档契约要求的 multipart form；快捷收藏/标签尚未通过 `/api/characters/merge-attributes` 暴露为独立操作；编辑页没有头像预览，新建角色不能随表单上传头像；历史聊天列表 API 已封装但没有 UI；ST 独立标签系统、批量操作、Lorebook / Persona / Source 入口仍缺。
+当前剩余不再阻塞 M2 P0：Lorebook / Persona 仍是占位入口，Source 已可打开和编辑基础 URL，但 Replace / Update、token counter、图片裁剪和图片格式转换仍缺。这些继续作为 P1/P2 或跨系统里程碑拆出。
 
 核心原则仍然是 API 优先：优先调用 SillyTavern 本地 API，只有文件选择、分享导入、缓存展示、备份恢复和诊断场景允许走本地文件或 Android 文件选择器。本次检查没有发现角色管理代码直接覆盖 `data/default-user/characters` 下的角色卡；当前文件读写主要用于 Android 文件选择器读取导入文件 / 头像文件、把导出结果写到用户选择的位置，以及 M2 之外的备份恢复、缓存或诊断场景。
 
@@ -34,26 +34,26 @@
 | 功能 | 原版能力 | 原版 API / 数据 | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
 | 读取角色列表 | 展示所有角色、头像、名称、Creator Notes、版本、内联标签、收藏标记 | `/api/characters/all` | 已覆盖：名称、头像、Creator Notes、版本、embedded tags、收藏、最近字段 | P0 |
-| 搜索 | 搜索角色、群组、标签，支持模糊分数排序 | 前端 `FilterHelper` + 本地列表 | 部分覆盖：名称、embedded tags、Creator Notes；无群组 / ST tag map / 模糊分数排序 | P0 |
-| 排序 | Search、A-Z、Z-A、Newest、Oldest、Favorites、Recent、Most/Least chats、Most/Least tokens、Random | `/api/characters/all` 返回 `create_date`、`date_last_chat`、`chat_size`、`data_size` | 部分覆盖：A-Z、Z-A、Newest、Oldest、Favorites、Recent、Most/Least chats、Most/Least tokens；未覆盖 Random / Search score | P0 |
-| 分页 | 每页 10/25/50/100/250/500/1000 | 前端分页 | 未覆盖 | P1 |
-| 列表/网格视图 | 可切换列表和网格 | 前端偏好 | 未覆盖 | P1 |
-| HotSwaps | 收藏角色横向快捷头像 | 收藏字段 + 前端 UI | 未覆盖 | P1 |
-| 标签过滤 / 文件夹 | 标签过滤、标签作为 folder、drilldown | `tags.js`、settings tag map | 部分覆盖：embedded tag chip 筛选；未接 ST tag map、folder、drilldown | P0 |
+| 搜索 | 搜索角色、群组、标签，支持模糊分数排序 | 前端 `FilterHelper` + 本地列表 | 已覆盖：query 非空时按 Search score 排序，名称命中优先，其次 embedded tags、ST tags、Creator Notes；群聊不在本轮 M2 主线 | P0 |
+| 排序 | Search、A-Z、Z-A、Newest、Oldest、Favorites、Recent、Most/Least chats、Most/Least tokens、Random | `/api/characters/all` 返回 `create_date`、`date_last_chat`、`chat_size`、`data_size` | 已覆盖：A-Z、Z-A、Newest、Oldest、Favorites、Recent、Most/Least chats、Most/Least tokens、Random；Search score 在搜索时置顶 | P0 |
+| 分页 | 每页 10/25/50/100/250/500/1000 | 前端分页 | 已覆盖：本地筛选/排序后分页，支持 10/25/50/100/250/500/1000 每页切换 | P1 |
+| 列表/网格视图 | 可切换列表和网格 | 前端偏好 | 已覆盖：列表、网格、批量模式初稿 | P1 |
+| HotSwaps | 收藏角色横向快捷头像 | 收藏字段 + 前端 UI | 已覆盖：收藏角色横向头像条，可折叠 | P1 |
+| 标签过滤 / 文件夹 | 标签过滤、标签作为 folder、drilldown | `tags.js`、settings tag map | 已覆盖：embedded tag chip、ST tag map 筛选、folder 一级筛选和 drilldown；`tag_map` key 兼容 `id` / `avatarUrl` | P0 |
 | 群聊混排 | 角色、群组、标签 folder 混合列表 | characters + groups + tags | 未覆盖，且群聊不在当前 M2 主线 | P2 |
 
 ### 3.2 角色卡基础操作
 
 | 功能 | 原版能力 | 原版 API / 数据 | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
-| 新建角色 | 表单提交，支持头像、裁剪、多开场白、extensions | `/api/characters/create` multipart form | 部分覆盖：当前以 JSON 请求新建，字段含多开场白 / extensions 相关值；无头像 / 裁剪，未按 multipart 契约 | P0 |
-| 保存角色 | 完整表单保存，保留 chat/create_date/json_data | `/api/characters/edit` multipart form | 部分覆盖：当前以 JSON 请求 `/edit`，保留 `chat`、`create_date`、`json_data`；未按 multipart 契约，不能随保存换头像 | P0 |
-| 局部更新 | 收藏、批量收藏等局部字段 | `/api/characters/merge-attributes` | 未接入 UI / API 接口；代码里有未使用的 merge payload helper | P0 |
+| 新建角色 | 表单提交，支持头像、裁剪、多开场白、extensions | `/api/characters/create` multipart form | 部分覆盖：已改为 multipart，支持字段和头像随保存上传；未覆盖裁剪，extensions 体验仍弱 | P0 |
+| 保存角色 | 完整表单保存，保留 chat/create_date/json_data | `/api/characters/edit` multipart form | 已覆盖：已改为 multipart，保留 `chat`、`create_date`、`json_data`，支持头像随保存上传；已通过手机真实 ST 契约测试确认复杂 `json_data` 未知字段不丢 | P0 |
+| 局部更新 | 收藏、批量收藏等局部字段 | `/api/characters/merge-attributes` | 已覆盖：列表/详情快捷收藏、批量收藏/取消收藏走 `/merge-attributes`；embedded tag 独立编辑也走 `/merge-attributes` | P0 |
 | 重命名 | 改角色名、头像文件名、聊天目录；可选择改历史聊天内角色名 | `/api/characters/rename` + `/api/chats/get/save` | 部分覆盖：已调用 `/rename`，ST 会改头像文件名和聊天目录；无历史聊天内角色名更新选项 | P0 |
 | 复制角色 | 复制 PNG 卡，生成新文件名 | `/api/characters/duplicate` | 已覆盖：列表和编辑页均可调用 `/duplicate` | P0 |
 | 删除角色 | 可选择是否删除该角色聊天文件夹 | `/api/characters/delete` | 已覆盖：列表和编辑页均有确认，并支持 `delete_chats` | P0 |
 | 导入角色 | 支持 `.json`、`.png`、`.yaml`、`.yml`、`.charx`、`.byaf`，支持多选 | `/api/characters/import` multipart form | 已覆盖原生入口：Android 多文件选择后调用 `/import` multipart | P0 |
-| 外部 URL 导入 | 从外部 URL 导入角色卡 | 前端 `importFromExternalUrl` + `processDroppedFiles` | 未覆盖 | P1 |
+| 外部 URL 导入 | 从外部 URL 导入角色卡 | 前端 `importFromExternalUrl` + `processDroppedFiles` | 已覆盖：列表页可输入 URL/UUID，先走 `/api/content/importURL` 或 `/api/content/importUUID`，再调用 `/api/characters/import` | P1 |
 | 替换 / 更新 | 用文件或在线来源替换当前角色，保留聊天、资产、群组关系 | 复用导入流程并传 preserved avatar | 未覆盖 | P1 |
 | 导出角色 | PNG 或 JSON 导出，导出时清理私有字段 | `/api/characters/export` | 已覆盖：编辑页可导出 JSON / PNG，并写到用户选择的位置 | P0 |
 
@@ -61,9 +61,9 @@
 
 | 功能 | 原版能力 | 原版 API / 数据 | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
-| 头像预览 | 角色列表和编辑页展示头像 | `/characters/{avatar}` 或 thumbnail | 部分覆盖：列表已覆盖，编辑页未覆盖 | P0 |
-| 头像上传 | 新建/编辑时选择图片 | `/api/characters/create`、`/api/characters/edit` multipart | 部分覆盖：编辑页可单独换头像；新建 / 完整保存随表单上传头像未覆盖 | P0 |
-| 单独换头像 | 不改角色数据，仅替换 PNG 封面 | `/api/characters/edit-avatar` | 已覆盖：编辑页通过文件选择器调用 `/edit-avatar` multipart | P1 |
+| 头像预览 | 角色列表和编辑页展示头像 | `/characters/{avatar}` 或 thumbnail | 已覆盖：列表、详情、编辑页统一使用真实头像组件，失败时回退首字母占位；待选头像先显示本地预览 | P0 |
+| 头像上传 | 新建/编辑时选择图片 | `/api/characters/create`、`/api/characters/edit` multipart | 部分覆盖：新建 / 编辑可选择头像，并随 `/create` 或 `/edit` multipart 保存上传；未覆盖裁剪和格式转换 | P0 |
+| 单独换头像 | 不改角色数据，仅替换 PNG 封面 | `/api/characters/edit-avatar` | 已覆盖：编辑页选择头像后既可随保存上传，也可对已有角色立即调用 `/edit-avatar` 替换封面 | P1 |
 | 图片格式兼容 | 前端会转换不支持格式 | `ensureImageFormatSupported` | 未覆盖 | P1 |
 | 裁剪 | 带 `crop` query 参数保存裁剪结果 | create/edit/edit-avatar `?crop=` | 未覆盖 | P1 |
 | 外部媒体开关 | 允许/禁止角色描述引用外部媒体 | 角色扩展字段 | 未覆盖 | P2 |
@@ -77,21 +77,21 @@
 | Prompt Overrides | system_prompt、post_history_instructions | 已覆盖 | P0 |
 | Advanced Definitions | personality、scenario、mes_example | 已覆盖 | P0 |
 | Character's Note | depth_prompt.prompt、depth_prompt.depth、depth_prompt.role | 已覆盖 | P0 |
-| Talkativeness | group chat 发言倾向 0-1 | 已覆盖为文本输入，需后续优化为数值控件 | P1 |
-| Alternate Greetings | 多开场白增删改排序 | 部分覆盖：按行编辑；未提供独立增删、排序控件 | P0 |
+| Talkativeness | group chat 发言倾向 0-1 | 已覆盖：数值输入 + 滑块，保存时限制在 `0.0..1.0` | P1 |
+| Alternate Greetings | 多开场白增删改排序 | 已覆盖：条目式新增、删除、上移、下移，每条独立输入框，保存仍写入 multipart `alternate_greetings` | P0 |
 | Token counters | 各字段 token 计数、总 token、永久 token | 未覆盖 | P1 |
 | Markdown / macros 辅助 | data-macros、编辑器最大化、帮助链接 | 未覆盖 | P2 |
-| Unknown fields | `json_data` 里非 ST 字段保留 | 部分覆盖：详情读取 `json_data`，保存时回传；仍需真实 ST 契约测试确认未知字段不丢，且保存请求需改 multipart | P0 |
+| Unknown fields | `json_data` 里非 ST 字段保留 | 已覆盖：详情读取 `json_data`，保存时通过 multipart 原样回传；已通过手机真实 ST 契约测试确认第三方字段、未知顶层字段和未知 `data.extensions` 字段不丢 | P0 |
 
 ### 3.5 标签与收藏
 
 | 功能 | 原版能力 | 原版 API / 数据 | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
-| 收藏 | 角色列表、编辑页、批量右键均可收藏 | `data.extensions.fav` + `fav` | 部分覆盖：列表显示、编辑页保存；无列表快捷切换、无批量收藏、未走 `/merge-attributes` | P0 |
-| Embedded tags | 写入角色卡 `data.tags` | 角色 edit/create/merge | 部分覆盖：逗号输入，随 create/edit 保存；未提供独立标签编辑体验 | P0 |
-| ST 标签系统 | 独立 tag map，用于 folder/filter，可从角色卡导入 | `tags.js` + settings | 未覆盖 | P0 |
-| 标签查看/创建/删除/重命名 | tag view popup | settings tag map | 未覆盖 | P1 |
-| 批量标签 | 多选角色添加/删除 mutual tags | `BulkEditOverlay` + tag map | 未覆盖 | P1 |
+| 收藏 | 角色列表、编辑页、批量右键均可收藏 | `data.extensions.fav` + `fav` | 已覆盖：列表显示、列表行/网格/详情快捷切换、编辑页保存、批量收藏/取消收藏均可用 | P0 |
+| Embedded tags | 写入角色卡 `data.tags` | 角色 edit/create/merge | 已覆盖：编辑页随 create/edit 保存；列表标签弹窗可独立编辑并走 `/merge-attributes` | P0 |
+| ST 标签系统 | 独立 tag map，用于 folder/filter，可从角色卡导入 | `tags.js` + settings | 已覆盖：读取/保存 `/api/settings/get/save`，支持筛选、创建、重命名、删除、folder/drilldown、从 embedded tags 导入为 ST tags | P0 |
+| 标签查看/创建/删除/重命名 | tag view popup | settings tag map | 已覆盖：列表页标签管理入口，保存时保留未知 settings 字段；删除标签时从所有 `tag_map` 引用中移除 | P1 |
+| 批量标签 | 多选角色添加/删除 mutual tags | `BulkEditOverlay` + tag map | 已覆盖：批量模式可对所选角色添加或移除 ST 标签 | P1 |
 
 ### 3.6 聊天文件管理
 
@@ -99,12 +99,12 @@
 
 | 功能 | 原版能力 | 原版 API | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
-| 查看角色历史聊天 | 展示文件名、日期、大小、消息数、摘要 | `/api/characters/chats` | API 已封装，UI 未覆盖 | P1 |
-| 打开聊天 | 切到该角色指定 chat | 原版前端状态 + `/api/chats/get` | 当前只进入 Chat WebView，不指定角色/聊天 | P1 |
-| 删除聊天文件 | 删除单个 jsonl | `/api/chats/delete` | 未覆盖 | P1 |
-| 重命名聊天文件 | 改 jsonl 文件名 | `/api/chats/rename` | 未覆盖 | P1 |
-| 导出聊天 | JSONL / TXT | `/api/chats/export` | 未覆盖 | P1 |
-| 导入聊天 | 导入 jsonl | `/api/chats/import` | 未覆盖 | P2 |
+| 查看角色历史聊天 | 展示文件名、日期、大小、消息数、摘要 | `/api/characters/chats` | 已覆盖：详情页 Chats tab 调用 API 并展示历史聊天摘要 | P1 |
+| 打开聊天 | 切到该角色指定 chat | 原版前端状态 + `/api/chats/get` | 部分覆盖：可进入 Chat WebView，并通过 bridge 尝试选择角色和指定 chat | P1 |
+| 删除聊天文件 | 删除单个 jsonl | `/api/chats/delete` | 已覆盖：详情页聊天行菜单会先确认，成功后移出列表 | P1 |
+| 重命名聊天文件 | 改 jsonl 文件名 | `/api/chats/rename` | 已覆盖：详情页弹出输入框，不再硬编码 `-renamed`，成功后刷新当前聊天列表项 | P1 |
+| 导出聊天 | JSONL / TXT | `/api/chats/export` | 已覆盖：详情页可导出 JSONL / TXT 到 Android 文档选择器指定位置 | P1 |
+| 导入聊天 | 导入 json/jsonl | `/api/chats/import` | 已覆盖：详情页 Chats tab 可通过 Android 文件选择器导入 json/jsonl，并刷新聊天列表 | P2 |
 
 ### 3.7 Lorebook、Persona、来源、助手
 
@@ -112,25 +112,24 @@
 
 | 功能 | 原版入口 | 数据 / API | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
-| 角色主 Lorebook | globe / Link to World Info | `data.extensions.world` + worldinfo | 部分覆盖：编辑 `world` 文本字段；无 World Info 入口、选择器或校验 | P1 |
+| 角色主 Lorebook | globe / Link to World Info | `data.extensions.world` + worldinfo | 部分覆盖：编辑 `world` 文本字段，详情页有 Lorebook 占位入口；无 World Info 选择器、校验或完整编辑 | P1 |
 | Additional Lorebooks | character extra world info | settings `world_info.charLore` | 未覆盖 | P2 |
 | Chat Lorebook | passport 按钮 | chat metadata / worldinfo | 未覆盖 | P2 |
 | Import Card Lore | 从角色卡导入内嵌世界书 | world-info 前端逻辑 | 未覆盖 | P2 |
 | Connected Personas | Persona 连接弹窗 | persona settings | 未覆盖 | P2 |
-| Convert to Persona | 角色转 Persona | persona 前端逻辑 | 未覆盖 | P2 |
-| Link to Source | Chub/Pygmalion/GitHub/source_url 等 | `data.extensions.*` | 未覆盖 | P1 |
+| Link to Source | Chub/Pygmalion/GitHub/source_url 等 | `data.extensions.*` | 部分覆盖：详情页可推导并打开 Chub / Pygmalion / GitHub / `source_url` 等来源，编辑页可保存 `source_url`；无校验、替换/更新流程 | P1 |
 | Set as assistant | 欢迎页助手角色 | welcome settings | 未覆盖 | P2 |
 
 ### 3.8 批量操作
 
 | 功能 | 原版能力 | 原版实现 | APP 当前状态 | 迁移优先级 |
 |---|---|---|---|---|
-| 多选角色 | 点击切换，Shift 范围选择，右键菜单 | `BulkEditOverlay` | 未覆盖 | P1 |
-| 批量收藏 | 右键 favorite | `/merge-attributes` | 未覆盖 | P1 |
-| 批量复制 | 右键 duplicate | `/duplicate` | 未覆盖 | P1 |
-| 批量删除 | 可选择删聊天 | `/delete` | 未覆盖 | P1 |
+| 多选角色 | 点击切换，Shift 范围选择，右键菜单 | `BulkEditOverlay` | 已覆盖：批量模式、复选框、全选当前筛选结果、清空选择；Shift 范围选择和右键菜单暂不做 | P1 |
+| 批量收藏 | 右键 favorite | `/merge-attributes` | 已覆盖：批量模式可对所选角色调用 `/merge-attributes` 收藏或取消收藏 | P1 |
+| 批量复制 | 右键 duplicate | `/duplicate` | 已覆盖：批量模式逐个调用 `/duplicate` 并报告成功/失败计数 | P1 |
+| 批量删除 | 可选择删聊天 | `/delete` | 已覆盖：批量确认后逐个调用 `/api/characters/delete`，复用 `delete_chats` 选项并报告成功/失败计数 | P1 |
 | 批量转 Persona | persona 逻辑 | `convertCharacterToPersona` | 未覆盖 | P2 |
-| 批量标签 | mutual tags popup | tag map | 未覆盖 | P1 |
+| 批量标签 | mutual tags popup | tag map | 已覆盖：批量添加 / 移除 ST tags 并保存 `tag_map` | P1 |
 
 ## 4. 当前 APP 承接差距
 
@@ -138,23 +137,23 @@
 
 | APP 文件 | 已覆盖 |
 |---|---|
-| `TavernCoreApi.kt` | `/api/characters/all`、`/get`、`/create`、`/edit`、`/rename`、`/delete`、`/duplicate`、`/import`、`/export`、`/edit-avatar`、`/characters/chats`、CSRF token 和 session cookie；其中 `/import`、`/edit-avatar` 为 multipart，`/create`、`/edit` 当前仍是 JSON body |
-| `CharacterListScreen.kt` | 列表、搜索、All/Favorites/Recent、embedded tag 筛选、排序、导入、头像预览、复制、删除、刷新、空态、错误态；排序缺 Random / Search score，标签只覆盖 embedded tags |
-| `CharacterEditScreen.kt` | 新建、读取详情、字段分组、保存、重命名、复制、删除、单独换头像、导出 JSON/PNG；缺编辑页头像预览、新建头像上传、完整保存 multipart |
+| `TavernCoreApi.kt` | `/api/characters/all`、`/get`、`/create`、`/edit`、`/merge-attributes`、`/rename`、`/delete`、`/duplicate`、`/import`、`/export`、`/edit-avatar`、`/characters/chats`、`/api/chats/import`、`/api/chats/rename`、`/api/chats/delete`、`/api/chats/export`、`/api/settings/get`、`/api/settings/save`、`/api/content/importURL`、`/api/content/importUUID`、CSRF token 和 session cookie；其中 `/create`、`/edit`、`/import`、`/edit-avatar`、`/api/chats/import` 均已走 multipart |
+| `CharacterListScreen.kt` | 列表、分页、Search score、All/Favorites/Recent、embedded tag 和 ST tag map 筛选、ST folder/drilldown、标签管理、排序（含 Random）、导入、URL 导入、头像预览、HotSwaps、列表/网格/批量模式、批量收藏/取消收藏/复制/删除/标签、刷新、空态、错误态；仍缺 Shift 范围选择 |
+| `CharacterDetailScreen.kt` | 角色详情、真实头像、快捷收藏、概要/聊天/关联 tab、历史聊天列表、打开指定聊天、导入聊天、输入式聊天重命名、删除确认、导出 JSONL/TXT、Source URL 打开、Lorebook / Persona 占位入口；仍缺完整跨系统入口 |
+| `CharacterEditScreen.kt` | 新建、读取详情、真实头像、本地待选头像预览、字段分组、Source URL 编辑、条目式 Alternate Greetings、Talkativeness 数值/滑块、保存、头像随保存上传、独立 `/edit-avatar`、重命名、复制、删除、导出 JSON/PNG；仍缺裁剪和格式转换 |
 | `DocumentFileHelpers.kt` | 仅用于 Android 文件选择器读取导入文件 / 头像文件，以及写出导出结果，不直接覆盖 SillyTavern 角色数据目录 |
-| `STNavGraph.kt` / `MainActivity.kt` | Characters tab 进入原生列表，新建/编辑进入原生页面 |
+| `STNavGraph.kt` / `MainActivity.kt` | Characters tab 进入原生列表，新建/详情/编辑进入原生页面；从详情页聊天入口进入 Chat WebView 并保留返回栈 |
 
 主要缺口：
 
 | 缺口 | 影响 |
 |---|---|
-| `create/edit` 请求形态未达契约 | 当前走 JSON body；虽然 SillyTavern 后端可解析 JSON，但和原版表单/multipart 行为不完全一致，头像、裁剪、字段兼容和未知字段保护风险更高 |
-| `/merge-attributes` 未作为公开 API / UI 使用 | 快捷收藏、快捷标签、批量局部更新还不能低风险 patch |
-| ST 独立标签系统未接入 | 当前已支持 embedded tags 展示/筛选/编辑，但还没有接入原版 settings tag map、folder 和批量标签 |
-| 无历史聊天管理 UI | API 层已有 `/characters/chats`，但用户无法从角色管理页选择、导出、删除、重命名角色聊天 |
-| 头像体验不完整 | 列表头像和单独换头像已有；编辑页头像预览、新建头像上传、裁剪、格式转换未完成 |
-| 无 Lorebook / Persona / Source 入口 | 原版“More...”菜单里的重要管理动作不可达 |
-| 无批量操作 | 大角色库用户迁移后效率下降明显 |
+| 头像增强剩余项 | 真实头像和独立 `/edit-avatar` 已覆盖；裁剪、图片格式转换未完成 |
+| 批量操作剩余项 | 真批量收藏/取消收藏/复制/删除/标签已覆盖；Shift 范围选择和右键菜单未覆盖 |
+| ST 标签系统剩余项 | 管理、folder/drilldown、从卡内导入、批量标签已覆盖；更复杂的颜色/排序 UI 可后续增强 |
+| 历史聊天管理剩余项 | 聊天列表、打开、导入、输入式重命名、删除确认、导出已覆盖；后续可继续补更完整的 Chat WebView 定位 smoke test |
+| Lorebook / Persona / Source 仍不完整 | Lorebook / Persona 只是占位入口；Source 已可打开和编辑基础 URL，但没有校验、Replace / Update |
+| token counter 未覆盖 | 编辑器精细体验仍有差距；Search score 和列表分页已覆盖 |
 
 ## 5. M2 迁移范围建议
 
@@ -209,10 +208,12 @@ P0 的目标是让用户在 APP 内完成日常角色管理，不再频繁回原
 | 复制 | `POST /api/characters/duplicate` | JSON `{ avatar_url }` | 返回新文件名 |
 | 删除 | `POST /api/characters/delete` | JSON `{ avatar_url, delete_chats }` | 需要二次确认 |
 | 导入 | `POST /api/characters/import` | multipart form | 支持 json/png/yaml/yml/charx/byaf |
+| 外部 URL / UUID 导入 | `POST /api/content/importURL` / `POST /api/content/importUUID` 后接 `/api/characters/import` | JSON + multipart form | 先下载角色卡内容，再按文件导入 |
 | 导出 | `POST /api/characters/export` | JSON `{ avatar_url, format }` | format 为 `png` 或 `json` |
 | 聊天列表 | `POST /api/characters/chats` | JSON `{ avatar_url, metadata }` | 角色历史聊天列表 |
 | 聊天读取 | `POST /api/chats/get` | JSON | 打开指定聊天或重命名历史聊天时需要 |
 | 聊天保存 | `POST /api/chats/save` | JSON / compressed | 批量改历史聊天角色名时需要 |
+| 聊天重命名 | `POST /api/chats/rename` | JSON | 改单个角色聊天文件名 |
 | 聊天删除 | `POST /api/chats/delete` | JSON | 删除单个聊天文件 |
 | 聊天导出 | `POST /api/chats/export` | JSON | 导出 JSONL/TXT |
 | 聊天导入 | `POST /api/chats/import` | multipart form | P2 |
@@ -224,9 +225,11 @@ P0 的目标是让用户在 APP 内完成日常角色管理，不再频繁回原
 | API | 当前实现状态 |
 |---|---|
 | `/api/characters/all`、`/get`、`/rename`、`/duplicate`、`/delete`、`/export`、`/characters/chats` | 已通过 JSON POST 接入 |
-| `/api/characters/import`、`/edit-avatar` | 已通过 multipart form 接入 |
-| `/api/characters/create`、`/edit` | 已接入，但当前是 JSON POST；需要迁移到 multipart form，才能和原版编辑/头像/裁剪行为完全对齐 |
-| `/api/characters/merge-attributes` | 尚未暴露为 `TavernCoreApi` 方法，UI 未使用；仅有未调用的 payload helper |
+| `/api/characters/create`、`/edit`、`/import`、`/edit-avatar` | 已通过 multipart form 接入；`/create`、`/edit` 支持头像文件随保存上传，编辑页也可单独调用 `/edit-avatar`；crop query 尚未接入 UI |
+| `/api/characters/merge-attributes` | 已暴露为 `TavernCoreApi` 方法，详情页和列表快捷收藏、批量收藏/取消收藏、embedded tags 独立编辑均已使用 |
+| `/api/settings/get`、`/api/settings/save` | 已封装 ST `tags` / `tag_map` 读写，UI 已覆盖筛选、标签管理、folder/drilldown、从 embedded tags 导入和批量 ST 标签 |
+| `/api/content/importURL`、`/api/content/importUUID` | 已封装外部角色卡下载，并串接 `/api/characters/import`；列表页已有 URL/UUID 输入入口 |
+| `/api/chats/import`、`/rename`、`/delete`、`/export` | 已封装并在详情页聊天列表使用；导入走 Android 文件选择器 + multipart，重命名使用输入框，删除有确认，成功后刷新当前列表状态 |
 | 直接文件覆盖角色卡 | 未发现 M2 角色管理路径直接写 `data/default-user/characters`；本地文件访问仅用于文件选择器导入/导出和非 M2 的备份恢复等场景 |
 
 ## 7. 原生页面结构建议
@@ -253,7 +256,6 @@ P0 的目标是让用户在 APP 内完成日常角色管理，不再频繁回原
 | Section | 字段 / 动作 |
 |---|---|
 | Header | 头像、名称、收藏、保存、更多菜单 |
-| Basic | description、first_mes、alternate greetings |
 | Prompt Overrides | system_prompt、post_history_instructions |
 | Creator Metadata | creator、character_version、creator_notes、embedded tags |
 | Advanced Definitions | personality、scenario、mes_example |
@@ -264,14 +266,14 @@ P0 的目标是让用户在 APP 内完成日常角色管理，不再频繁回原
 
 ### 7.3 CharacterChatsScreen
 
-可以作为编辑页的一个 tab 或 bottom sheet：
+当前已作为 `CharacterDetailScreen` 的 Chats tab 初步落地，后续可以继续独立成 bottom sheet 或子页面：
 
 | 能力 | 说明 |
 |---|---|
 | 聊天列表 | 文件名、日期、大小、消息数、最后消息摘要 |
 | 打开 | 进入 Chat WebView，并尽量定位到该角色和该聊天 |
 | 管理 | 重命名、删除、导出 |
-| 导入 | P2，使用 Android 文件选择器 |
+| 导入 | 已覆盖：使用 Android 文件选择器导入 json/jsonl |
 
 ## 8. 保存策略
 
@@ -281,16 +283,16 @@ P0 的目标是让用户在 APP 内完成日常角色管理，不再频繁回原
 | 新建角色，有头像 | 使用 `/api/characters/create` multipart form，附带 avatar 文件 |
 | 编辑完整角色 | 使用 `/api/characters/edit` multipart form，传 `json_data`、`avatar_url`、`chat`、`create_date` |
 | 快捷收藏 | 使用 `/api/characters/merge-attributes` JSON patch |
-| 快捷标签 | embedded tags 可用 `/merge-attributes`；ST tag map 需要 settings/tag 逻辑 |
+| 快捷标签 | embedded tags 使用 `/merge-attributes`；ST tags 使用 settings `tag_map` 读写 |
 | 换头像 | 使用 `/api/characters/edit-avatar` multipart form |
 | 保存失败 | 草稿留在 APP 状态，不刷新详情，不覆盖本地 UI |
 | 未知字段 | 必须从 `/get` 的 `json_data` 基础上合并，避免丢扩展字段 |
 
 当前偏差：
 
-- 新建和完整编辑已经走 SillyTavern API，但仍是 JSON body，不是原版表单/multipart 形态。
-- 未知字段目前依赖 `/get` 的 `json_data` 原样回传；需要补真实 ST 契约测试，确认保存后第三方扩展字段、未知顶层字段和未知 `data.extensions` 字段不会丢。
-- 快捷收藏和快捷标签还没有改成 `/merge-attributes` 局部 patch。
+- 新建和完整编辑已改为 multipart，并可随保存上传头像；编辑页已有真实头像预览和独立 `/edit-avatar` 即时动作；crop query 和图片格式转换仍缺。
+- 未知字段目前依赖 `/get` 的 `json_data` 原样回传；已补复杂 `json_data` multipart 单元契约测试，并已用手机真实 ST 契约测试回归第三方扩展字段、未知顶层字段和未知 `data.extensions` 字段。
+- 快捷收藏已走 `/merge-attributes` 局部 patch；embedded tags 独立编辑已接 `/merge-attributes`，ST tags 和批量标签已接 `/api/settings/get/save`。
 
 ## 9. 验收口径修订
 
@@ -308,22 +310,41 @@ M2 不能只验“能编辑描述和开场白”。建议改为：
 
 | 顺序 | 目标 | 原因 |
 |---|---|---|
-| 1 | API 层补齐 character edit/import/export/rename/delete/duplicate/chats | 先稳住数据契约 |
-| 2 | 编辑页字段补齐和 section 化 | 当前承接感最弱，用户马上能感知 |
-| 3 | 列表排序、标签过滤、更多菜单 | 角色库可用性提升最大 |
-| 4 | 导入/导出/头像 | 角色管理基础操作闭环 |
-| 5 | 重命名/复制/删除/危险操作确认 | 需要更严格错误处理和确认弹窗 |
-| 6 | 历史聊天管理入口 | 连接角色管理与 Chat WebView |
-| 7 | 批量操作和 HotSwaps | 大库用户效率增强 |
-| 8 | Lorebook、Persona、Source、Replace/Update | 跨系统能力逐步接入 |
+| 1 | 头像增强剩余项 | 真实头像、待选预览和独立 `/edit-avatar` 已完成；后续只剩裁剪和格式转换 |
+| 2 | 批量操作增强剩余项 | 全选、清空、真批量收藏/取消收藏/复制/删除/标签已完成；后续可补 Shift 范围选择和右键菜单 |
+| 3 | 标签管理增强剩余项 | 创建/重命名/删除、folder/drilldown、从角色卡导入、批量标签已完成；后续可补颜色、排序等细节 |
+| 4 | 历史聊天增强剩余项 | 已能看、开、导入、输入式重命名、确认删除、导出；后续继续验证不同 ST 前端状态下的指定聊天定位 |
+| 5 | 补 token counter | 编辑器精细体验仍受影响；Search score 和分页已完成 |
+| 6 | Lorebook、Persona、Source、Replace/Update | 跨系统能力逐步接入，目前 Source 已可打开和编辑基础 URL，Lorebook / Persona 仍保留入口 |
 
 ## 11. 风险与边界
 
 | 风险 | 处理 |
 |---|---|
-| `/api/characters/edit` multipart 与当前 JSON 客户端差异大 | API 层新增 form/multipart helper，保留 `/merge-attributes` 用于局部更新 |
-| 未知扩展字段丢失 | 所有完整保存必须基于 `/get` 返回的 `json_data` 合并 |
+| multipart 保存与 ST 原版字段兼容 | 已改为 form/multipart helper；后续新增字段时继续对照 `charaFormatData`，保留 `/merge-attributes` 用于局部更新 |
+| 未知扩展字段丢失 | 所有完整保存必须基于 `/get` 返回的 `json_data` 合并；已补可选真实 ST 契约测试，并已在手机调试实例通过 |
 | 标签系统不只在角色卡内 | 区分 embedded tags 和 ST tag map，不能把二者混为一谈 |
 | 重命名影响聊天、群组、标签、世界书关联 | 重命名单独做任务，必须有契约测试和回滚提示 |
-| Chat WebView 状态无法从原生精确定位 | M2 可先打开 Chat WebView，指定角色/聊天定位作为后续 bridge 增强 |
+| Chat WebView 状态无法从原生精确定位 | 当前 bridge 会尝试选择角色和指定聊天；这属于 WebView 运行时 smoke test，不属于本轮角色 API 契约测试，仍需单独验证不同 ST 前端状态下是否稳定 |
 | 群聊和世界书过大 | M2 只保留入口和字段，不把完整 group/world editor 塞进角色管理任务 |
+
+## 12. 真实 ST 契约测试
+
+`TavernCoreClientTest` 使用 `MockWebServer` 检查 Android 端请求形态；`TavernCoreRealContractTest` 则连接一个真实运行的 SillyTavern 服务，验证 ST 实际接受并保存这些请求。
+
+本次验证记录：
+
+| 日期 | 目标 | 命令 | 结果 |
+|---|---|---|---|
+| 2026-05-26 | 手机 `SM_S9310` 上的 ST dev 实例，adb 转发 `tcp:18000 -> tcp:8000` | `ST_CONTRACT_BASE_URL=http://127.0.0.1:18000/ ./gradlew testDebugUnitTest --tests 'io.github.sanitised.st.api.TavernCoreRealContractTest'` | 通过；未留下 `STContract*` 临时角色 |
+| 2026-05-26 | 默认日常单测行为，不设置真实 ST 地址 | `./gradlew testDebugUnitTest --tests 'io.github.sanitised.st.api.TavernCoreRealContractTest' --rerun-tasks` | 通过；测试安全跳过 |
+| 2026-05-26 | 常规单元测试套件 | `./gradlew testDebugUnitTest` | 通过 |
+
+默认不设置 `ST_CONTRACT_BASE_URL` 时，真实契约测试会跳过，避免日常单测误改真实数据。连接手机调试实例时：
+
+```bash
+/Users/changlepan/android-sdk/platform-tools/adb -s 'adb-RFCY41BD54H-jx4XIL._adb-tls-connect._tcp' forward tcp:18000 tcp:8000
+ST_CONTRACT_BASE_URL=http://127.0.0.1:18000/ ./gradlew testDebugUnitTest --tests 'io.github.sanitised.st.api.TavernCoreRealContractTest'
+```
+
+测试会创建一个 `STContract_*` 临时角色，覆盖完整保存、复杂 `json_data` 保留、`merge-attributes` 收藏和 embedded tags、`edit-avatar`、ST tags 创建/重命名/删除，以及 `tag_map` 保存；结束时会恢复原始 tag settings 并删除临时角色。

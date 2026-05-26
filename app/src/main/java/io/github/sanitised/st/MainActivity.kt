@@ -134,12 +134,17 @@ class MainActivity : ComponentActivity() {
             val navController = rememberNavController()
             val navBackStackEntry by navController.currentBackStackEntryAsState()
             val currentRoute = navBackStackEntry?.destination?.route
-            val isCharacterManagementRoute = currentRoute in setOf(
-                STRoutes.CHARACTERS,
+            val bottomBarSelectedRoute = when (currentRoute) {
                 STRoutes.CHARACTER_NEW,
                 STRoutes.CHARACTER_DETAIL,
-                STRoutes.CHARACTER_EDIT
-            )
+                STRoutes.CHARACTER_EDIT -> STRoutes.CHARACTERS
+                STRoutes.LOGS,
+                STRoutes.CONFIG,
+                STRoutes.LEGAL,
+                STRoutes.LICENSE,
+                STRoutes.MANAGE_ST -> STRoutes.SETTINGS
+                else -> currentRoute
+            }
             val appPaths = remember { AppPaths(this@MainActivity) }
 
             val legalDocs = remember {
@@ -321,13 +326,11 @@ class MainActivity : ComponentActivity() {
             STAppTheme(useDarkTheme = useDarkTheme) {
                 Scaffold(
                     bottomBar = {
-                        if (!isCharacterManagementRoute) {
-                            STBottomBar(
-                                items = bottomNavItems,
-                                currentRoute = currentRoute,
-                                onNavigate = navigateMainTab
-                            )
-                        }
+                        STBottomBar(
+                            items = bottomNavItems,
+                            currentRoute = bottomBarSelectedRoute,
+                            onNavigate = navigateMainTab
+                        )
                     },
                     snackbarHost = {
                         SnackbarHost(
@@ -465,14 +468,6 @@ class MainActivity : ComponentActivity() {
                                         onBack = { navController.popBackStack() },
                                         onEdit = { targetAvatar ->
                                             navController.navigate(STRoutes.characterEdit(targetAvatar))
-                                        },
-                                        onOpenCharacterList = {
-                                            navController.navigate(STRoutes.CHARACTERS) {
-                                                popUpTo(STRoutes.CHARACTERS) {
-                                                    inclusive = false
-                                                }
-                                                launchSingleTop = true
-                                            }
                                         },
                                         onOpenChat = { chatFile ->
                                             openCharacterChatFromCharacterManagement(avatar, chatFile)

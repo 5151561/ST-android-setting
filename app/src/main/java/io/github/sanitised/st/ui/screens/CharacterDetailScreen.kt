@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -32,6 +31,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -42,6 +42,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -77,6 +78,13 @@ private enum class CharacterDetailTab {
     LINKS
 }
 
+private val characterChatImportMimeTypes = arrayOf(
+    "application/json",
+    "application/jsonl",
+    "text/plain",
+    "*/*"
+)
+
 @Composable
 fun CharacterDetailScreen(
     status: NodeStatus,
@@ -85,7 +93,6 @@ fun CharacterDetailScreen(
     onStartService: () -> Unit,
     onBack: () -> Unit,
     onEdit: (String) -> Unit,
-    onOpenCharacterList: () -> Unit,
     onOpenChat: (String?) -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -100,6 +107,10 @@ fun CharacterDetailScreen(
     var chats by remember(avatar) { mutableStateOf<List<CharacterChatSummary>>(emptyList()) }
     var selectedTab by remember { mutableStateOf(CharacterDetailTab.OVERVIEW) }
     var pendingExport by remember { mutableStateOf<Pair<CharacterChatSummary, ChatExportFormat>?>(null) }
+    var pendingRenameChat by remember { mutableStateOf<CharacterChatSummary?>(null) }
+    var renameChatText by remember { mutableStateOf("") }
+    var pendingDeleteChat by remember { mutableStateOf<CharacterChatSummary?>(null) }
+    var importingChat by remember { mutableStateOf(false) }
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
@@ -116,6 +127,32 @@ fun CharacterDetailScreen(
             onShowMessage = onShowMessage,
             scope = scope
         )
+    }
+    val importChatLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val characterName = detail?.name ?: avatar.removeSuffix(".png")
+        scope.launch {
+            importingChat = true
+            runCatching {
+                val document = context.readPickedDocument(uri)
+                val client = TavernCoreClient(baseUrl = baseUrl)
+                client.importCharacterChat(
+                    avatar = avatar,
+                    characterName = characterName,
+                    fileName = document.fileName,
+                    bytes = document.bytes
+                )
+                client.listCharacterChats(avatar)
+            }.onSuccess { loadedChats ->
+                chats = loadedChats
+                onShowMessage(context.getString(R.string.character_chat_imported))
+            }.onFailure { error ->
+                onShowMessage(error.messageOr(context, R.string.character_chat_import_failed))
+            }
+            importingChat = false
+        }
     }
 
     LaunchedEffect(serverRunning, baseUrl, avatar) {
@@ -138,6 +175,76 @@ fun CharacterDetailScreen(
             onShowMessage(error.messageOr(context, R.string.character_load_failed))
         }
         loading = false
+    }
+
+    pendingRenameChat?.let { chat ->
+        AlertDialog(
+            onDismissRequest = {
+                pendingRenameChat = null
+                renameChatText = ""
+            },
+            title = { Text(stringResource(R.string.character_chat_rename_title)) },
+            text = {
+                OutlinedTextField(
+                    value = renameChatText,
+                    onValueChange = { renameChatText = it },
+                    label = { Text(stringResource(R.string.character_chat_rename_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val newName = renameChatText.trim()
+                        pendingRenameChat = null
+                        renameChatText = ""
+                        renameCharacterChat(context, baseUrl, avatar, chat, newName, onShowMessage, scope) { renamedFile ->
+                            chats = chats.map { item ->
+                                if (item.fileName == chat.fileName) item.copy(fileName = renamedFile) else item
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.save))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingRenameChat = null
+                        renameChatText = ""
+                    }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    pendingDeleteChat?.let { chat ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteChat = null },
+            title = { Text(stringResource(R.string.character_chat_delete_title)) },
+            text = { Text(stringResource(R.string.character_chat_delete_body, chat.fileName)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteChat = null
+                        deleteCharacterChat(context, baseUrl, avatar, chat, onShowMessage, scope) {
+                            chats = chats.filterNot { it.fileName == chat.fileName }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteChat = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     Surface(modifier = modifier.fillMaxSize(), color = colors.bg) {
@@ -193,6 +300,7 @@ fun CharacterDetailScreen(
 
                         else -> {
                             CharacterDetailHero(
+                                baseUrl = baseUrl,
                                 detail = character,
                                 onEdit = { onEdit(character.id) },
                                 onOpenChat = { onOpenChat(chats.firstOrNull()?.id) }
@@ -203,15 +311,16 @@ fun CharacterDetailScreen(
                                 CharacterDetailTab.OVERVIEW -> CharacterOverviewPanel(character)
                                 CharacterDetailTab.CHATS -> CharacterChatsPanel(
                                     chats = chats,
-                                    onOpenChat = { chat -> onOpenChat(chat.id) },
-                                    onRenameChat = { chat ->
-                                        renameCharacterChat(context, baseUrl, avatar, chat, onShowMessage, scope)
-                                    },
-                                    onDeleteChat = { chat ->
-                                        deleteCharacterChat(context, baseUrl, avatar, chat, onShowMessage, scope) {
-                                            chats = chats.filterNot { it.fileName == chat.fileName }
-                                        }
-                                    },
+                                    importingChat = importingChat,
+                                    onImportChat = { importChatLauncher.launch(characterChatImportMimeTypes) },
+	                                    onOpenChat = { chat -> onOpenChat(chat.id) },
+	                                    onRenameChat = { chat ->
+	                                        pendingRenameChat = chat
+	                                        renameChatText = chat.fileName.removeSuffix(".jsonl")
+	                                    },
+	                                    onDeleteChat = { chat ->
+	                                        pendingDeleteChat = chat
+	                                    },
                                     onExportChat = { chat, format ->
                                         pendingExport = chat to format
                                         exportLauncher.launch(defaultChatExportFileName(chat, format))
@@ -241,13 +350,6 @@ fun CharacterDetailScreen(
                     }
                 }
             }
-
-            CharacterLocalBottomBar(
-                active = CharacterLocalNav.CHARACTERS,
-                onCharacters = onOpenCharacterList,
-                onLorebook = { onShowMessage(context.getString(R.string.character_lorebook_unavailable)) },
-                onPersona = { onShowMessage(context.getString(R.string.character_persona_unavailable)) }
-            )
         }
     }
 }
@@ -295,6 +397,7 @@ private fun CharacterDetailTopBar(
 
 @Composable
 private fun CharacterDetailHero(
+    baseUrl: String,
     detail: CharacterDetail,
     onEdit: () -> Unit,
     onOpenChat: () -> Unit
@@ -307,7 +410,12 @@ private fun CharacterDetailHero(
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                CharacterInitialAvatar(label = detail.name, size = 96)
+                CharacterAvatarImage(
+                    baseUrl = baseUrl,
+                    avatar = detail.avatarUrl,
+                    label = detail.name,
+                    size = 96.dp
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = detail.name,
@@ -418,12 +526,27 @@ private fun CharacterOverviewPanel(detail: CharacterDetail) {
 @Composable
 private fun CharacterChatsPanel(
     chats: List<CharacterChatSummary>,
+    importingChat: Boolean,
+    onImportChat: () -> Unit,
     onOpenChat: (CharacterChatSummary) -> Unit,
     onRenameChat: (CharacterChatSummary) -> Unit,
     onDeleteChat: (CharacterChatSummary) -> Unit,
     onExportChat: (CharacterChatSummary, ChatExportFormat) -> Unit
 ) {
     CharacterDetailPanel(title = stringResource(R.string.character_detail_chats_title)) {
+        OutlinedButton(
+            onClick = onImportChat,
+            enabled = !importingChat,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (importingChat) {
+                    stringResource(R.string.busy_importing_data)
+                } else {
+                    stringResource(R.string.character_chat_import)
+                }
+            )
+        }
         if (chats.isEmpty()) {
             Text(
                 text = stringResource(R.string.character_detail_chats_empty),
@@ -605,25 +728,6 @@ private fun CharacterDetailInfoCard(
 }
 
 @Composable
-private fun CharacterInitialAvatar(label: String, size: Int) {
-    val colors = STTheme.colors
-    Box(
-        modifier = Modifier
-            .size(size.dp)
-            .clip(CircleShape)
-            .background(colors.surface),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = colors.accent
-        )
-    }
-}
-
-@Composable
 private fun CharacterTagLine(tags: List<String>) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
         tags.take(3).forEach { tag ->
@@ -645,14 +749,27 @@ private fun renameCharacterChat(
     baseUrl: String,
     avatar: String,
     chat: CharacterChatSummary,
+    renamedName: String,
     onShowMessage: (String) -> Unit,
-    scope: kotlinx.coroutines.CoroutineScope
+    scope: kotlinx.coroutines.CoroutineScope,
+    onRenamed: (String) -> Unit
 ) {
-    val renamed = chat.fileName.removeSuffix(".jsonl") + "-renamed.jsonl"
+    val renamed = renamedName
+        .trim()
+        .removeSuffix(".jsonl")
+        .takeIf { it.isNotBlank() }
+        ?.plus(".jsonl")
+        ?: return
     scope.launch {
         runCatching {
             TavernCoreClient(baseUrl = baseUrl).renameCharacterChat(avatar, chat.fileName, renamed)
-        }.onSuccess {
+        }.onSuccess { sanitizedName ->
+            val displayName = sanitizedName
+                .trim()
+                .removeSuffix(".jsonl")
+                .ifBlank { renamed.removeSuffix(".jsonl") }
+                .plus(".jsonl")
+            onRenamed(displayName)
             onShowMessage(context.getString(R.string.character_chat_renamed))
         }.onFailure { error ->
             onShowMessage(error.messageOr(context, R.string.character_save_failed))

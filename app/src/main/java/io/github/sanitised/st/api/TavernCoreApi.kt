@@ -84,7 +84,8 @@ data class CharacterSaveRequest(
     val depthPromptRole: String = "system",
     val chat: String = "",
     val createDate: String = "",
-    val rawJsonData: String = ""
+    val rawJsonData: String = "",
+    val sourceUrl: String = ""
 )
 
 data class CharacterUpload(
@@ -169,6 +170,12 @@ interface TavernCoreApi {
     suspend fun updateCharacterAvatar(avatar: String, fileName: String, bytes: ByteArray)
     suspend fun renameCharacterChat(avatar: String, originalFile: String, renamedFile: String): String
     suspend fun deleteCharacterChat(avatar: String, chatFile: String)
+    suspend fun importCharacterChat(
+        avatar: String,
+        characterName: String,
+        fileName: String,
+        bytes: ByteArray
+    ): List<String>
     suspend fun exportCharacterChat(
         avatar: String,
         chatFile: String,
@@ -459,6 +466,34 @@ class TavernCoreClient(
         }
     }
 
+    override suspend fun importCharacterChat(
+        avatar: String,
+        characterName: String,
+        fileName: String,
+        bytes: ByteArray
+    ): List<String> {
+        return withContext(Dispatchers.IO) {
+            val fileType = fileName.substringAfterLast('.', "").lowercase()
+            require(fileType in setOf("json", "jsonl")) {
+                "Unsupported chat file type"
+            }
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("avatar", fileName, bytes.toRequestBody(binaryMediaType))
+                .addFormDataPart("file_type", fileType)
+                .addFormDataPart("avatar_url", avatar)
+                .addFormDataPart("character_name", characterName)
+                .addFormDataPart("user_name", "User")
+                .build()
+            val responseBody = postMultipart("api/chats/import", body)
+            val map = yaml.load<Any?>(responseBody) as? Map<*, *> ?: emptyMap<Any, Any>()
+            if (map.booleanValue("error")) {
+                throw IllegalStateException("SillyTavern failed to import chat")
+            }
+            map.stringListValue("fileNames")
+        }
+    }
+
     override suspend fun exportCharacterChat(
         avatar: String,
         chatFile: String,
@@ -650,10 +685,40 @@ class TavernCoreClient(
             chat = stringValue("chat"),
             createDate = stringValue("create_date"),
             rawJsonData = stringValue("json_data"),
-            sourceUrl = extensions.stringValue("source_url")
-                .ifBlank { extensions.stringValue("chub") }
-                .ifBlank { extensions.stringValue("pygmalion_id") }
+            sourceUrl = extensions.characterSourceUrl()
         )
+    }
+
+    private fun Map<*, *>.characterSourceUrl(): String {
+        val chubPath = when (val value = get("chub")) {
+            is Map<*, *> -> value.stringValue("full_path")
+            is String -> value
+            else -> ""
+        }
+        if (chubPath.isNotBlank()) return "https://chub.ai/characters/$chubPath"
+
+        val pygmalionId = stringValue("pygmalion_id")
+        if (pygmalionId.isNotBlank()) return "https://pygmalion.chat/$pygmalionId"
+
+        val githubRepo = stringValue("github_repo")
+        if (githubRepo.isNotBlank()) return "https://github.com/$githubRepo"
+
+        val sourceUrl = stringValue("source_url")
+        if (sourceUrl.isNotBlank()) return sourceUrl
+
+        val risuSource = (get("risuai") as? Map<*, *>)
+            ?.let { risu -> risu["source"] as? List<*> }
+            ?.firstOrNull() as? String
+        if (risuSource?.startsWith("risurealm:") == true) {
+            return "https://realm.risuai.net/character/${risuSource.substringAfter(':')}"
+        }
+
+        val perchanceSlug = (get("perchance_data") as? Map<*, *>)?.stringValue("slug")
+        if (!perchanceSlug.isNullOrBlank()) {
+            return "https://perchance.org/ai-character-chat?data=$perchanceSlug"
+        }
+
+        return ""
     }
 
     private fun Map<*, *>.toCharacterChatSummary(): CharacterChatSummary {
@@ -706,7 +771,7 @@ class TavernCoreClient(
                 addFormDataPart("chat", chat)
                 addFormDataPart("create_date", createDate)
                 addFormDataPart("json_data", rawJsonData)
-                addFormDataPart("extensions", "{}")
+                addFormDataPart("extensions", jsonObject("source_url" to sourceUrl))
             }
             .build()
     }

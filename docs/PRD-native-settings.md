@@ -633,6 +633,11 @@ Phase 0 的成果在 v0.6 策略下完全保留：
 
 **验收：** 用户可以在 App 内完成角色浏览、搜索、排序、筛选、新建、编辑、保存、重命名、复制、删除、导入、导出、头像上传，并继续进入 Chat WebView 使用角色聊天；常规角色管理不再依赖原版 SillyTavern Web UI。
 
+**当前代码验证补充：**
+- 2026-05-26 本地执行 `./gradlew testDebugUnitTest`：通过
+- 2026-05-26 通过 adb 转发连接真机 `SM_S9310` 上的 ST dev 实例，执行 `ST_CONTRACT_BASE_URL=http://127.0.0.1:18000/ ./gradlew testDebugUnitTest --tests 'io.github.sanitised.st.api.TavernCoreRealContractTest'`：通过
+- 真实 ST 契约测试已覆盖角色完整保存、复杂 `json_data` 未知字段保留、`merge-attributes`、`edit-avatar`、ST tag 创建/重命名/删除和 `tag_map` 保存；Chat WebView 指定聊天定位仍归入单独 smoke test
+
 ---
 
 ### M3 — 稳定版（预估 8-12 周）
@@ -664,7 +669,7 @@ Phase 0 的成果在 v0.6 策略下完全保留：
 | Bridge 安全性（JS Interface 注入攻击） | 中 | 限制 Bridge 只对 localhost 生效；`@JavascriptInterface` 方法严格校验来源 |
 | 扩展插件在 WebView 中异常 | 中 | 扩展标记为实验性；提供关闭扩展的快捷入口；捕获 JS 错误不崩溃 |
 | 键盘适配在不同机型上表现不一 | 中 | 优先使用 Activity / WindowInsets 层解决；只在明确设备问题时做最小 WebView 兼容补丁 |
-| SillyTavern Core 版本更新影响 API 形状 | 中 | 锁定测试过的 Core 版本；更新时先跑 Chat WebView smoke test、角色 API 契约测试和关键导入/聊天流程 |
+| SillyTavern Core 版本更新影响 API 形状 | 中 | 锁定测试过的 Core 版本；更新时先跑 Chat WebView smoke test、`TavernCoreRealContractTest` 真实 ST 契约测试和关键导入/聊天流程 |
 
 ---
 

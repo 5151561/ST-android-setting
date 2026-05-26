@@ -29,6 +29,16 @@ enum class CharacterTagSource {
     ST
 }
 
+data class CharacterPage(
+    val items: List<CharacterSummary>,
+    val currentPage: Int,
+    val totalPages: Int,
+    val pageSize: Int,
+    val totalItems: Int,
+    val firstItemNumber: Int,
+    val lastItemNumber: Int
+)
+
 fun filterCharacters(
     characters: List<CharacterSummary>,
     query: String,
@@ -36,17 +46,25 @@ fun filterCharacters(
     sort: CharacterListSort,
     selectedTag: String? = null,
     selectedTagSource: CharacterTagSource = CharacterTagSource.EMBEDDED,
+    selectedFolderTag: String? = null,
     tagSettings: STTagSettings? = null
 ): List<CharacterSummary> {
     val normalizedQuery = query.trim().lowercase()
     val normalizedTag = selectedTag?.trim()?.lowercase().orEmpty()
+    val normalizedFolderTag = selectedFolderTag?.trim()?.lowercase().orEmpty()
     val stTagIds = tagSettings
         ?.tags
         ?.filter { tag -> tag.id.lowercase() == normalizedTag || tag.name.lowercase() == normalizedTag }
         ?.map { it.id }
         ?.toSet()
         .orEmpty()
-    return characters
+    val stFolderTagIds = tagSettings
+        ?.tags
+        ?.filter { tag -> tag.id.lowercase() == normalizedFolderTag || tag.name.lowercase() == normalizedFolderTag }
+        ?.map { it.id }
+        ?.toSet()
+        .orEmpty()
+    val filtered = characters
         .filter { character ->
             when (filter) {
                 CharacterListFilter.ALL -> true
@@ -58,24 +76,51 @@ fun filterCharacters(
             if (normalizedQuery.isBlank()) {
                 true
             } else {
-                character.name.contains(normalizedQuery, ignoreCase = true) ||
-                character.creatorNotes.contains(normalizedQuery, ignoreCase = true) ||
-                character.tags.any { tag -> tag.contains(normalizedQuery, ignoreCase = true) }
+                character.searchScore(normalizedQuery, tagSettings) > 0
             }
+        }
+        .filter { character ->
+            normalizedFolderTag.isBlank() || CharacterTagTools
+                .assignedTagIds(character, tagSettings)
+                .any { id -> id in stFolderTagIds }
         }
         .filter { character ->
             normalizedTag.isBlank() || when (selectedTagSource) {
                 CharacterTagSource.EMBEDDED -> character.tags.any { tag -> tag.lowercase() == normalizedTag }
                 CharacterTagSource.ST -> {
-                    val tagMap = tagSettings?.tagMap.orEmpty()
-                    val assignedIds = listOfNotNull(character.id, character.avatarUrl)
-                        .flatMap { key -> tagMap[key].orEmpty() }
-                        .toSet()
+                    val assignedIds = CharacterTagTools.assignedTagIds(character, tagSettings)
                     assignedIds.any { id -> id in stTagIds }
                 }
             }
         }
-        .sortCharacters(sort)
+    return if (normalizedQuery.isBlank()) {
+        filtered.sortCharacters(sort)
+    } else {
+        filtered.sortCharacters(sort)
+            .sortedByDescending { it.searchScore(normalizedQuery, tagSettings) }
+    }
+}
+
+fun paginateCharacters(
+    characters: List<CharacterSummary>,
+    requestedPage: Int,
+    pageSize: Int
+): CharacterPage {
+    val safePageSize = pageSize.takeIf { it > 0 } ?: characters.size.coerceAtLeast(1)
+    val totalItems = characters.size
+    val totalPages = ((totalItems + safePageSize - 1) / safePageSize).coerceAtLeast(1)
+    val currentPage = requestedPage.coerceIn(1, totalPages)
+    val startIndex = ((currentPage - 1) * safePageSize).coerceAtMost(totalItems)
+    val endIndex = (startIndex + safePageSize).coerceAtMost(totalItems)
+    return CharacterPage(
+        items = characters.subList(startIndex, endIndex),
+        currentPage = currentPage,
+        totalPages = totalPages,
+        pageSize = safePageSize,
+        totalItems = totalItems,
+        firstItemNumber = if (totalItems == 0) 0 else startIndex + 1,
+        lastItemNumber = endIndex
+    )
 }
 
 private fun List<CharacterSummary>.sortCharacters(sort: CharacterListSort): List<CharacterSummary> {
@@ -115,5 +160,15 @@ private fun List<CharacterSummary>.sortCharacters(sort: CharacterListSort): List
                 .thenBy { it.name.lowercase() }
         )
         CharacterListSort.RANDOM -> shuffled(Random.Default)
+    }
+}
+
+private fun CharacterSummary.searchScore(query: String, tagSettings: STTagSettings?): Int {
+    return when {
+        name.contains(query, ignoreCase = true) -> 400
+        tags.any { tag -> tag.contains(query, ignoreCase = true) } -> 300
+        CharacterTagTools.stTagNames(this, tagSettings).any { tag -> tag.contains(query, ignoreCase = true) } -> 200
+        creatorNotes.contains(query, ignoreCase = true) -> 100
+        else -> 0
     }
 }

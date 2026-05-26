@@ -40,32 +40,40 @@ class NativeHubScreensContractTest {
     }
 
     @Test
-    fun m2CharacterRoutesUsePrototypeLocalBottomBar() {
+    fun m2CharacterRoutesUseSharedMainBottomBar() {
         val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
         val listScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt").readText()
         val detailScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterDetailScreen.kt")
         val editScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterEditScreen.kt").readText()
+        val roleChrome = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterRoleChrome.kt")
 
-        assertTrue(mainActivity.contains("isCharacterManagementRoute"))
-        assertTrue(mainActivity.contains("if (!isCharacterManagementRoute)"))
-        assertTrue(listScreen.contains("CharacterLocalBottomBar"))
+        assertFalse(mainActivity.contains("isCharacterManagementRoute"))
+        assertFalse(mainActivity.contains("if (!isCharacterManagementRoute)"))
+        assertTrue(mainActivity.contains("bottomBarSelectedRoute"))
+        assertTrue(mainActivity.contains("STBottomBar("))
+        assertFalse(listScreen.contains("CharacterLocalBottomBar"))
         assertTrue(detailScreen.exists())
-        assertTrue(detailScreen.readText().contains("CharacterLocalBottomBar"))
-        assertTrue(editScreen.contains("CharacterLocalBottomBar"))
+        assertFalse(detailScreen.readText().contains("CharacterLocalBottomBar"))
+        assertFalse(editScreen.contains("CharacterLocalBottomBar"))
+        assertFalse(roleChrome.exists())
     }
 
     @Test
     fun m2CharacterChatEntryPreservesReturnStack() {
         val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
         val listScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt").readText()
-        val roleChrome = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterRoleChrome.kt").readText()
 
         assertTrue(mainActivity.contains("openCharacterChatFromCharacterManagement"))
         assertTrue(mainActivity.contains("onBackToHome = { if (!navController.popBackStack())"))
         assertFalse(mainActivity.contains("onOpenChat = { navigateMainTab(STRoutes.CHAT) }"))
         assertFalse(listScreen.contains("TextButton(onClick = onOpenChat)"))
-        assertFalse(roleChrome.contains("CharacterLocalNav.CHAT"))
-        assertFalse(roleChrome.contains("character_local_nav_chat"))
+    }
+
+    @Test
+    fun m2CharacterEditorHidesLocalDock() {
+        val editScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterEditScreen.kt").readText()
+
+        assertFalse(editScreen.contains("CharacterLocalBottomBar"))
     }
 
     @Test
@@ -85,19 +93,34 @@ class NativeHubScreensContractTest {
         assertTrue(strings.contains("character_action_export_png"))
         assertTrue(strings.contains("character_delete_chats"))
 
-        assertTrue(editScreen.contains("alternateGreetingsText"))
+        assertTrue(editScreen.contains("alternateGreetings"))
+        assertTrue(editScreen.contains("CharacterAlternateGreetingsEditor"))
         assertTrue(editScreen.contains("depthPromptDepthText"))
         assertTrue(editScreen.contains("talkativenessText"))
+        assertTrue(editScreen.contains("CharacterTalkativenessField"))
         assertTrue(editScreen.contains("renameCharacter"))
         assertTrue(editScreen.contains("duplicateCharacter"))
         assertTrue(editScreen.contains("deleteCharacter"))
         assertTrue(editScreen.contains("updateCharacterAvatar"))
         assertTrue(editScreen.contains("exportCharacter"))
         assertTrue(listScreen.contains("importCharacter"))
+        assertTrue(listScreen.contains("onSelectAll"))
+        assertTrue(listScreen.contains("onDuplicateSelected"))
+        assertTrue(listScreen.contains("onEditBatchTags"))
+        assertTrue(listScreen.contains("showTagManager"))
+        assertTrue(editScreen.contains("onUpdateAvatarNow"))
+        assertTrue(editScreen.contains("CharacterAvatarImage"))
         assertTrue(strings.contains("character_edit_alternate_greetings"))
         assertTrue(strings.contains("character_edit_depth_prompt"))
         assertTrue(strings.contains("character_edit_personality"))
         assertTrue(strings.contains("character_edit_scenario"))
+        assertTrue(strings.contains("character_batch_select_all"))
+        assertTrue(strings.contains("character_batch_unfavorite"))
+        assertTrue(strings.contains("character_batch_duplicate"))
+        assertTrue(strings.contains("character_tags_manage"))
+        assertTrue(strings.contains("character_avatar_update_now"))
+        assertTrue(strings.contains("character_chat_rename_title"))
+        assertFalse(File("src/main/java/io/github/sanitised/st/ui/screens/CharacterDetailScreen.kt").readText().contains("-renamed"))
     }
 
     @Test

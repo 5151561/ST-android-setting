@@ -107,6 +107,77 @@ class CharacterFiltersTest {
     }
 
     @Test
+    fun filterCharactersSearchScoresNameBeforeTagsAndNotes() {
+        val characters = listOf(
+            CharacterSummary(id = "notes.png", name = "Notes", creatorNotes = "Seraphina appears here."),
+            CharacterSummary(id = "tag.png", name = "Tagged", tags = listOf("Seraphina")),
+            CharacterSummary(id = "name.png", name = "Seraphina")
+        )
+
+        assertEquals(
+            listOf("name.png", "tag.png", "notes.png"),
+            filterCharacters(
+                characters = characters,
+                query = "seraphina",
+                filter = CharacterListFilter.ALL,
+                sort = CharacterListSort.NAME_ASC
+            ).map { it.id }
+        )
+    }
+
+    @Test
+    fun filterCharactersSearchCanMatchSillyTavernTags() {
+        val characters = listOf(
+            CharacterSummary(id = "seraphina.png", name = "Seraphina"),
+            CharacterSummary(id = "rowan.png", name = "Rowan")
+        )
+        val tagSettings = STTagSettings(
+            tags = listOf(STTag(id = "tag-lore", name = "Archive Lore")),
+            tagMap = mapOf("rowan.png" to listOf("tag-lore"))
+        )
+
+        assertEquals(
+            listOf("rowan.png"),
+            filterCharacters(
+                characters = characters,
+                query = "lore",
+                filter = CharacterListFilter.ALL,
+                sort = CharacterListSort.NAME_ASC,
+                selectedTagSource = CharacterTagSource.ST,
+                tagSettings = tagSettings
+            ).map { it.id }
+        )
+    }
+
+    @Test
+    fun filterCharactersSupportsSillyTavernTagMapByIdOrAvatarUrl() {
+        val characters = listOf(
+            CharacterSummary(id = "Seraphina.png", name = "Seraphina", avatarUrl = "Seraphina.png"),
+            CharacterSummary(id = "Rowan", name = "Rowan", avatarUrl = "Rowan.png")
+        )
+        val tagSettings = STTagSettings(
+            tags = listOf(STTag(id = "tag-lore", name = "Lore")),
+            tagMap = mapOf(
+                "Seraphina.png" to listOf("tag-lore"),
+                "Rowan.png" to listOf("tag-lore")
+            )
+        )
+
+        assertEquals(
+            listOf("Rowan", "Seraphina.png"),
+            filterCharacters(
+                characters = characters,
+                query = "",
+                filter = CharacterListFilter.ALL,
+                sort = CharacterListSort.NAME_ASC,
+                selectedTag = "Lore",
+                selectedTagSource = CharacterTagSource.ST,
+                tagSettings = tagSettings
+            ).map { it.id }
+        )
+    }
+
+    @Test
     fun filterCharactersSupportsOriginalManagerSortOptions() {
         val characters = listOf(
             CharacterSummary(
@@ -151,5 +222,37 @@ class CharacterFiltersTest {
             setOf("alpha.png", "beta.png"),
             filterCharacters(characters, "", CharacterListFilter.ALL, CharacterListSort.RANDOM).map { it.id }.toSet()
         )
+    }
+
+    @Test
+    fun paginateCharactersReturnsRequestedPageAndClampsOutOfRangePages() {
+        val characters = (1..53).map { index ->
+            CharacterSummary(id = "character-$index.png", name = "Character $index")
+        }
+
+        val pageThree = paginateCharacters(characters, requestedPage = 3, pageSize = 25)
+        assertEquals(3, pageThree.currentPage)
+        assertEquals(3, pageThree.totalPages)
+        assertEquals(25, pageThree.pageSize)
+        assertEquals(53, pageThree.totalItems)
+        assertEquals(51, pageThree.firstItemNumber)
+        assertEquals(53, pageThree.lastItemNumber)
+        assertEquals(listOf("character-51.png", "character-52.png", "character-53.png"), pageThree.items.map { it.id })
+
+        val clamped = paginateCharacters(characters, requestedPage = 99, pageSize = 25)
+        assertEquals(3, clamped.currentPage)
+        assertEquals(listOf("character-51.png", "character-52.png", "character-53.png"), clamped.items.map { it.id })
+    }
+
+    @Test
+    fun paginateCharactersHandlesEmptyLists() {
+        val page = paginateCharacters(emptyList(), requestedPage = 4, pageSize = 25)
+
+        assertEquals(1, page.currentPage)
+        assertEquals(1, page.totalPages)
+        assertEquals(0, page.totalItems)
+        assertEquals(0, page.firstItemNumber)
+        assertEquals(0, page.lastItemNumber)
+        assertEquals(emptyList<CharacterSummary>(), page.items)
     }
 }

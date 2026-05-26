@@ -1,11 +1,8 @@
 package io.github.sanitised.st.ui.screens
 
-import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,16 +50,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -72,14 +65,11 @@ import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.R
 import io.github.sanitised.st.api.CharacterSummary
+import io.github.sanitised.st.api.STTag
 import io.github.sanitised.st.api.STTagSettings
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.ui.theme.STTheme
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 
 private data class CharacterListLoadState(
     val loading: Boolean = false,
@@ -93,6 +83,8 @@ private enum class CharacterViewMode {
     GRID,
     BATCH
 }
+
+private val characterPageSizeOptions = listOf(10, 25, 50, 100, 250, 500, 1000)
 
 private val characterImportMimeTypes = arrayOf(
     "application/json",
@@ -121,13 +113,20 @@ fun CharacterListScreen(
     var filter by remember { mutableStateOf(CharacterListFilter.ALL) }
     var selectedTag by remember { mutableStateOf<String?>(null) }
     var selectedTagSource by remember { mutableStateOf(CharacterTagSource.EMBEDDED) }
+    var selectedStFolder by remember { mutableStateOf<String?>(null) }
     var sort by remember { mutableStateOf(CharacterListSort.RECENT) }
     var viewMode by remember { mutableStateOf(CharacterViewMode.LIST) }
+    var pageSize by remember { mutableIntStateOf(25) }
+    var currentPage by remember { mutableIntStateOf(1) }
     var selectedCharacters by remember { mutableStateOf<Set<String>>(emptySet()) }
     var hotSwapsExpanded by remember { mutableStateOf(true) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var loadState by remember { mutableStateOf(CharacterListLoadState()) }
     var pendingDelete by remember { mutableStateOf<CharacterSummary?>(null) }
+    var pendingBatchDelete by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingTagEdit by remember { mutableStateOf<CharacterSummary?>(null) }
+    var showBatchTags by remember { mutableStateOf(false) }
+    var showTagManager by remember { mutableStateOf(false) }
     var deleteChats by remember { mutableStateOf(false) }
     var showExternalImport by remember { mutableStateOf(false) }
     var externalImportText by remember { mutableStateOf("") }
@@ -174,14 +173,11 @@ fun CharacterListScreen(
         .distinctBy { it.lowercase() }
         .sortedBy { it.lowercase() }
     val availableStTags = loadState.tagSettings
-        ?.tags
+        ?.let { settings ->
+            CharacterTagTools.drilldownTagsForFolder(loadState.characters, settings, selectedStFolder)
+        }
         .orEmpty()
         .filter { it.name.isNotBlank() }
-        .sortedWith(compareBy({ it.sortOrder }, { it.name.lowercase() }))
-    val availableTags = when (selectedTagSource) {
-        CharacterTagSource.EMBEDDED -> availableEmbeddedTags
-        CharacterTagSource.ST -> availableStTags.map { it.name }
-    }
     val visibleCharacters = filterCharacters(
         characters = loadState.characters,
         query = query,
@@ -189,9 +185,21 @@ fun CharacterListScreen(
         sort = sort,
         selectedTag = selectedTag,
         selectedTagSource = selectedTagSource,
+        selectedFolderTag = selectedStFolder,
         tagSettings = loadState.tagSettings
     )
     val hotSwapCharacters = visibleCharacters.filter { it.isFavorite }.take(8)
+    val characterPage = paginateCharacters(
+        characters = visibleCharacters,
+        requestedPage = currentPage,
+        pageSize = pageSize
+    )
+
+    LaunchedEffect(visibleCharacters.size, pageSize, characterPage.currentPage) {
+        if (currentPage != characterPage.currentPage) {
+            currentPage = characterPage.currentPage
+        }
+    }
 
     pendingDelete?.let { character ->
         AlertDialog(
@@ -242,6 +250,129 @@ fun CharacterListScreen(
                     }
                 ) {
                     Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (pendingBatchDelete.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = {
+                pendingBatchDelete = emptySet()
+                deleteChats = false
+            },
+            title = { Text(stringResource(R.string.character_batch_delete_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.character_batch_delete_body, pendingBatchDelete.size))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = deleteChats,
+                            onCheckedChange = { deleteChats = it }
+                        )
+                        Text(stringResource(R.string.character_delete_chats))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val targets = pendingBatchDelete
+                        val removeChats = deleteChats
+                        pendingBatchDelete = emptySet()
+                        deleteChats = false
+                        scope.launch {
+                            val result = runBatch(targets) { avatar ->
+                                TavernCoreClient(baseUrl = baseUrl).deleteCharacter(avatar, removeChats)
+                            }
+                            onShowMessage(context.getString(R.string.character_batch_result, result.successes, result.failures))
+                            selectedCharacters = emptySet()
+                            refreshKey++
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingBatchDelete = emptySet()
+                        deleteChats = false
+                    }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    pendingTagEdit?.let { character ->
+        CharacterTagsDialog(
+            title = character.name,
+            character = character,
+            settings = loadState.tagSettings ?: STTagSettings(),
+            onDismiss = { pendingTagEdit = null },
+            onSave = { embeddedTags, updatedSettings ->
+                pendingTagEdit = null
+                scope.launch {
+                    runCatching {
+                        val client = TavernCoreClient(baseUrl = baseUrl)
+                        client.mergeCharacterAttributes(character.id, embeddedTags = embeddedTags)
+                        client.saveTagSettings(updatedSettings)
+                    }.onSuccess {
+                        onShowMessage(context.getString(R.string.character_tags_saved))
+                        refreshKey++
+                    }.onFailure { error ->
+                        onShowMessage(error.message ?: context.getString(R.string.character_save_failed))
+                    }
+                }
+            }
+        )
+    }
+
+    if (showBatchTags) {
+        CharacterBatchTagsDialog(
+            settings = loadState.tagSettings ?: STTagSettings(),
+            selectedCount = selectedCharacters.size,
+            onDismiss = { showBatchTags = false },
+            onApply = { mode, tagIds ->
+                showBatchTags = false
+                scope.launch {
+                    runCatching {
+                        val current = loadState.tagSettings ?: TavernCoreClient(baseUrl = baseUrl).getTagSettings()
+                        val updated = when (mode) {
+                            BatchTagMode.ADD -> CharacterTagTools.addTagsToCharacters(current, selectedCharacters, tagIds)
+                            BatchTagMode.REMOVE -> CharacterTagTools.removeTagsFromCharacters(current, selectedCharacters, tagIds)
+                        }
+                        TavernCoreClient(baseUrl = baseUrl).saveTagSettings(updated)
+                    }.onSuccess {
+                        onShowMessage(context.getString(R.string.character_tags_saved))
+                        refreshKey++
+                    }.onFailure { error ->
+                        onShowMessage(error.message ?: context.getString(R.string.character_save_failed))
+                    }
+                }
+            }
+        )
+    }
+
+    if (showTagManager) {
+        CharacterTagManagerDialog(
+            settings = loadState.tagSettings ?: STTagSettings(),
+            characters = loadState.characters,
+            onDismiss = { showTagManager = false },
+            onSave = { updatedSettings ->
+                showTagManager = false
+                scope.launch {
+                    runCatching {
+                        TavernCoreClient(baseUrl = baseUrl).saveTagSettings(updatedSettings)
+                    }.onSuccess {
+                        onShowMessage(context.getString(R.string.character_tags_saved))
+                        refreshKey++
+                    }.onFailure { error ->
+                        onShowMessage(error.message ?: context.getString(R.string.character_save_failed))
+                    }
                 }
             }
         )
@@ -375,13 +506,14 @@ fun CharacterListScreen(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                CharacterListFilter.values().forEach { item ->
-                    FilterChip(
-                        selected = filter == item,
-                        onClick = {
-                            filter = item
-                            selectedTag = null
-                        },
+	                CharacterListFilter.values().forEach { item ->
+	                    FilterChip(
+	                        selected = filter == item,
+	                        onClick = {
+	                            filter = item
+	                            selectedTag = null
+	                            selectedStFolder = null
+	                        },
                         label = {
                             Text(
                                 text = when (item) {
@@ -395,31 +527,66 @@ fun CharacterListScreen(
                 }
                 FilterChip(
                     selected = selectedTagSource == CharacterTagSource.EMBEDDED,
-                    onClick = {
-                        selectedTagSource = CharacterTagSource.EMBEDDED
-                        selectedTag = null
-                    },
+	                    onClick = {
+	                        selectedTagSource = CharacterTagSource.EMBEDDED
+	                        selectedTag = null
+	                        selectedStFolder = null
+	                    },
                     label = { Text(stringResource(R.string.character_filter_embedded_tags)) }
                 )
                 FilterChip(
                     selected = selectedTagSource == CharacterTagSource.ST,
-                    onClick = {
-                        selectedTagSource = CharacterTagSource.ST
-                        selectedTag = null
-                    },
+	                    onClick = {
+	                        selectedTagSource = CharacterTagSource.ST
+	                        selectedTag = null
+	                        selectedStFolder = null
+	                    },
                     label = { Text(stringResource(R.string.character_filter_st_tags)) }
                 )
-                availableTags.forEach { tag ->
-                    FilterChip(
-                        selected = selectedTag == tag,
-                        onClick = {
-                            filter = CharacterListFilter.ALL
-                            selectedTag = if (selectedTag == tag) null else tag
-                        },
-                        label = { Text(tag) }
-                    )
-                }
-            }
+	                if (selectedTagSource == CharacterTagSource.ST && selectedStFolder != null) {
+	                    FilterChip(
+	                        selected = false,
+	                        onClick = {
+	                            selectedStFolder = null
+	                            selectedTag = null
+	                        },
+	                        label = { Text(stringResource(R.string.character_filter_all_st_tags)) }
+	                    )
+	                }
+	                availableStTags.takeIf { selectedTagSource == CharacterTagSource.ST }?.forEach { tag ->
+	                    FilterChip(
+	                        selected = selectedTag == tag.name || selectedStFolder == tag.name,
+	                        onClick = {
+	                            filter = CharacterListFilter.ALL
+	                            if (tag.isFolder) {
+	                                selectedStFolder = if (selectedStFolder == tag.name) null else tag.name
+	                                selectedTag = null
+	                            } else {
+	                                selectedTag = if (selectedTag == tag.name) null else tag.name
+	                            }
+	                        },
+	                        label = { Text(if (tag.isFolder) stringResource(R.string.character_filter_folder, tag.name) else tag.name) }
+	                    )
+	                }
+	                if (selectedTagSource == CharacterTagSource.EMBEDDED) {
+	                    availableEmbeddedTags.forEach { tag ->
+	                        FilterChip(
+	                            selected = selectedTag == tag,
+	                            onClick = {
+	                                filter = CharacterListFilter.ALL
+	                                selectedTag = if (selectedTag == tag) null else tag
+	                            },
+	                            label = { Text(tag) }
+	                        )
+	                    }
+	                }
+	                TextButton(
+	                    onClick = { showTagManager = true },
+	                    enabled = serverRunning
+	                ) {
+	                    Text(stringResource(R.string.character_tags_manage))
+	                }
+	            }
 
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -477,31 +644,48 @@ fun CharacterListScreen(
                 )
             }
 
-            if (viewMode == CharacterViewMode.BATCH) {
-                CharacterBatchBar(
-                    count = selectedCharacters.size,
-                    onFavoriteSelected = {
-                        scope.launch {
-                            runCatching {
-                                val client = TavernCoreClient(baseUrl = baseUrl)
-                                selectedCharacters.forEach { character ->
-                                    client.mergeCharacterAttributes(character, isFavorite = true)
-                                }
-                            }.onSuccess {
-                                onShowMessage(context.getString(R.string.character_batch_favorite))
-                                refreshKey++
-                            }.onFailure { error ->
-                                onShowMessage(error.message ?: context.getString(R.string.character_save_failed))
-                            }
-                        }
-                    },
-                    onDeleteSelected = {
-                        selectedCharacters.firstOrNull()?.let { target ->
-                            pendingDelete = loadState.characters.firstOrNull { it.id == target }
-                        }
-                    }
-                )
-            }
+	            if (viewMode == CharacterViewMode.BATCH) {
+	                CharacterBatchBar(
+	                    count = selectedCharacters.size,
+	                    total = visibleCharacters.size,
+	                    onSelectAll = { selectedCharacters = visibleCharacters.map { it.id }.toSet() },
+	                    onClearSelection = { selectedCharacters = emptySet() },
+	                    onFavoriteSelected = {
+	                        scope.launch {
+	                            val result = runBatch(selectedCharacters) { character ->
+	                                TavernCoreClient(baseUrl = baseUrl).mergeCharacterAttributes(character, isFavorite = true)
+	                            }
+	                            onShowMessage(context.getString(R.string.character_batch_result, result.successes, result.failures))
+	                            refreshKey++
+	                        }
+	                    },
+	                    onUnfavoriteSelected = {
+	                        scope.launch {
+	                            val result = runBatch(selectedCharacters) { character ->
+	                                TavernCoreClient(baseUrl = baseUrl).mergeCharacterAttributes(character, isFavorite = false)
+	                            }
+	                            onShowMessage(context.getString(R.string.character_batch_result, result.successes, result.failures))
+	                            refreshKey++
+	                        }
+	                    },
+	                    onDuplicateSelected = {
+	                        scope.launch {
+	                            val result = runBatch(selectedCharacters) { character ->
+	                                TavernCoreClient(baseUrl = baseUrl).duplicateCharacter(character)
+	                            }
+	                            onShowMessage(context.getString(R.string.character_batch_result, result.successes, result.failures))
+	                            refreshKey++
+	                        }
+	                    },
+	                    onEditBatchTags = {
+	                        showBatchTags = true
+	                    },
+	                    onDeleteSelected = {
+	                        pendingBatchDelete = selectedCharacters
+	                        deleteChats = false
+	                    }
+	                )
+	            }
 
             when {
                 loadState.loading -> CharacterInfoCard(
@@ -523,19 +707,36 @@ fun CharacterListScreen(
 
                 else -> CharacterListCard(
                     baseUrl = baseUrl,
-                    characters = visibleCharacters,
+                    characters = characterPage.items,
                     viewMode = viewMode,
                     selectedCharacters = selectedCharacters,
                     onOpenCharacter = onOpenCharacter,
-                    onToggleSelection = { character ->
-                        selectedCharacters = if (character.id in selectedCharacters) {
-                            selectedCharacters - character.id
-                        } else {
-                            selectedCharacters + character.id
-                        }
-                    },
-                    onDuplicateCharacter = { character ->
-                        scope.launch {
+	                    onToggleSelection = { character ->
+	                        selectedCharacters = if (character.id in selectedCharacters) {
+	                            selectedCharacters - character.id
+	                        } else {
+	                            selectedCharacters + character.id
+	                        }
+	                    },
+	                    onToggleFavorite = { character ->
+	                        scope.launch {
+	                            runCatching {
+	                                TavernCoreClient(baseUrl = baseUrl).mergeCharacterAttributes(
+	                                    avatar = character.id,
+	                                    isFavorite = !character.isFavorite
+	                                )
+	                            }.onSuccess {
+	                                refreshKey++
+	                            }.onFailure { error ->
+	                                onShowMessage(error.message ?: context.getString(R.string.character_save_failed))
+	                            }
+	                        }
+	                    },
+	                    onEditTags = { character ->
+	                        pendingTagEdit = character
+	                    },
+	                    onDuplicateCharacter = { character ->
+	                        scope.launch {
                             runCatching {
                                 TavernCoreClient(baseUrl = baseUrl).duplicateCharacter(character.id)
                             }.onSuccess {
@@ -553,12 +754,18 @@ fun CharacterListScreen(
                 )
             }
 
-            CharacterLocalBottomBar(
-                active = CharacterLocalNav.CHARACTERS,
-                onCharacters = { refreshKey++ },
-                onLorebook = { onShowMessage(context.getString(R.string.character_lorebook_unavailable)) },
-                onPersona = { onShowMessage(context.getString(R.string.character_persona_unavailable)) }
-            )
+            if (visibleCharacters.isNotEmpty()) {
+                CharacterPaginationBar(
+                    page = characterPage,
+                    pageSizeOptions = characterPageSizeOptions,
+                    onPrevious = { currentPage = (characterPage.currentPage - 1).coerceAtLeast(1) },
+                    onNext = { currentPage = (characterPage.currentPage + 1).coerceAtMost(characterPage.totalPages) },
+                    onPageSizeChanged = { selectedSize ->
+                        pageSize = selectedSize
+                        currentPage = 1
+                    }
+                )
+            }
         }
     }
 }
@@ -623,6 +830,8 @@ private fun CharacterListCard(
     selectedCharacters: Set<String>,
     onOpenCharacter: (String) -> Unit,
     onToggleSelection: (CharacterSummary) -> Unit,
+    onToggleFavorite: (CharacterSummary) -> Unit,
+    onEditTags: (CharacterSummary) -> Unit,
     onDuplicateCharacter: (CharacterSummary) -> Unit,
     onDeleteCharacter: (CharacterSummary) -> Unit
 ) {
@@ -637,12 +846,14 @@ private fun CharacterListCard(
                 CharacterViewMode.GRID -> characters.chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                         row.forEach { character ->
-                            CharacterGridCell(
-                                baseUrl = baseUrl,
-                                character = character,
-                                onOpenCharacter = { onOpenCharacter(character.id) },
-                                modifier = Modifier.weight(1f)
-                            )
+	                            CharacterGridCell(
+	                                baseUrl = baseUrl,
+	                                character = character,
+	                                onOpenCharacter = { onOpenCharacter(character.id) },
+	                                onToggleFavorite = { onToggleFavorite(character) },
+	                                onEditTags = { onEditTags(character) },
+	                                modifier = Modifier.weight(1f)
+	                            )
                         }
                         if (row.size == 1) {
                             Spacer(modifier = Modifier.weight(1f))
@@ -658,11 +869,13 @@ private fun CharacterListCard(
                         character = character,
                         selected = character.id in selectedCharacters,
                         selectable = viewMode == CharacterViewMode.BATCH,
-                        onToggleSelection = { onToggleSelection(character) },
-                        onOpenCharacter = { onOpenCharacter(character.id) },
-                        onDuplicateCharacter = { onDuplicateCharacter(character) },
-                        onDeleteCharacter = { onDeleteCharacter(character) }
-                    )
+	                        onToggleSelection = { onToggleSelection(character) },
+	                        onOpenCharacter = { onOpenCharacter(character.id) },
+	                        onToggleFavorite = { onToggleFavorite(character) },
+	                        onEditTags = { onEditTags(character) },
+	                        onDuplicateCharacter = { onDuplicateCharacter(character) },
+	                        onDeleteCharacter = { onDeleteCharacter(character) }
+	                    )
                 }
             }
         }
@@ -677,6 +890,8 @@ private fun CharacterRow(
     selectable: Boolean,
     onToggleSelection: () -> Unit,
     onOpenCharacter: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onEditTags: () -> Unit,
     onDuplicateCharacter: () -> Unit,
     onDeleteCharacter: () -> Unit
 ) {
@@ -696,7 +911,7 @@ private fun CharacterRow(
             )
             Spacer(modifier = Modifier.width(8.dp))
         }
-        CharacterAvatar(baseUrl = baseUrl, avatar = character.avatarUrl, label = character.name)
+        CharacterAvatarImage(baseUrl = baseUrl, avatar = character.avatarUrl, label = character.name)
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -708,15 +923,15 @@ private fun CharacterRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                if (character.isFavorite) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = stringResource(R.string.character_filter_favorites),
-                        tint = colors.warn,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+	                Spacer(modifier = Modifier.width(6.dp))
+	                IconButton(onClick = onToggleFavorite, modifier = Modifier.size(32.dp)) {
+	                    Icon(
+	                        imageVector = Icons.Filled.Star,
+	                        contentDescription = stringResource(R.string.character_filter_favorites),
+	                        tint = if (character.isFavorite) colors.warn else colors.muted,
+	                        modifier = Modifier.size(16.dp)
+	                    )
+	                }
                 if (character.characterVersion.isNotBlank()) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -755,14 +970,21 @@ private fun CharacterRow(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false }
             ) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.character_action_edit)) },
+	                DropdownMenuItem(
+	                    text = { Text(stringResource(R.string.character_action_edit)) },
                     onClick = {
                         menuExpanded = false
                         onOpenCharacter()
                     }
-                )
-                DropdownMenuItem(
+	                )
+	                DropdownMenuItem(
+	                    text = { Text(stringResource(R.string.character_tags_edit)) },
+	                    onClick = {
+	                        menuExpanded = false
+	                        onEditTags()
+	                    }
+	                )
+	                DropdownMenuItem(
                     text = { Text(stringResource(R.string.character_action_duplicate)) },
                     onClick = {
                         menuExpanded = false
@@ -786,12 +1008,14 @@ private fun CharacterGridCell(
     baseUrl: String,
     character: CharacterSummary,
     onOpenCharacter: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onEditTags: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = STTheme.colors
     Surface(
         modifier = modifier
-            .height(160.dp)
+            .height(190.dp)
             .clip(RoundedCornerShape(18.dp))
             .clickable(onClick = onOpenCharacter),
         color = colors.surfaceWarm,
@@ -802,7 +1026,17 @@ private fun CharacterGridCell(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            CharacterAvatar(baseUrl = baseUrl, avatar = character.avatarUrl, label = character.name)
+            Box {
+                CharacterAvatarImage(baseUrl = baseUrl, avatar = character.avatarUrl, label = character.name)
+                IconButton(onClick = onToggleFavorite, modifier = Modifier.align(Alignment.TopEnd).size(28.dp)) {
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = stringResource(R.string.character_filter_favorites),
+                        tint = if (character.isFavorite) colors.warn else colors.muted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
             Text(
                 text = character.name,
                 style = MaterialTheme.typography.bodyMedium,
@@ -819,6 +1053,9 @@ private fun CharacterGridCell(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            TextButton(onClick = onEditTags) {
+                Text(stringResource(R.string.character_tags_edit))
+            }
         }
     }
 }
@@ -880,7 +1117,7 @@ private fun CharacterHotSwaps(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            CharacterAvatar(baseUrl = baseUrl, avatar = character.avatarUrl, label = character.name)
+                            CharacterAvatarImage(baseUrl = baseUrl, avatar = character.avatarUrl, label = character.name)
                             Text(
                                 text = character.name,
                                 style = MaterialTheme.typography.labelSmall,
@@ -899,7 +1136,13 @@ private fun CharacterHotSwaps(
 @Composable
 private fun CharacterBatchBar(
     count: Int,
+    total: Int,
+    onSelectAll: () -> Unit,
+    onClearSelection: () -> Unit,
     onFavoriteSelected: () -> Unit,
+    onUnfavoriteSelected: () -> Unit,
+    onDuplicateSelected: () -> Unit,
+    onEditBatchTags: () -> Unit,
     onDeleteSelected: () -> Unit
 ) {
     Card(
@@ -913,68 +1156,392 @@ private fun CharacterBatchBar(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    onClick = onFavoriteSelected,
-                    enabled = count > 0,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(stringResource(R.string.character_batch_favorite))
-                }
-                OutlinedButton(
-                    onClick = onDeleteSelected,
-                    enabled = count > 0,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(stringResource(R.string.character_batch_delete))
-                }
+	            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+	                OutlinedButton(
+	                    onClick = onSelectAll,
+	                    enabled = total > 0,
+	                    modifier = Modifier.weight(1f)
+	                ) {
+	                    Text(stringResource(R.string.character_batch_select_all))
+	                }
+	                OutlinedButton(
+	                    onClick = onClearSelection,
+	                    enabled = count > 0,
+	                    modifier = Modifier.weight(1f)
+	                ) {
+	                    Text(stringResource(R.string.character_batch_clear))
+	                }
+	            }
+	            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+	                OutlinedButton(
+	                    onClick = onFavoriteSelected,
+	                    enabled = count > 0,
+	                    modifier = Modifier.weight(1f)
+	                ) {
+	                    Text(stringResource(R.string.character_batch_favorite))
+	                }
+	                OutlinedButton(
+	                    onClick = onUnfavoriteSelected,
+	                    enabled = count > 0,
+	                    modifier = Modifier.weight(1f)
+	                ) {
+	                    Text(stringResource(R.string.character_batch_unfavorite))
+	                }
+	            }
+	            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+	                OutlinedButton(
+	                    onClick = onDuplicateSelected,
+	                    enabled = count > 0,
+	                    modifier = Modifier.weight(1f)
+	                ) {
+	                    Text(stringResource(R.string.character_batch_duplicate))
+	                }
+	                OutlinedButton(
+	                    onClick = onEditBatchTags,
+	                    enabled = count > 0,
+	                    modifier = Modifier.weight(1f)
+	                ) {
+	                    Text(stringResource(R.string.character_batch_tags))
+	                }
+	            }
+	            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+	                OutlinedButton(
+	                    onClick = onDeleteSelected,
+	                    enabled = count > 0,
+	                    modifier = Modifier.fillMaxWidth()
+	                ) {
+	                    Text(stringResource(R.string.character_batch_delete))
+	                }
             }
         }
     }
 }
 
 @Composable
-private fun CharacterAvatar(baseUrl: String, avatar: String?, label: String) {
-    val colors = STTheme.colors
-    val image by produceState<ImageBitmap?>(initialValue = null, baseUrl, avatar) {
-        value = withContext(Dispatchers.IO) {
-            loadAvatarBitmap(baseUrl, avatar)
-        }
-    }
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(colors.surfaceWarm),
-        contentAlignment = Alignment.Center
+private fun CharacterPaginationBar(
+    page: CharacterPage,
+    pageSizeOptions: List<Int>,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onPageSizeChanged: (Int) -> Unit
+) {
+    var pageSizeMenuExpanded by remember { mutableStateOf(false) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
+        border = BorderStroke(1.dp, STTheme.colors.borderSoft)
     ) {
-        if (image != null) {
-            Image(
-                bitmap = image!!,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = label.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = colors.fg2
+                text = stringResource(
+                    R.string.character_pagination_status,
+                    page.currentPage,
+                    page.totalPages,
+                    page.firstItemNumber,
+                    page.lastItemNumber,
+                    page.totalItems
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = STTheme.colors.muted,
+                modifier = Modifier.weight(1f)
             )
+            Box {
+                TextButton(onClick = { pageSizeMenuExpanded = true }) {
+                    Text(stringResource(R.string.character_page_size_label, page.pageSize))
+                }
+                DropdownMenu(
+                    expanded = pageSizeMenuExpanded,
+                    onDismissRequest = { pageSizeMenuExpanded = false }
+                ) {
+                    pageSizeOptions.forEach { size ->
+                        DropdownMenuItem(
+                            text = { Text(size.toString()) },
+                            onClick = {
+                                pageSizeMenuExpanded = false
+                                onPageSizeChanged(size)
+                            }
+                        )
+                    }
+                }
+            }
+            OutlinedButton(
+                onClick = onPrevious,
+                enabled = page.currentPage > 1
+            ) {
+                Text(stringResource(R.string.character_page_previous))
+            }
+            OutlinedButton(
+                onClick = onNext,
+                enabled = page.currentPage < page.totalPages
+            ) {
+                Text(stringResource(R.string.character_page_next))
+            }
         }
     }
 }
 
-private fun loadAvatarBitmap(baseUrl: String, avatar: String?): ImageBitmap? {
-    if (avatar.isNullOrBlank()) return null
-    return runCatching {
-        val url = "${baseUrl.trimEnd('/')}/characters/${Uri.encode(avatar)}"
-        val request = Request.Builder().url(url).get().build()
-        OkHttpClient().newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return null
-            val bytes = response.body?.bytes() ?: return null
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+private enum class BatchTagMode {
+    ADD,
+    REMOVE
+}
+
+private data class CharacterBatchResult(
+    val successes: Int,
+    val failures: Int
+)
+
+private suspend fun runBatch(
+    targets: Set<String>,
+    action: suspend (String) -> Unit
+): CharacterBatchResult {
+    var successes = 0
+    var failures = 0
+    targets.forEach { target ->
+        runCatching { action(target) }
+            .onSuccess { successes++ }
+            .onFailure { failures++ }
+    }
+    return CharacterBatchResult(successes = successes, failures = failures)
+}
+
+@Composable
+private fun CharacterTagsDialog(
+    title: String,
+    character: CharacterSummary,
+    settings: STTagSettings,
+    onDismiss: () -> Unit,
+    onSave: (List<String>, STTagSettings) -> Unit
+) {
+    var embeddedTagsText by remember(character.id) { mutableStateOf(character.tags.joinToString(", ")) }
+    var selectedStTagIds by remember(character.id, settings) {
+        mutableStateOf(CharacterTagTools.assignedTagIds(character, settings))
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.character_tags_edit_title, title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = embeddedTagsText,
+                    onValueChange = { embeddedTagsText = it },
+                    label = { Text(stringResource(R.string.character_filter_embedded_tags)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = stringResource(R.string.character_filter_st_tags),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                settings.tags.forEach { tag ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = tag.id in selectedStTagIds,
+                            onCheckedChange = { checked ->
+                                selectedStTagIds = if (checked) {
+                                    selectedStTagIds + tag.id
+                                } else {
+                                    selectedStTagIds - tag.id
+                                }
+                            }
+                        )
+                        Text(if (tag.isFolder) stringResource(R.string.character_filter_folder, tag.name) else tag.name)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val embeddedTags = embeddedTagsText.split(',')
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() }
+                    onSave(
+                        embeddedTags,
+                        CharacterTagTools.setCharacterTags(settings, character.id, selectedStTagIds.toList())
+                    )
+                }
+            ) {
+                Text(stringResource(R.string.save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
         }
-    }.getOrNull()
+    )
+}
+
+@Composable
+private fun CharacterBatchTagsDialog(
+    settings: STTagSettings,
+    selectedCount: Int,
+    onDismiss: () -> Unit,
+    onApply: (BatchTagMode, Set<String>) -> Unit
+) {
+    var mode by remember { mutableStateOf(BatchTagMode.ADD) }
+    var selectedTagIds by remember(settings) { mutableStateOf<Set<String>>(emptySet()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.character_batch_tags_title, selectedCount)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = mode == BatchTagMode.ADD,
+                        onClick = { mode = BatchTagMode.ADD },
+                        label = { Text(stringResource(R.string.character_batch_tags_add)) }
+                    )
+                    FilterChip(
+                        selected = mode == BatchTagMode.REMOVE,
+                        onClick = { mode = BatchTagMode.REMOVE },
+                        label = { Text(stringResource(R.string.character_batch_tags_remove)) }
+                    )
+                }
+                settings.tags.forEach { tag ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = tag.id in selectedTagIds,
+                            onCheckedChange = { checked ->
+                                selectedTagIds = if (checked) {
+                                    selectedTagIds + tag.id
+                                } else {
+                                    selectedTagIds - tag.id
+                                }
+                            }
+                        )
+                        Text(if (tag.isFolder) stringResource(R.string.character_filter_folder, tag.name) else tag.name)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = selectedTagIds.isNotEmpty(),
+                onClick = { onApply(mode, selectedTagIds) }
+            ) {
+                Text(stringResource(R.string.apply_action))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun CharacterTagManagerDialog(
+    settings: STTagSettings,
+    characters: List<CharacterSummary>,
+    onDismiss: () -> Unit,
+    onSave: (STTagSettings) -> Unit
+) {
+    var draft by remember(settings) { mutableStateOf(settings) }
+    var newTagName by remember { mutableStateOf("") }
+    var newTagIsFolder by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.character_tags_manage)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                draft.tags.forEach { tag ->
+                    CharacterTagManagerRow(
+                        tag = tag,
+                        onRename = { name, isFolder ->
+                            draft = CharacterTagTools.renameTag(draft, tag.id, name, isFolder)
+                        },
+                        onDelete = {
+                            draft = CharacterTagTools.deleteTag(draft, tag.id)
+                        }
+                    )
+                }
+                OutlinedTextField(
+                    value = newTagName,
+                    onValueChange = { newTagName = it },
+                    label = { Text(stringResource(R.string.character_tags_new_name)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = newTagIsFolder,
+                        onCheckedChange = { newTagIsFolder = it }
+                    )
+                    Text(stringResource(R.string.character_tags_folder))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = {
+                            draft = CharacterTagTools.ensureTag(draft, newTagName, newTagIsFolder)
+                            newTagName = ""
+                            newTagIsFolder = false
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(stringResource(R.string.character_tags_add))
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            draft = CharacterTagTools.importEmbeddedTags(draft, characters)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(stringResource(R.string.character_tags_import_embedded))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(draft) }) {
+                Text(stringResource(R.string.save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun CharacterTagManagerRow(
+    tag: STTag,
+    onRename: (String, Boolean) -> Unit,
+    onDelete: () -> Unit
+) {
+    var name by remember(tag.id, tag.name) { mutableStateOf(tag.name) }
+    var isFolder by remember(tag.id, tag.isFolder) { mutableStateOf(tag.isFolder) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = {
+                name = it
+                onRename(it, isFolder)
+            },
+            label = { Text(stringResource(R.string.character_tags_name)) },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = isFolder,
+                onCheckedChange = {
+                    isFolder = it
+                    onRename(name, it)
+                }
+            )
+            Text(stringResource(R.string.character_tags_folder))
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(onClick = onDelete) {
+                Text(stringResource(R.string.delete))
+            }
+        }
+    }
 }

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -32,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -76,13 +76,14 @@ private data class CharacterEditDraft(
     val characterVersion: String = "",
     val world: String = "",
     val talkativenessText: String = "0.5",
-    val alternateGreetingsText: String = "",
+    val alternateGreetings: List<String> = emptyList(),
     val depthPrompt: String = "",
     val depthPromptDepthText: String = "4",
     val depthPromptRole: String = "system",
     val chat: String = "",
     val createDate: String = "",
     val rawJsonData: String = "",
+    val sourceUrl: String = "",
     val isFavorite: Boolean = false
 ) {
     fun toSaveRequest(): CharacterSaveRequest {
@@ -102,13 +103,14 @@ private data class CharacterEditDraft(
             characterVersion = characterVersion,
             world = world,
             talkativeness = talkativenessText.toDoubleOrNull()?.coerceIn(0.0, 1.0) ?: 0.5,
-            alternateGreetings = alternateGreetingsText.lines().map { it.trim() }.filter { it.isNotBlank() },
+            alternateGreetings = alternateGreetings.map { it.trim() }.filter { it.isNotBlank() },
             depthPrompt = depthPrompt,
             depthPromptDepth = depthPromptDepthText.toIntOrNull() ?: 4,
             depthPromptRole = depthPromptRole.trim().ifBlank { "system" },
             chat = chat,
             createDate = createDate,
             rawJsonData = rawJsonData,
+            sourceUrl = sourceUrl,
             isFavorite = isFavorite
         )
     }
@@ -262,179 +264,198 @@ fun CharacterEditScreen(
     }
 
     Surface(modifier = modifier.fillMaxSize(), color = colors.bg) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = if (avatar.isNullOrBlank()) {
-                            stringResource(R.string.character_edit_new_title)
-                        } else {
-                            stringResource(R.string.character_edit_title)
-                        },
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.fg
-                    )
-                    Text(
-                        text = stringResource(R.string.character_edit_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.muted
-                    )
-                }
-                IconButton(
-                    enabled = serverRunning && !loading && !saving,
-                    onClick = {
-                        saveCharacter(
-                            context = context,
-                            draft = draft,
-                            baseUrl = baseUrl,
-                            onShowMessage = onShowMessage,
-                            onSavingChanged = { saving = it },
-                            onSaved = onSaved,
-                            isNew = avatar.isNullOrBlank(),
-                            avatarUpload = pendingAvatarUpload,
-                            scope = scope
+        Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .statusBarsPadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) editContent@ {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (avatar.isNullOrBlank()) {
+                                stringResource(R.string.character_edit_new_title)
+                            } else {
+                                stringResource(R.string.character_edit_title)
+                            },
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.fg
+                        )
+                        Text(
+                            text = stringResource(R.string.character_edit_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.muted
                         )
                     }
-                ) {
-                    Icon(Icons.Filled.Save, contentDescription = stringResource(R.string.save))
+                    IconButton(
+                        enabled = serverRunning && !loading && !saving,
+                        onClick = {
+                            saveCharacter(
+                                context = context,
+                                draft = draft,
+                                baseUrl = baseUrl,
+                                onShowMessage = onShowMessage,
+                                onSavingChanged = { saving = it },
+                                onSaved = onSaved,
+                                isNew = avatar.isNullOrBlank(),
+                                avatarUpload = pendingAvatarUpload,
+                                scope = scope
+                            )
+                        }
+                    ) {
+                        Icon(Icons.Filled.Save, contentDescription = stringResource(R.string.save))
+                    }
                 }
-            }
 
-            if (!serverRunning) {
-                CharacterEditorInfoCard(
-                    title = stringResource(R.string.webview_error_service_stopped_title),
-                    body = stringResource(R.string.webview_error_service_stopped_body),
-                    actionLabel = stringResource(R.string.webview_start_service),
-                    onAction = onStartService
-                )
-                return@Column
-            }
+                if (!serverRunning) {
+                    CharacterEditorInfoCard(
+                        title = stringResource(R.string.webview_error_service_stopped_title),
+                        body = stringResource(R.string.webview_error_service_stopped_body),
+                        actionLabel = stringResource(R.string.webview_start_service),
+                        onAction = onStartService
+                    )
+                    return@editContent
+                }
 
-            if (loading) {
-                CharacterEditorInfoCard(
-                    title = stringResource(R.string.character_edit_loading),
-                    body = stringResource(R.string.waiting_for_server)
-                )
-                return@Column
-            }
+                if (loading) {
+                    CharacterEditorInfoCard(
+                        title = stringResource(R.string.character_edit_loading),
+                        body = stringResource(R.string.waiting_for_server)
+                    )
+                    return@editContent
+                }
 
-            CharacterAvatarEditorSection(
-                draft = draft,
-                pendingAvatarUpload = pendingAvatarUpload,
-                saving = saving,
-                onChooseAvatar = { avatarLauncher.launch(arrayOf("image/*")) }
-            )
-
-            CharacterEditorTabs(
-                selectedTab = selectedEditorTab,
-                onSelected = { selectedEditorTab = it }
-            )
-
-            CharacterEditorFields(
-                draft = draft,
-                saving = saving,
-                selectedTab = selectedEditorTab,
-                onDraftChanged = { draft = it }
-            )
-
-            if (!draft.avatar.isNullOrBlank()) {
-                CharacterManagementActions(
+                CharacterAvatarEditorSection(
+                    baseUrl = baseUrl,
+                    draft = draft,
+                    pendingAvatarUpload = pendingAvatarUpload,
                     saving = saving,
-                    onRename = {
-                        renameCharacter(
-                            context = context,
-                            draft = draft,
-                            baseUrl = baseUrl,
-                            onShowMessage = onShowMessage,
-                            onSavingChanged = { saving = it },
-                            onSaved = onSaved,
-                            scope = scope
-                        )
-                    },
-                    onDuplicate = {
-                        duplicateCharacter(
-                            context = context,
-                            draft = draft,
-                            baseUrl = baseUrl,
-                            onShowMessage = onShowMessage,
-                            onSavingChanged = { saving = it },
-                            onSaved = onSaved,
-                            scope = scope
-                        )
-                    },
-                    onChangeAvatar = {
-                        avatarLauncher.launch(arrayOf("image/*"))
-                    },
-                    onExportJson = {
-                        exportJsonLauncher.launch(defaultExportFileName(draft, CharacterExportFormat.JSON))
-                    },
-                    onExportPng = {
-                        exportPngLauncher.launch(defaultExportFileName(draft, CharacterExportFormat.PNG))
-                    },
-                    onDelete = {
-                        pendingDelete = true
-                        deleteChats = false
+                    onChooseAvatar = { avatarLauncher.launch(arrayOf("image/*")) },
+                    onUpdateAvatarNow = {
+                        val upload = pendingAvatarUpload
+                        if (upload != null) {
+                            updateCharacterAvatar(
+                                context = context,
+                                upload = upload,
+                                draft = draft,
+                                baseUrl = baseUrl,
+                                onShowMessage = onShowMessage,
+                                onSavingChanged = { saving = it },
+                                onUpdated = { pendingAvatarUpload = null },
+                                scope = scope
+                            )
+                        }
                     }
                 )
-            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(onClick = onBack, modifier = Modifier.weight(1f), enabled = !saving) {
-                    Text(stringResource(R.string.back))
+                CharacterEditorTabs(
+                    selectedTab = selectedEditorTab,
+                    onSelected = { selectedEditorTab = it }
+                )
+
+                CharacterEditorFields(
+                    draft = draft,
+                    saving = saving,
+                    selectedTab = selectedEditorTab,
+                    onDraftChanged = { draft = it }
+                )
+
+                if (!draft.avatar.isNullOrBlank()) {
+                    CharacterManagementActions(
+                        saving = saving,
+                        onRename = {
+                            renameCharacter(
+                                context = context,
+                                draft = draft,
+                                baseUrl = baseUrl,
+                                onShowMessage = onShowMessage,
+                                onSavingChanged = { saving = it },
+                                onSaved = onSaved,
+                                scope = scope
+                            )
+                        },
+                        onDuplicate = {
+                            duplicateCharacter(
+                                context = context,
+                                draft = draft,
+                                baseUrl = baseUrl,
+                                onShowMessage = onShowMessage,
+                                onSavingChanged = { saving = it },
+                                onSaved = onSaved,
+                                scope = scope
+                            )
+                        },
+                        onChangeAvatar = {
+                            avatarLauncher.launch(arrayOf("image/*"))
+                        },
+                        onExportJson = {
+                            exportJsonLauncher.launch(defaultExportFileName(draft, CharacterExportFormat.JSON))
+                        },
+                        onExportPng = {
+                            exportPngLauncher.launch(defaultExportFileName(draft, CharacterExportFormat.PNG))
+                        },
+                        onDelete = {
+                            pendingDelete = true
+                            deleteChats = false
+                        }
+                    )
                 }
-                Button(
-                    onClick = {
-                        saveCharacter(
-                            context = context,
-                            draft = draft,
-                            baseUrl = baseUrl,
-                            onShowMessage = onShowMessage,
-                            onSavingChanged = { saving = it },
-                            onSaved = onSaved,
-                            isNew = avatar.isNullOrBlank(),
-                            avatarUpload = pendingAvatarUpload,
-                            scope = scope
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    enabled = !saving
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(if (saving) stringResource(R.string.saving) else stringResource(R.string.save))
+                    Button(onClick = onBack, modifier = Modifier.weight(1f), enabled = !saving) {
+                        Text(stringResource(R.string.back))
+                    }
+                    Button(
+                        onClick = {
+                            saveCharacter(
+                                context = context,
+                                draft = draft,
+                                baseUrl = baseUrl,
+                                onShowMessage = onShowMessage,
+                                onSavingChanged = { saving = it },
+                                onSaved = onSaved,
+                                isNew = avatar.isNullOrBlank(),
+                                avatarUpload = pendingAvatarUpload,
+                                scope = scope
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = !saving
+                    ) {
+                        Text(if (saving) stringResource(R.string.saving) else stringResource(R.string.save))
+                    }
                 }
             }
 
-            CharacterLocalBottomBar(
-                active = CharacterLocalNav.CHARACTERS,
-                onCharacters = onBack,
-                onLorebook = { onShowMessage(context.getString(R.string.character_lorebook_unavailable)) },
-                onPersona = { onShowMessage(context.getString(R.string.character_persona_unavailable)) }
-            )
         }
     }
 }
 
 @Composable
 private fun CharacterAvatarEditorSection(
+    baseUrl: String,
     draft: CharacterEditDraft,
     pendingAvatarUpload: CharacterUpload?,
     saving: Boolean,
-    onChooseAvatar: () -> Unit
+    onChooseAvatar: () -> Unit,
+    onUpdateAvatarNow: () -> Unit
 ) {
     CharacterEditorSection(title = stringResource(R.string.character_avatar_section)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            CharacterEditAvatarPreview(label = draft.name.ifBlank { draft.avatar.orEmpty() })
+            CharacterAvatarImage(
+                baseUrl = baseUrl,
+                avatar = draft.avatar,
+                label = draft.name.ifBlank { draft.avatar.orEmpty() },
+                size = 72.dp,
+                localBytes = pendingAvatarUpload?.bytes
+            )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = pendingAvatarUpload?.fileName ?: draft.avatar.orEmpty().ifBlank {
@@ -446,26 +467,13 @@ private fun CharacterAvatarEditorSection(
                 OutlinedButton(onClick = onChooseAvatar, enabled = !saving) {
                     Text(stringResource(R.string.character_avatar_choose))
                 }
+                if (!draft.avatar.isNullOrBlank() && pendingAvatarUpload != null) {
+                    OutlinedButton(onClick = onUpdateAvatarNow, enabled = !saving) {
+                        Text(stringResource(R.string.character_avatar_update_now))
+                    }
+                }
             }
         }
-    }
-}
-
-@Composable
-private fun CharacterEditAvatarPreview(label: String) {
-    Box(
-        modifier = Modifier
-            .size(72.dp)
-            .clip(CircleShape)
-            .background(STTheme.colors.surfaceWarm),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = STTheme.colors.accent
-        )
     }
 }
 
@@ -541,12 +549,10 @@ private fun CharacterEditorFields(
 
             CharacterEditorTab.PROMPT -> {
                 CharacterEditorSection(title = stringResource(R.string.character_edit_prompt_section)) {
-                    CharacterField(
-                        label = stringResource(R.string.character_edit_alternate_greetings),
-                        value = draft.alternateGreetingsText,
+                    CharacterAlternateGreetingsEditor(
+                        greetings = draft.alternateGreetings,
                         enabled = !saving,
-                        minLines = 3,
-                        onValueChange = { onDraftChanged(draft.copy(alternateGreetingsText = it)) }
+                        onGreetingsChanged = { onDraftChanged(draft.copy(alternateGreetings = it)) }
                     )
                     CharacterField(
                         label = stringResource(R.string.character_edit_system_prompt),
@@ -609,6 +615,12 @@ private fun CharacterEditorFields(
                         onValueChange = { onDraftChanged(draft.copy(world = it)) }
                     )
                     CharacterField(
+                        label = stringResource(R.string.character_edit_source_url),
+                        value = draft.sourceUrl,
+                        enabled = !saving,
+                        onValueChange = { onDraftChanged(draft.copy(sourceUrl = it)) }
+                    )
+                    CharacterField(
                         label = stringResource(R.string.character_edit_creator_notes),
                         value = draft.creatorNotes,
                         enabled = !saving,
@@ -636,8 +648,7 @@ private fun CharacterEditorFields(
                         minLines = 3,
                         onValueChange = { onDraftChanged(draft.copy(messageExample = it)) }
                     )
-                    CharacterField(
-                        label = stringResource(R.string.character_edit_talkativeness),
+                    CharacterTalkativenessField(
                         value = draft.talkativenessText,
                         enabled = !saving,
                         onValueChange = { onDraftChanged(draft.copy(talkativenessText = it)) }
@@ -645,6 +656,105 @@ private fun CharacterEditorFields(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CharacterAlternateGreetingsEditor(
+    greetings: List<String>,
+    enabled: Boolean,
+    onGreetingsChanged: (List<String>) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.character_edit_alternate_greetings),
+            style = MaterialTheme.typography.labelLarge,
+            color = STTheme.colors.muted
+        )
+        if (greetings.isEmpty()) {
+            Text(
+                text = stringResource(R.string.character_greeting_empty),
+                style = MaterialTheme.typography.bodySmall,
+                color = STTheme.colors.muted
+            )
+        }
+        greetings.forEachIndexed { index, greeting ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                CharacterField(
+                    label = stringResource(R.string.character_greeting_label, index + 1),
+                    value = greeting,
+                    enabled = enabled,
+                    minLines = 2,
+                    onValueChange = { value ->
+                        onGreetingsChanged(greetings.toMutableList().also { it[index] = value })
+                    }
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        enabled = enabled && index > 0,
+                        onClick = {
+                            onGreetingsChanged(greetings.toMutableList().also {
+                                val item = it.removeAt(index)
+                                it.add(index - 1, item)
+                            })
+                        }
+                    ) {
+                        Text(stringResource(R.string.character_greeting_move_up))
+                    }
+                    TextButton(
+                        enabled = enabled && index < greetings.lastIndex,
+                        onClick = {
+                            onGreetingsChanged(greetings.toMutableList().also {
+                                val item = it.removeAt(index)
+                                it.add(index + 1, item)
+                            })
+                        }
+                    ) {
+                        Text(stringResource(R.string.character_greeting_move_down))
+                    }
+                    TextButton(
+                        enabled = enabled,
+                        onClick = {
+                            onGreetingsChanged(greetings.toMutableList().also { it.removeAt(index) })
+                        }
+                    ) {
+                        Text(stringResource(R.string.character_greeting_remove))
+                    }
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = { onGreetingsChanged(greetings + "") },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(stringResource(R.string.character_greeting_add))
+        }
+    }
+}
+
+@Composable
+private fun CharacterTalkativenessField(
+    value: String,
+    enabled: Boolean,
+    onValueChange: (String) -> Unit
+) {
+    val numeric = value.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.5f
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        CharacterField(
+            label = stringResource(R.string.character_edit_talkativeness),
+            value = value,
+            enabled = enabled,
+            onValueChange = { text ->
+                val clean = text.toDoubleOrNull()?.coerceIn(0.0, 1.0)?.toString() ?: text
+                onValueChange(clean)
+            }
+        )
+        Slider(
+            value = numeric,
+            enabled = enabled,
+            onValueChange = { onValueChange(String.format(java.util.Locale.US, "%.2f", it)) }
+        )
     }
 }
 
@@ -796,13 +906,14 @@ private fun CharacterDetail.toDraft(): CharacterEditDraft {
         characterVersion = characterVersion,
         world = world,
         talkativenessText = talkativeness.toString(),
-        alternateGreetingsText = alternateGreetings.joinToString("\n"),
+        alternateGreetings = alternateGreetings,
         depthPrompt = depthPrompt,
         depthPromptDepthText = depthPromptDepth.toString(),
         depthPromptRole = depthPromptRole,
         chat = chat,
         createDate = createDate,
         rawJsonData = rawJsonData,
+        sourceUrl = sourceUrl,
         isFavorite = isFavorite
     )
 }
@@ -844,11 +955,12 @@ private fun saveCharacter(
 
 private fun updateCharacterAvatar(
     context: Context,
-    uri: Uri,
+    upload: CharacterUpload,
     draft: CharacterEditDraft,
     baseUrl: String,
     onShowMessage: (String) -> Unit,
     onSavingChanged: (Boolean) -> Unit,
+    onUpdated: () -> Unit,
     scope: kotlinx.coroutines.CoroutineScope
 ) {
     val avatar = draft.avatar?.takeIf { it.isNotBlank() }
@@ -859,9 +971,9 @@ private fun updateCharacterAvatar(
     scope.launch {
         onSavingChanged(true)
         runCatching {
-            val document = context.readPickedDocument(uri)
-            TavernCoreClient(baseUrl = baseUrl).updateCharacterAvatar(avatar, document.fileName, document.bytes)
+            TavernCoreClient(baseUrl = baseUrl).updateCharacterAvatar(avatar, upload.fileName, upload.bytes)
         }.onSuccess {
+            onUpdated()
             onShowMessage(context.getString(R.string.character_avatar_success))
         }.onFailure { error ->
             onShowMessage(error.messageOr(context, R.string.character_avatar_failed))
