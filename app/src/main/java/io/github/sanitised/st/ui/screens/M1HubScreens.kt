@@ -146,6 +146,11 @@ fun ToolsHubScreen(
     onOpenConfig: () -> Unit,
     onOpenLogs: () -> Unit,
     onOpenManageSt: () -> Unit,
+    onOpenWorldInfo: () -> Unit,
+    onOpenPersona: () -> Unit,
+    onOpenPresets: () -> Unit,
+    onOpenConnections: () -> Unit,
+    onOpenChatBackups: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     HubScaffold(
@@ -178,6 +183,41 @@ fun ToolsHubScreen(
                 title = stringResource(R.string.manage_st_title),
                 body = stringResource(R.string.tools_hub_manage_body),
                 onClick = onOpenManageSt,
+                modifier = Modifier.weight(1f)
+            )
+            ToolTile(
+                icon = Icons.Filled.Description,
+                title = stringResource(R.string.m3_world_info_title),
+                body = stringResource(R.string.tools_hub_world_info_body),
+                onClick = onOpenWorldInfo,
+                modifier = Modifier.weight(1f)
+            )
+            ToolTile(
+                icon = Icons.Filled.Person,
+                title = stringResource(R.string.m3_persona_title),
+                body = stringResource(R.string.tools_hub_persona_body),
+                onClick = onOpenPersona,
+                modifier = Modifier.weight(1f)
+            )
+            ToolTile(
+                icon = Icons.Filled.Description,
+                title = stringResource(R.string.m3_presets_title),
+                body = stringResource(R.string.tools_hub_presets_body),
+                onClick = onOpenPresets,
+                modifier = Modifier.weight(1f)
+            )
+            ToolTile(
+                icon = Icons.Filled.Info,
+                title = stringResource(R.string.m3_connections_title),
+                body = stringResource(R.string.tools_hub_connections_body),
+                onClick = onOpenConnections,
+                modifier = Modifier.weight(1f)
+            )
+            ToolTile(
+                icon = Icons.Filled.History,
+                title = stringResource(R.string.m3_chat_backups_title),
+                body = stringResource(R.string.tools_hub_chat_backups_body),
+                onClick = onOpenChatBackups,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -691,7 +731,12 @@ private fun ToolsHubScreenPreview() {
         ToolsHubScreen(
             onOpenConfig = {},
             onOpenLogs = {},
-            onOpenManageSt = {}
+            onOpenManageSt = {},
+            onOpenWorldInfo = {},
+            onOpenPersona = {},
+            onOpenPresets = {},
+            onOpenConnections = {},
+            onOpenChatBackups = {}
         )
     }
 }

@@ -62,7 +62,12 @@ import io.github.sanitised.st.ui.navigation.STRoutes
 import io.github.sanitised.st.ui.screens.CharacterDetailScreen
 import io.github.sanitised.st.ui.screens.CharacterEditScreen
 import io.github.sanitised.st.ui.screens.CharacterListScreen
+import io.github.sanitised.st.ui.screens.ChatBackupsScreen
+import io.github.sanitised.st.ui.screens.ConnectionProfilesScreen
 import io.github.sanitised.st.ui.screens.ToolsHubScreen
+import io.github.sanitised.st.ui.screens.PersonaScreen
+import io.github.sanitised.st.ui.screens.PresetLiteScreen
+import io.github.sanitised.st.ui.screens.WorldInfoScreen
 import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STDialogButtonStyle
@@ -81,7 +86,6 @@ import java.io.File
 import java.nio.file.Files
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import org.yaml.snakeyaml.Yaml
 
 private val bottomNavItems = listOf(
     BottomNavItem(STRoutes.HOME, "首页", Icons.Filled.Home),
@@ -143,6 +147,11 @@ class MainActivity : ComponentActivity() {
                 STRoutes.CHARACTER_NEW,
                 STRoutes.CHARACTER_DETAIL,
                 STRoutes.CHARACTER_EDIT -> STRoutes.CHARACTERS
+                STRoutes.WORLD_INFO,
+                STRoutes.PERSONA,
+                STRoutes.PRESETS,
+                STRoutes.CONNECTIONS,
+                STRoutes.CHAT_BACKUPS -> STRoutes.TOOLS
                 STRoutes.LOGS,
                 STRoutes.CONFIG,
                 STRoutes.LEGAL,
@@ -533,6 +542,12 @@ class MainActivity : ComponentActivity() {
                                         onOpenChat = { chatFile ->
                                             openCharacterChatFromCharacterManagement(avatar, chatFile)
                                         },
+                                        onOpenWorldInfo = {
+                                            navController.navigate(STRoutes.WORLD_INFO)
+                                        },
+                                        onOpenPersona = {
+                                            navController.navigate(STRoutes.PERSONA)
+                                        },
                                         onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                     )
                                 }
@@ -557,7 +572,67 @@ class MainActivity : ComponentActivity() {
                                 ToolsHubScreen(
                                     onOpenConfig = { navController.navigate(STRoutes.CONFIG) },
                                     onOpenLogs = { navController.navigate(STRoutes.LOGS) },
-                                    onOpenManageSt = { navController.navigate(STRoutes.MANAGE_ST) }
+                                    onOpenManageSt = { navController.navigate(STRoutes.MANAGE_ST) },
+                                    onOpenWorldInfo = { navController.navigate(STRoutes.WORLD_INFO) },
+                                    onOpenPersona = { navController.navigate(STRoutes.PERSONA) },
+                                    onOpenPresets = { navController.navigate(STRoutes.PRESETS) },
+                                    onOpenConnections = { navController.navigate(STRoutes.CONNECTIONS) },
+                                    onOpenChatBackups = { navController.navigate(STRoutes.CHAT_BACKUPS) }
+                                )
+                            }
+
+                            composable(STRoutes.WORLD_INFO) {
+                                BackHandler { navController.popBackStack() }
+                                WorldInfoScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onStartService = { startNode() },
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.PERSONA) {
+                                BackHandler { navController.popBackStack() }
+                                PersonaScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onStartService = { startNode() },
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.PRESETS) {
+                                BackHandler { navController.popBackStack() }
+                                PresetLiteScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onStartService = { startNode() },
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.CONNECTIONS) {
+                                BackHandler { navController.popBackStack() }
+                                ConnectionProfilesScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onStartService = { startNode() },
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.CHAT_BACKUPS) {
+                                BackHandler { navController.popBackStack() }
+                                ChatBackupsScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onStartService = { startNode() },
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
@@ -873,16 +948,7 @@ class MainActivity : ComponentActivity() {
         val configFile = AppPaths(this).configFile
         if (!configFile.exists()) return DEFAULT_PORT
         return try {
-            val yamlRoot = configFile.inputStream().bufferedReader(Charsets.UTF_8).use { reader ->
-                Yaml().load<Any?>(reader)
-            }
-            val rawPort = (yamlRoot as? Map<*, *>)?.get("port")
-            val parsedPort = when (rawPort) {
-                is Number -> rawPort.toInt()
-                is String -> rawPort.trim().toIntOrNull()
-                else -> null
-            }
-            parsedPort?.takeIf { it in 1..65535 } ?: DEFAULT_PORT
+            ConfigFormTools.readStartupPort(configFile.readText(Charsets.UTF_8)) ?: DEFAULT_PORT
         } catch (_: Exception) {
             DEFAULT_PORT
         }

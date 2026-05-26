@@ -10,6 +10,11 @@ object STRoutes {
     const val CHARACTER_DETAIL = "characters/detail/{avatar}"
     const val CHARACTER_EDIT = "characters/edit/{avatar}"
     const val TOOLS = "tools"
+    const val WORLD_INFO = "tools/world-info"
+    const val PERSONA = "tools/persona"
+    const val PRESETS = "tools/presets"
+    const val CONNECTIONS = "tools/connections"
+    const val CHAT_BACKUPS = "tools/chat-backups"
     const val SETTINGS = "settings"
 
     const val LOGS = "settings/logs"

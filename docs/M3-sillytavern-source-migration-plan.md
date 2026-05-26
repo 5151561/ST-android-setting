@@ -23,17 +23,28 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 - `/api/avatars/delete` 只删除 Persona 头像文件和缩略图，不会同步清理 `power_user.personas` / `persona_descriptions`；App 删除 Persona 时要额外合并保存 settings。
 - Data Maid 的 `/api/data-maid/view` 是 GET，靠 `token` + `hash` 查看文件；向量接口还包括 `/query-multi` 和 `/purge-all`。
 
-当前实现进展（2026-05-26）：
+当前实现进展（2026-05-26 / 2026-05-27）：
 
 - P0 备份导出已写入 `st_backup/manifest.yaml`，记录 App 版本、ST commit、导出时间、配置/数据大小和 `secrets.json` 是否包含。
 - P0 导入流程已在覆盖前做预检查：识别 App 备份与 ST UI 单用户备份，扫描 `settings.json`、`characters/`、`chats/`、`worlds/`、`groups/`、`User Avatars/`、`QuickReplies/`、`secrets.json`，并在确认弹窗展示覆盖清单；多用户或无法识别的备份会被拒绝。
 - P0 导入确认已补“先导出完整备份或创建设置快照”的保护建议，避免用户在覆盖前漏掉回滚点。
 - P0 设置快照 API 已接入 `TavernCoreClient`，管理 ST 页面已新增“设置快照”区域，支持创建、刷新列表和二次确认恢复。
-- P0 诊断导出已接入日志页：导出 `.zip`，包含状态摘要、数据数量摘要、脱敏后的 `config.yaml`、`package.json` 和 service/stdout/stderr/post-install/npm 日志；不会包含 `secrets.json` 或用户数据文件。
+- P0 诊断导出已接入日志页：导出 `.zip`，包含状态摘要、数据数量摘要、脱敏后的 `config.yaml`、`package.json` 和 service/stdout/stderr/post-install/npm 日志；不会包含 `secrets.json` 或用户数据文件。2026-05-27 真机导出时发现并修复 URL userinfo 凭据脱敏缺口，例如 `socks5://username:password@example.com` 会导出为 `socks5://[redacted]@example.com`。
 - P0 崩溃恢复已补非主动退出日志：Node 非主动退出会写入 `service.log` 的 `unexpected exit` 记录，进入 ERROR 后仍可从首页/Chat 错误页重启，并可从日志页查看或导出诊断。
 - P0 端口冲突已在 `NodeService` 启动前检测；目标端口被占用时进入 ERROR 并提示用户停止占用或修改配置。
 - UI 入口已收敛：备份/恢复与设置快照统一放在“管理 ST”页面；“工具”页不再重复显示备份/恢复卡片，只保留配置、日志和管理 ST 入口。
-- 已新增单元/契约测试覆盖 `NodeBackupP0Test`、`DiagnosticsExportTest`、`PortAvailabilityTest`、settings snapshot API、工具页入口去重和导入前保护建议；本轮验证命令为 `./gradlew testDebugUnitTest assembleDebug`。
+- P1 API 适配已接入 `TavernCoreClient`：World Info、Persona、Secrets/API Key、Preset Lite、连接端点历史和 chat backups 均走 SillyTavern 本地 API；涉及 `settings.json` 的 Persona/连接保存均采用 parse-merge-save，保留未知字段。
+- P1 原生入口已接入工具页与路由：世界书、Persona、预设、连接、聊天备份都有 Compose 页面；角色详情的世界书/Persona 关联入口改为打开原生管理页，不再显示“后续里程碑”占位。
+- P1 首批页面按原型稿 `/Users/changlepan/Downloads/Web-Prototype/` 的信息层级落地为移动端列表 + 详情表单：世界书支持条目字段与启停保存，Persona 支持头像上传/描述/默认身份/删除清理，预设支持 JSON 导入导出/保存/删除/恢复，连接页支持 masked key 状态、写入/重命名/active 切换/删除和端点历史，聊天备份支持浏览/导出/删除。
+- 已新增单元/契约测试覆盖 `NodeBackupP0Test`、`DiagnosticsExportTest`、`PortAvailabilityTest`、settings snapshot API、P1 API 请求契约、P1 原生路由/工具入口、工具页入口去重和导入前保护建议；本轮验证命令为 `./gradlew testDebugUnitTest assembleDebug`。
+
+2026-05-27 真机 smoke test 记录：
+
+- 设备：`SM_S9310`，无线调试；App：`io.github.sanitised.st.dev` / `v0.4.0-dev`；设备当前 ST 安装显示为自定义 `tag/1.18.0-51ad27f`。
+- 已通过：debug APK 安装与启动；首页启动 Node；Chat WebView 加载到 `Chat` / `Assistant` / `Type a message...` / `Send`；日志页显示“导出诊断”。
+- 已通过：使用 `run-as io.github.sanitised.st.dev kill -9 <libnode pid>` 杀掉 Node 子进程后，首页从运行态进入需处理/停止恢复路径，`service.log` 记录 `unexpected exit: 已退出，代码 137`，重新点击启动可再次拉起 `libnode.so`，Chat WebView 可重新加载。
+- 已通过：日志页导出诊断 zip 到 `/sdcard/Download/sillytavern-diagnostics-20260527-002922.zip`，拉回本机检查条目仅包含 summary、data-summary、脱敏 config、`package.json` 和日志；确认未打包 `secrets.json`、`settings.json`、`characters/` 等用户原始数据。
+- 真机调试暴露并修复：诊断包中代理 URL 的 userinfo 凭据此前未脱敏；已用 `DiagnosticsExportTest` 补回归测试并修复。
 
 ## 2. 源码迁移总表
 
@@ -58,7 +69,7 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 | 背景 / 主题 | `public/scripts/backgrounds.js`、`src/endpoints/backgrounds.js`、`src/endpoints/themes.js` | `/api/themes/save/delete`、background endpoints；`backgrounds/*`、`themes/*` | App 主题已独立；Chat WebView 主题保留原版 | M3 不做完整原版主题迁移；只确保备份/恢复保留数据 | P2 |
 | 扩展管理 | `public/scripts/extensions.js`、`src/endpoints/extensions.js` | `/api/extensions/install/update/branches/switch/move/version/delete/discover` | 未覆盖 | M3 只在 UI 和文档标“实验性”；不做原生安装/更新 | P2 |
 | 图片/语音/媒体生成 | `src/endpoints/openai.js`、`src/endpoints/novelai.js`、`src/endpoints/stable-diffusion.js`、`src/endpoints/speech.js`、`public/scripts/extensions/tts/*` | 多提供商媒体、TTS/STT endpoint | WebView 中可用；Bridge 规划未完全落地 | M3 只补 Android Bridge 的分享、保存、TTS/STT 可选增强；不迁移完整媒体设置 | P2 |
-| Chat 运行时 | `public/script.js`、`public/scripts/chats.js`、`public/scripts/openai.js`、`public/scripts/textgen-settings.js`、后端 generate endpoints | `/api/backends/*/generate`、`/api/chats/*` | Chat WebView 承接 | 明确不迁；只做 WebView smoke test、崩溃恢复、文件桥接 | 保留 |
+| Chat 运行时 | `public/script.js`、`public/scripts/chats.js`、`public/scripts/openai.js`、`public/scripts/textgen-settings.js`、后端 generate endpoints | `/api/backends/*/generate`、`/api/chats/*` | Chat WebView 承接；2026-05-27 已在 `SM_S9310` 真机确认基础加载 | 明确不迁；继续只做 WebView smoke test、崩溃恢复、文件桥接 | 保留 |
 
 ## 3. M3 推荐范围
 
@@ -70,7 +81,7 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 | ST UI 备份导入 | 识别 ST UI user backup：`POST /api/users/backup` 返回 zip，根目录含 `settings.json` 和 `chats/`；导入到 `data/default-user` | `users-private.js` `/backup`、`createBackupArchive`、`NodeBackup.materializeUiBackup` | 已落地基础兼容：可识别 ST UI 单用户备份并提示缺失 `secrets.json`；真实原版导出样本 smoke test 纳入 §9 发布前检查 |
 | 导入预检查 | 解压到临时目录后扫描 `settings.json`、`characters/`、`chats/`、`worlds/`、`groups/`、`User Avatars/`、`QuickReplies/`、`secrets.json` | `USER_DIRECTORY_TEMPLATE` | 已落地：导入前显示覆盖清单；不识别或多用户备份给出明确错误 |
 | 设置快照 | 创建/列出/恢复 settings snapshot | `src/endpoints/settings.js` | 已落地：管理 ST 页面支持创建、刷新列表、恢复前二次确认；后续补只读预览 / diff |
-| 崩溃恢复 | Node 非主动退出后进入 ERROR，提供重启、查看日志、导出诊断 | `NodeService.waitForExitAsync` | 已落地：非主动退出写 `unexpected exit` 到 `service.log`；首页/Chat 错误页可重启，日志页可查看并导出诊断；真机 kill smoke test 纳入 §9 |
+| 崩溃恢复 | Node 非主动退出后进入 ERROR，提供重启、查看日志、导出诊断 | `NodeService.waitForExitAsync` | 已落地并通过 `SM_S9310` 真机 smoke：非主动退出写 `unexpected exit` 到 `service.log`；首页/Chat 错误页可重启，日志页可查看并导出诊断 |
 | 端口冲突 | 启动前检测目标端口；冲突时提示占用并允许换端口 | `NodeService` `PORT` env、`SillyTavernUrl.kt`、`PortAvailability.kt` | 已落地最小保护：端口被占用时不会反复启动失败；换端口仍通过现有配置编辑完成 |
 | 上游同步流程 | 固化 ST bundle 更新、契约测试、真机 smoke test、合规检查清单 | `SillyTavern` 子仓库、`TavernCoreRealContractTest` | 已固化 §9 检查表：记录新旧 commit、执行自动化/真机 smoke、许可证检查和失败回滚 |
 
@@ -177,10 +188,10 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 
 当前验收状态：
 
-- 已通过自动化验证：`NodeBackupP0Test` 覆盖 manifest / App 备份预检查 / ST UI 备份预检查 / 多用户拒绝；`DiagnosticsExportTest` 覆盖诊断 zip 内容、脱敏 config、日志和不导出 secrets；`TavernCoreClientTest` 覆盖 settings snapshot API；`PortAvailabilityTest` 覆盖端口占用探测；`NativeHubScreensContractTest` 覆盖导入预检查 UI、导入前保护建议、设置快照入口、日志页诊断导出、工具页去重。
+- 已通过自动化验证：`NodeBackupP0Test` 覆盖 manifest / App 备份预检查 / ST UI 备份预检查 / 多用户拒绝；`DiagnosticsExportTest` 覆盖诊断 zip 内容、脱敏 config、URL userinfo 脱敏、日志和不导出 secrets；`TavernCoreClientTest` 覆盖 settings snapshot API；`PortAvailabilityTest` 覆盖端口占用探测；`NativeHubScreensContractTest` 覆盖导入预检查 UI、导入前保护建议、设置快照入口、日志页诊断导出、工具页去重。
 - 已通过构建验证：`./gradlew testDebugUnitTest assembleDebug`。
-- 已做真机安装验证：debug 包通过无线调试安装到 `SM_S9310`。
-- 待发布前按 §9 执行人工/真机 smoke test：从原版 SillyTavern 导出的真实 UI backup 导入、干净安装恢复、Node 被手动 kill 后的重启/日志/诊断导出体验、Chat WebView 基础加载、上游 bundle 更新回滚。
+- 已做真机安装与 P0 smoke 验证：debug 包通过无线调试安装到 `SM_S9310`；首页启动 Node、Chat WebView 基础加载、手动 kill Node 后恢复、日志页诊断导出、诊断 zip 内容和脱敏检查均已通过。
+- 待发布前按 §9 执行剩余人工/真机 smoke test：从原版 SillyTavern 导出的真实 UI backup 导入、干净安装恢复、App 完整备份导出/导入恢复、上游 bundle 更新回滚。
 
 ## 8. M3 不做事项
 
@@ -203,8 +214,8 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 4. **自动化验证**：执行 `./gradlew testDebugUnitTest assembleDebug`；若有真实 ST 运行环境，追加 `TavernCoreRealContractTest`。
 5. **备份恢复 smoke**：在真机上导出 App 备份；干净安装后导入，确认角色、聊天、世界书、Persona 头像、预设、settings 和 secrets 覆盖清单符合预期。
 6. **原版 UI backup smoke**：从原版 SillyTavern Web UI 导出单用户 backup，导入 App；确认能识别为 ST UI user backup，缺失 `secrets.json` 时显示提示，多用户 backup 会被拒绝。
-7. **崩溃与诊断 smoke**：启动 Node 后手动 kill 进程；确认 App 进入 ERROR、不白屏、可重启、`service.log` 有 `unexpected exit`，日志页可导出诊断 zip 且不含 `secrets.json`。
-8. **WebView smoke**：启动 Chat WebView，确认 health check、首页加载、角色聊天入口、文件选择桥接和错误页重试/查看日志入口可用。
+7. **崩溃与诊断 smoke**：启动 Node 后手动 kill 进程；确认 App 进入 ERROR、不白屏、可重启、`service.log` 有 `unexpected exit`，日志页可导出诊断 zip 且不含 `secrets.json`。2026-05-27 已在 `SM_S9310` 验证基础链路；后续发布仍建议按目标 release APK 复跑。
+8. **WebView smoke**：启动 Chat WebView，确认 health check、首页加载、角色聊天入口、文件选择桥接和错误页重试/查看日志入口可用。2026-05-27 已验证 Chat 基础页面加载，文件选择桥接和错误页重试仍作为发布前复跑项。
 9. **发布合规检查**：确认 AGPL、Node、AndroidX/Compose 和 SillyTavern 依赖许可证入口仍可打开；确认发布说明标注 Chat WebView 与实验性功能边界。
 10. **回滚策略**：若任一 smoke 失败，回退 `SillyTavern` 子仓库 commit 和相关适配代码，重新执行第 4 步自动化验证后再继续。
 

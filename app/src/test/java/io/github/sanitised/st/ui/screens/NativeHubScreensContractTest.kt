@@ -194,6 +194,82 @@ class NativeHubScreensContractTest {
     }
 
     @Test
+    fun m3P1ExposesNativeCrossSystemRoutesAndTools() {
+        val routes = File("src/main/java/io/github/sanitised/st/ui/navigation/STNavGraph.kt").readText()
+        val toolsHub = File("src/main/java/io/github/sanitised/st/ui/screens/M1HubScreens.kt").readText()
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val characterDetail = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterDetailScreen.kt").readText()
+        val strings = File("src/main/res/values/strings.xml").readText()
+
+        assertTrue(File("src/main/java/io/github/sanitised/st/ui/screens/M3P1Screens.kt").exists())
+        listOf(
+            "WORLD_INFO",
+            "PERSONA",
+            "PRESETS",
+            "CONNECTIONS",
+            "CHAT_BACKUPS"
+        ).forEach { routeName ->
+            assertTrue("missing route $routeName", routes.contains(routeName))
+            assertTrue("route $routeName not wired", mainActivity.contains("STRoutes.$routeName"))
+        }
+
+        listOf(
+            "onOpenWorldInfo",
+            "onOpenPersona",
+            "onOpenPresets",
+            "onOpenConnections",
+            "onOpenChatBackups"
+        ).forEach { callback ->
+            assertTrue("missing tools callback $callback", toolsHub.contains(callback))
+        }
+
+        assertTrue(mainActivity.contains("WorldInfoScreen"))
+        assertTrue(mainActivity.contains("PersonaScreen"))
+        assertTrue(mainActivity.contains("PresetLiteScreen"))
+        assertTrue(mainActivity.contains("ConnectionProfilesScreen"))
+        assertTrue(mainActivity.contains("ChatBackupsScreen"))
+        assertFalse(characterDetail.contains("character_lorebook_unavailable"))
+        assertFalse(characterDetail.contains("character_persona_unavailable"))
+        assertTrue(strings.contains("m3_world_info_title"))
+        assertTrue(strings.contains("m3_persona_title"))
+        assertTrue(strings.contains("m3_presets_title"))
+        assertTrue(strings.contains("m3_connections_title"))
+        assertTrue(strings.contains("m3_chat_backups_title"))
+    }
+
+    @Test
+    fun m3P1PersonaAndPresetsUseListThenDetailEditors() {
+        val screens = File("src/main/java/io/github/sanitised/st/ui/screens/M3P1Screens.kt").readText()
+
+        assertTrue(screens.contains("PersonaViewMode.LIST"))
+        assertTrue(screens.contains("PersonaViewMode.DETAIL"))
+        assertTrue(screens.contains("PresetViewMode.LIST"))
+        assertTrue(screens.contains("PresetViewMode.DETAIL"))
+        assertTrue(screens.contains("PersonaDetailEditor"))
+        assertTrue(screens.contains("PresetDetailEditor"))
+        assertTrue(screens.contains("onBackToList"))
+        assertFalse(screens.contains("selectedAvatar?.let { avatar ->\n            STSectionCard"))
+        assertFalse(screens.contains("selectedApiId?.let { apiId ->\n            STSectionCard"))
+    }
+
+    @Test
+    fun m3P1ChatBackupsUseLongPressMultiSelectDelete() {
+        val screens = File("src/main/java/io/github/sanitised/st/ui/screens/M3P1Screens.kt").readText()
+
+        assertTrue(screens.contains("combinedClickable"))
+        assertTrue(screens.contains("selectedBackupNames"))
+        assertTrue(screens.contains("deleteSelectedChatBackups"))
+        assertTrue(screens.contains("m3_chat_backups_delete_selected"))
+        assertFalse(
+            screens.contains(
+                "Icon(Icons.Filled.Delete, contentDescription = null)\n" +
+                    "                        Spacer(Modifier.width(6.dp))\n" +
+                    "                        Text(stringResource(R.string.delete))"
+            )
+        )
+    }
+
+    @Test
     fun androidLocalesExposeEnglishAndSimplifiedChinese() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
         val localeConfig = File("src/main/res/xml/locales_config.xml")

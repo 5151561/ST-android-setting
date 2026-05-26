@@ -97,6 +97,8 @@ fun CharacterDetailScreen(
     onBack: () -> Unit,
     onEdit: (String) -> Unit,
     onOpenChat: (String?) -> Unit,
+    onOpenWorldInfo: () -> Unit,
+    onOpenPersona: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -322,26 +324,22 @@ fun CharacterDetailScreen(
                                     }
                                 )
 
-                                CharacterDetailTab.LINKS -> CharacterLinksPanel(
-                                    detail = character,
-                                    onOpenLorebook = {
-                                        onShowMessage(context.getString(R.string.character_lorebook_unavailable))
-                                    },
-                                    onOpenSource = {
-                                        val source = character.sourceUrl
-                                        if (source.isBlank()) {
-                                            onShowMessage(context.getString(R.string.character_detail_source_missing))
-                                        } else {
-                                            runCatching { uriHandler.openUri(source) }
-                                                .onFailure { onShowMessage(source) }
-                                        }
-                                    },
-                                    onOpenPersona = {
-                                        onShowMessage(context.getString(R.string.character_persona_unavailable))
-                                    },
-                                    onSetAssistant = {
-                                        onShowMessage(context.getString(R.string.character_assistant_unavailable))
-                                    }
+	                                CharacterDetailTab.LINKS -> CharacterLinksPanel(
+	                                    detail = character,
+	                                    onOpenLorebook = onOpenWorldInfo,
+	                                    onOpenSource = {
+	                                        val source = character.sourceUrl
+	                                        if (source.isBlank()) {
+	                                            onShowMessage(context.getString(R.string.character_detail_source_missing))
+	                                        } else {
+	                                            runCatching { uriHandler.openUri(source) }
+	                                                .onFailure { onShowMessage(source) }
+	                                        }
+	                                    },
+	                                    onOpenPersona = onOpenPersona,
+	                                    onSetAssistant = {
+	                                        onShowMessage(context.getString(R.string.character_assistant_unavailable))
+	                                    }
                                 )
                             }
                         }
@@ -674,8 +672,8 @@ private fun CharacterLinksPanel(
         CharacterLinkRow(
             label = stringResource(R.string.character_detail_lorebook_label),
             value = detail.world.ifBlank { stringResource(R.string.character_detail_lorebook_missing) },
-            actionLabel = stringResource(R.string.dashboard_open),
-            enabled = detail.world.isNotBlank(),
+            actionLabel = stringResource(R.string.character_detail_manage),
+            enabled = true,
             onAction = onOpenLorebook
         )
         CharacterLinkRow(
