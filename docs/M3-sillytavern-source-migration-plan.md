@@ -3,7 +3,7 @@
 日期：2026-05-26
 源码基线：`SillyTavern` 子仓库 `e3f41666c`
 参考文档：`docs/PRD-native-settings.md` v0.6、`docs/M2-character-management-migration.md`
-状态：规划稿（已按 `e3f41666c` 源码复核并修正 API 形态）
+状态：规划 + P0 收尾落地记录（已按 `e3f41666c` 源码复核并修正 API 形态）
 
 ## 1. 结论
 
@@ -23,13 +23,25 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 - `/api/avatars/delete` 只删除 Persona 头像文件和缩略图，不会同步清理 `power_user.personas` / `persona_descriptions`；App 删除 Persona 时要额外合并保存 settings。
 - Data Maid 的 `/api/data-maid/view` 是 GET，靠 `token` + `hash` 查看文件；向量接口还包括 `/query-multi` 和 `/purge-all`。
 
+当前实现进展（2026-05-26）：
+
+- P0 备份导出已写入 `st_backup/manifest.yaml`，记录 App 版本、ST commit、导出时间、配置/数据大小和 `secrets.json` 是否包含。
+- P0 导入流程已在覆盖前做预检查：识别 App 备份与 ST UI 单用户备份，扫描 `settings.json`、`characters/`、`chats/`、`worlds/`、`groups/`、`User Avatars/`、`QuickReplies/`、`secrets.json`，并在确认弹窗展示覆盖清单；多用户或无法识别的备份会被拒绝。
+- P0 导入确认已补“先导出完整备份或创建设置快照”的保护建议，避免用户在覆盖前漏掉回滚点。
+- P0 设置快照 API 已接入 `TavernCoreClient`，管理 ST 页面已新增“设置快照”区域，支持创建、刷新列表和二次确认恢复。
+- P0 诊断导出已接入日志页：导出 `.zip`，包含状态摘要、数据数量摘要、脱敏后的 `config.yaml`、`package.json` 和 service/stdout/stderr/post-install/npm 日志；不会包含 `secrets.json` 或用户数据文件。
+- P0 崩溃恢复已补非主动退出日志：Node 非主动退出会写入 `service.log` 的 `unexpected exit` 记录，进入 ERROR 后仍可从首页/Chat 错误页重启，并可从日志页查看或导出诊断。
+- P0 端口冲突已在 `NodeService` 启动前检测；目标端口被占用时进入 ERROR 并提示用户停止占用或修改配置。
+- UI 入口已收敛：备份/恢复与设置快照统一放在“管理 ST”页面；“工具”页不再重复显示备份/恢复卡片，只保留配置、日志和管理 ST 入口。
+- 已新增单元/契约测试覆盖 `NodeBackupP0Test`、`DiagnosticsExportTest`、`PortAvailabilityTest`、settings snapshot API、工具页入口去重和导入前保护建议；本轮验证命令为 `./gradlew testDebugUnitTest assembleDebug`。
+
 ## 2. 源码迁移总表
 
 | 功能域 | 原版源码入口 | 主要 API / 数据 | 当前 App 状态 | M3 处置 | 优先级 |
 |---|---|---|---|---|---|
-| 数据备份/恢复 | `public/scripts/user.js`、`src/users.js`、`src/endpoints/users-private.js`、`public/scripts/templates/masterExport.html`、`public/scripts/templates/masterImport.html` | ST UI 用户备份：`POST /api/users/backup` 返回 `.zip`；App 自有备份：`st_backup/config.yaml` + `st_backup/data/*`；`data/default-user/*` | 已有 `NodeBackup`，支持 App 自有 `st_backup`、`.tar.gz` / `.tar` / `.zip` 识别和 ST UI 单用户 `.zip` 基础导入 | 做成发布级：补 manifest、导入预检查、覆盖清单、secrets 是否存在提示；继续兼容 App 全量备份与 ST UI 单用户备份 | P0 |
-| 设置快照 | `src/endpoints/settings.js` | `/api/settings/get-snapshots`、`/load-snapshot`、`/make-snapshot`、`/restore-snapshot` | 未做原生入口 | 管理页新增“设置快照”：创建、查看、恢复；作为导入/升级前保护 | P0 |
-| Chat 自动备份 | `src/endpoints/backups.js`、`public/scripts/chat-backups.js` | `/api/backups/chat/get/delete/download` | 角色详情已覆盖单角色聊天导入/导出；未覆盖全局自动备份列表 | 工具页新增“聊天备份”：浏览、查看、恢复到当前角色、删除 | P1 |
+| 数据备份/恢复 | `public/scripts/user.js`、`src/users.js`、`src/endpoints/users-private.js`、`public/scripts/templates/masterExport.html`、`public/scripts/templates/masterImport.html` | ST UI 用户备份：`POST /api/users/backup` 返回 `.zip`；App 自有备份：`st_backup/config.yaml` + `st_backup/data/*`；`data/default-user/*` | 已有 `NodeBackup`，支持 App 自有 `st_backup`、`.tar.gz` / `.tar` / `.zip` 识别和 ST UI 单用户 `.zip` 导入；已补 manifest、导入预检查、覆盖清单、缺失 secrets 提示和导入前保护建议 | 发布前按 §9 执行真机备份/恢复、原版 UI backup 样本导入和干净安装恢复 smoke test | P0 |
+| 设置快照 | `src/endpoints/settings.js` | `/api/settings/get-snapshots`、`/load-snapshot`、`/make-snapshot`、`/restore-snapshot` | 已在 `TavernCoreClient` 和“管理 ST”页面接入创建、列表刷新、二次确认恢复 | 后续可补只读预览 / diff；导入或上游升级前作为保护入口 | P0 |
+| Chat 自动备份 | `src/endpoints/backups.js`、`public/scripts/chat-backups.js` | `/api/backups/chat/get/delete/download` | 角色详情已覆盖单角色聊天导入/导出；未覆盖全局自动备份列表 | 后续在独立工具/管理入口新增“聊天备份”：浏览、查看、恢复到当前角色、删除；避免与“管理 ST”的备份/恢复入口重复 | P1 |
 | 数据清理 | `src/endpoints/data-maid.js`、`public/scripts/data-maid.js` | `POST /api/data-maid/report`、`/finalize`、`/delete`；`GET /api/data-maid/view?token&hash` | 未覆盖 | M3 只做诊断入口和只读报告；删除动作可放 M4 | P2 |
 | 世界书 | `public/scripts/world-info.js`、`public/css/world-info.css`、`src/endpoints/worldinfo.js` | `/api/worldinfo/list/get/edit/import/delete`；`worlds/*.json` | M2 只在角色详情/编辑显示主世界书字段和不可用入口 | 做原生 World Info 管理：列表、搜索、创建、编辑条目、导入、删除；支持角色主 Lorebook 选择 | P1 |
 | 角色 Additional / Chat Lorebooks | `public/scripts/world-info.js`、`public/script.js`、角色 `data.extensions.world`、settings `world_info.charLore`、chat metadata | `/api/settings/get/save` + `/api/worldinfo/*` | 未覆盖 | M3 先支持角色主 Lorebook；Additional / Chat Lorebook 只显示状态和后续提示 | P2 |
@@ -54,13 +66,13 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 
 | 模块 | 必做能力 | 源码依据 | 验收 |
 |---|---|---|---|
-| 备份导出 | 导出 `config.yaml` + `data/default-user`，并生成 manifest：App 版本、ST commit、时间、数据大小 | `USER_DIRECTORY_TEMPLATE`、`NodeBackup.kt` | 导出的 `.tar.gz` 可被当前 App 重新导入；manifest 可被导入预检查读取 |
-| ST UI 备份导入 | 识别 ST UI user backup：`POST /api/users/backup` 返回 zip，根目录含 `settings.json` 和 `chats/`；导入到 `data/default-user` | `users-private.js` `/backup`、`createBackupArchive`、`NodeBackup.materializeUiBackup` | 从原版 ST 导出的单用户备份可导入，角色/聊天/世界书/预设可见；若 UI zip 缺 `secrets.json` 要明确说明 |
-| 导入预检查 | 解压到临时目录后扫描 `settings.json`、`characters/`、`chats/`、`worlds/`、`groups/`、`User Avatars/`、`QuickReplies/` | `USER_DIRECTORY_TEMPLATE` | 导入前显示覆盖清单；不识别或多用户备份给出明确错误 |
-| 设置快照 | 创建/列出/恢复 settings snapshot | `src/endpoints/settings.js` | 导入或上游升级前可一键生成快照；恢复后 WebView 和原生页读取一致 |
-| 崩溃恢复 | Node 非主动退出后进入 ERROR，提供重启、查看日志、导出诊断 | `NodeService.waitForExitAsync` | 手动 kill Node 后 App 不白屏，能重启并保留日志 |
-| 端口冲突 | 启动前检测目标端口；冲突时提示占用并允许换端口 | `NodeService` `PORT` env、`SillyTavernUrl.kt` | 8000 被占用时不会反复失败；用户可改用新端口 |
-| 上游同步流程 | 固化 ST bundle 更新、契约测试、真机 smoke test、合规检查清单 | `SillyTavern` 子仓库、`TavernCoreRealContractTest` | 新 ST commit 更新有固定步骤和失败回滚策略 |
+| 备份导出 | 导出 `config.yaml` + `data/default-user`，并生成 manifest：App 版本、ST commit、时间、数据大小 | `USER_DIRECTORY_TEMPLATE`、`NodeBackup.kt` | 已落地：导出的 `.tar.gz` 包含 `manifest.yaml`，可被当前 App 导入预检查读取 |
+| ST UI 备份导入 | 识别 ST UI user backup：`POST /api/users/backup` 返回 zip，根目录含 `settings.json` 和 `chats/`；导入到 `data/default-user` | `users-private.js` `/backup`、`createBackupArchive`、`NodeBackup.materializeUiBackup` | 已落地基础兼容：可识别 ST UI 单用户备份并提示缺失 `secrets.json`；真实原版导出样本 smoke test 纳入 §9 发布前检查 |
+| 导入预检查 | 解压到临时目录后扫描 `settings.json`、`characters/`、`chats/`、`worlds/`、`groups/`、`User Avatars/`、`QuickReplies/`、`secrets.json` | `USER_DIRECTORY_TEMPLATE` | 已落地：导入前显示覆盖清单；不识别或多用户备份给出明确错误 |
+| 设置快照 | 创建/列出/恢复 settings snapshot | `src/endpoints/settings.js` | 已落地：管理 ST 页面支持创建、刷新列表、恢复前二次确认；后续补只读预览 / diff |
+| 崩溃恢复 | Node 非主动退出后进入 ERROR，提供重启、查看日志、导出诊断 | `NodeService.waitForExitAsync` | 已落地：非主动退出写 `unexpected exit` 到 `service.log`；首页/Chat 错误页可重启，日志页可查看并导出诊断；真机 kill smoke test 纳入 §9 |
+| 端口冲突 | 启动前检测目标端口；冲突时提示占用并允许换端口 | `NodeService` `PORT` env、`SillyTavernUrl.kt`、`PortAvailability.kt` | 已落地最小保护：端口被占用时不会反复启动失败；换端口仍通过现有配置编辑完成 |
+| 上游同步流程 | 固化 ST bundle 更新、契约测试、真机 smoke test、合规检查清单 | `SillyTavern` 子仓库、`TavernCoreRealContractTest` | 已固化 §9 检查表：记录新旧 commit、执行自动化/真机 smoke、许可证检查和失败回滚 |
 
 ### 3.2 M3 P1：原生跨系统第一批
 
@@ -143,15 +155,15 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 
 | 顺序 | 工作包 | 输出物 | 依赖 |
 |---|---|---|---|
-| 1 | 备份/恢复预检查与 manifest | `NodeBackup` 增强、导入清单 UI、单测 | 无 |
-| 2 | 设置快照与聊天备份 API 适配 | `TavernCoreApi` 新增 settings/backups 方法、工具页入口 | 现有 CSRF 客户端 |
-| 3 | 崩溃恢复、端口冲突、诊断导出 | `NodeService` 状态策略、设置/日志页入口 | 现有 NodeService |
+| 1 | 备份/恢复预检查与 manifest | 已完成首批：`NodeBackup` 增强、导入确认清单 UI、`NodeBackupP0Test` | 无 |
+| 2 | 设置快照与聊天备份 API 适配 | 已完成 settings snapshot：`TavernCoreApi` 方法、管理 ST 页面入口、契约测试；聊天备份仍待做 | 现有 CSRF 客户端 |
+| 3 | 崩溃恢复、端口冲突、诊断导出 | 已完成端口冲突保护、非主动退出日志和日志页诊断导出 | 现有 NodeService |
 | 4 | World Info 原生页面 | `WorldInfoApi`/models、列表页、编辑页、角色主 Lorebook 选择 | settings/worldinfo API |
 | 5 | Persona 原生页面 | `PersonaApi`/models、列表/编辑、头像上传、默认 Persona | settings + avatars API |
 | 6 | Preset Lite | Preset models、列表、JSON 编辑、导入/导出、删除/恢复 | settings + presets API |
 | 7 | API Key / 连接基础页 | Secrets models、常用 provider 管理、连接测试入口 | secrets API |
 | 8 | P2 入口和实验性标记 | 群聊/Quick Replies/Regex/Data Bank 状态卡、发布说明 | 前面页面稳定后 |
-| 9 | 上游同步和发布验收 | 更新流程文档、契约测试、真机 smoke test、AGPL/许可证清单 | 全部功能冻结 |
+| 9 | 上游同步和发布验收 | 已补 §9 发布检查表：更新流程、契约测试、真机 smoke test、AGPL/许可证清单和失败回滚 | 全部功能冻结 |
 
 ## 7. 验收标准
 
@@ -162,6 +174,13 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 5. 常用 Prompt/预设/API Key 不需要回原版左侧抽屉完成基础管理；高级 provider 参数仍可回 WebView。
 6. 群聊、Regex、Quick Replies、Data Bank、RAG、扩展管理在 UI 中明确标注支持边界，不伪装成已原生完成。
 7. 上游 SillyTavern bundle 更新有固定检查表：常规单测、真实 ST 契约测试、Chat WebView smoke test、备份导入导出、许可证检查。
+
+当前验收状态：
+
+- 已通过自动化验证：`NodeBackupP0Test` 覆盖 manifest / App 备份预检查 / ST UI 备份预检查 / 多用户拒绝；`DiagnosticsExportTest` 覆盖诊断 zip 内容、脱敏 config、日志和不导出 secrets；`TavernCoreClientTest` 覆盖 settings snapshot API；`PortAvailabilityTest` 覆盖端口占用探测；`NativeHubScreensContractTest` 覆盖导入预检查 UI、导入前保护建议、设置快照入口、日志页诊断导出、工具页去重。
+- 已通过构建验证：`./gradlew testDebugUnitTest assembleDebug`。
+- 已做真机安装验证：debug 包通过无线调试安装到 `SM_S9310`。
+- 待发布前按 §9 执行人工/真机 smoke test：从原版 SillyTavern 导出的真实 UI backup 导入、干净安装恢复、Node 被手动 kill 后的重启/日志/诊断导出体验、Chat WebView 基础加载、上游 bundle 更新回滚。
 
 ## 8. M3 不做事项
 
@@ -174,7 +193,22 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 | 第三方扩展安装/更新原生页 | 安全、兼容和上游同步风险高 | 设置页说明实验性 |
 | 全量媒体/TTS/STT provider 设置 | provider 数量多，且 WebView 已承载 | M3 只补 Android Bridge 高频能力 |
 
-## 9. 自检
+## 9. P0 上游同步与发布检查表
+
+每次更新 `SillyTavern` bundle 或准备发布时按以下顺序执行，失败即停止并回滚到上一个可发布 commit。
+
+1. **记录基线**：记录当前 App commit、`SillyTavern` 子仓库旧 commit、新 commit、Node bundle 版本、App `versionName/versionCode`。
+2. **同步源码**：更新 `SillyTavern` 子仓库；确认没有本地未提交修改混入；如 `package-lock.json` 变化，同步法律页依赖清单资产。
+3. **源码审计**：复核 `src/endpoints/settings.js`、`users-private.js`、`worldinfo.js`、`avatars.js`、`secrets.js`、`backups.js` 的请求/响应形态是否影响 `TavernCoreClient` 和备份导入。
+4. **自动化验证**：执行 `./gradlew testDebugUnitTest assembleDebug`；若有真实 ST 运行环境，追加 `TavernCoreRealContractTest`。
+5. **备份恢复 smoke**：在真机上导出 App 备份；干净安装后导入，确认角色、聊天、世界书、Persona 头像、预设、settings 和 secrets 覆盖清单符合预期。
+6. **原版 UI backup smoke**：从原版 SillyTavern Web UI 导出单用户 backup，导入 App；确认能识别为 ST UI user backup，缺失 `secrets.json` 时显示提示，多用户 backup 会被拒绝。
+7. **崩溃与诊断 smoke**：启动 Node 后手动 kill 进程；确认 App 进入 ERROR、不白屏、可重启、`service.log` 有 `unexpected exit`，日志页可导出诊断 zip 且不含 `secrets.json`。
+8. **WebView smoke**：启动 Chat WebView，确认 health check、首页加载、角色聊天入口、文件选择桥接和错误页重试/查看日志入口可用。
+9. **发布合规检查**：确认 AGPL、Node、AndroidX/Compose 和 SillyTavern 依赖许可证入口仍可打开；确认发布说明标注 Chat WebView 与实验性功能边界。
+10. **回滚策略**：若任一 smoke 失败，回退 `SillyTavern` 子仓库 commit 和相关适配代码，重新执行第 4 步自动化验证后再继续。
+
+## 10. 自检
 
 | 检查项 | 结果 |
 |---|---|
@@ -183,3 +217,4 @@ Chat 消息列表、输入区、生成链路、扩展运行时仍保留在原版
 | 是否避免直接写 ST 数据目录 | 已规定新功能优先 API，只有备份/恢复/诊断可碰文件 |
 | 是否覆盖 M2 留下的跨系统缺口 | 已把 World Info、Persona、Preset/Connection 列入 M3 P1 |
 | 是否保留 Chat WebView 边界 | 已明确保留范围 |
+| 是否记录 P0 首批实现状态 | 已补充 manifest、导入预检查、设置快照、端口冲突、工具页入口收敛和验证状态 |

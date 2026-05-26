@@ -10,9 +10,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,6 +38,7 @@ import java.io.File
 @Composable
 fun LogsScreen(
     onBack: () -> Unit,
+    onExportDiagnostics: () -> Unit,
     stdoutLog: String,
     stderrLog: String,
     serviceLog: String
@@ -48,6 +54,16 @@ fun LogsScreen(
                 title = stringResource(R.string.logs_title),
                 onBack = onBack
             )
+            OutlinedButton(
+                onClick = onExportDiagnostics,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Icon(imageVector = Icons.Filled.FileDownload, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = stringResource(R.string.logs_export_diagnostics))
+            }
             Column(
                 modifier = Modifier
                     .fillMaxSize()

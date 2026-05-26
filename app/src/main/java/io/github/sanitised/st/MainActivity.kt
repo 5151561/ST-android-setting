@@ -264,6 +264,16 @@ class MainActivity : ComponentActivity() {
             val systemInDarkTheme = isSystemInDarkTheme()
             val themeMode by viewModel.themeMode
             val useDarkTheme = themeMode.shouldUseDarkTheme(systemInDarkTheme)
+            val currentStLabel = if (viewModel.isCustomInstalled.value) {
+                val customLabel = viewModel.customInstallLabel.value
+                if (customLabel.isNullOrBlank()) {
+                    getString(R.string.sillytavern_custom_version)
+                } else {
+                    getString(R.string.sillytavern_custom_with_label, customLabel)
+                }
+            } else {
+                stLabel
+            }
             SideEffect {
                 window.statusBarColor = Color.TRANSPARENT
                 window.navigationBarColor = Color.TRANSPARENT
@@ -304,6 +314,18 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+            val diagnosticExportLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/zip")
+            ) { uri ->
+                if (uri == null) return@rememberLauncherForActivityResult
+                viewModel.exportDiagnostics(
+                    uri = uri,
+                    appVersion = versionLabel,
+                    stLabel = currentStLabel,
+                    nodeLabel = nodeLabel,
+                    status = statusState.value
+                )
+            }
             val customZipLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.OpenDocument()
             ) { uri ->
@@ -326,6 +348,11 @@ class MainActivity : ComponentActivity() {
                         "application/x-tar"
                     )
                 )
+            }
+            val triggerDiagnosticExport: () -> Unit = {
+                val stamp = LocalDateTime.now()
+                    .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+                diagnosticExportLauncher.launch("sillytavern-diagnostics-$stamp.zip")
             }
             val chatStore = remember { ChatStore() }
             val chatBridge = remember { ChatRuntimeBridge(chatStore) }
@@ -574,6 +601,7 @@ class MainActivity : ComponentActivity() {
                                 BackHandler { navController.popBackStack() }
                                 LogsScreen(
                                     onBack = { navController.popBackStack() },
+                                    onExportDiagnostics = triggerDiagnosticExport,
                                     stdoutLog = stdoutState.value,
                                     stderrLog = stderrState.value,
                                     serviceLog = serviceState.value
@@ -946,6 +974,7 @@ private fun MainActivity.backupImportPreviewText(preview: BackupImportPreview): 
 
     return buildString {
         appendLine(getString(R.string.dialog_import_body))
+        appendLine(getString(R.string.backup_precheck_snapshot_advice))
         appendLine()
         appendLine(getString(R.string.backup_precheck_type, kindLabel))
         appendLine(getString(R.string.backup_precheck_user, preview.userHandle))

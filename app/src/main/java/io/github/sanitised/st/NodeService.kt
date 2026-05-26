@@ -276,12 +276,15 @@ class NodeService : Service() {
                 }
             }
             if (wasStopRequested) {
+                appendServiceLog(AppPaths(this@NodeService).logsDir, "node stopped by user")
                 updateStatus(NodeState.STOPPED, getString(R.string.node_status_stopped))
             } else {
                 if (exitCode == 0) {
+                    appendServiceLog(AppPaths(this@NodeService).logsDir, "node exited cleanly")
                     updateStatus(NodeState.STOPPED, getString(R.string.node_status_exited))
                 } else {
                     val message = getString(R.string.node_status_exited_with_code, exitCode?.toString() ?: "?")
+                    appendServiceLog(AppPaths(this@NodeService).logsDir, "unexpected exit: $message")
                     updateStatus(NodeState.ERROR, message)
                 }
             }

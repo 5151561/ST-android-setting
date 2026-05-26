@@ -147,6 +147,7 @@ class NativeHubScreensContractTest {
         assertTrue(mainActivity.contains("backupImportPreviewText"))
         assertTrue(mainActivity.contains("confirmEnabled = dialog.canImport"))
         assertTrue(strings.contains("dialog_import_checking_body"))
+        assertTrue(strings.contains("backup_precheck_snapshot_advice"))
         assertTrue(strings.contains("backup_precheck_item_present"))
     }
 
@@ -162,6 +163,22 @@ class NativeHubScreensContractTest {
         assertTrue(manageScreen.contains("onRestoreSettingsSnapshot"))
         assertTrue(viewModel.contains("listSettingsSnapshots"))
         assertTrue(mainActivity.contains("PendingDialog.RestoreSettingsSnapshot"))
+    }
+
+    @Test
+    fun m3P0LogsScreenExposesDiagnosticsExport() {
+        val strings = File("src/main/res/values/strings.xml").readText()
+        val logsScreen = File("src/main/java/io/github/sanitised/st/UiLogs.kt").readText()
+        val viewModel = File("src/main/java/io/github/sanitised/st/MainViewModel.kt").readText()
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val nodeService = File("src/main/java/io/github/sanitised/st/NodeService.kt").readText()
+
+        assertTrue(strings.contains("logs_export_diagnostics"))
+        assertTrue(strings.contains("diagnostics_export_complete"))
+        assertTrue(logsScreen.contains("onExportDiagnostics"))
+        assertTrue(mainActivity.contains("diagnosticExportLauncher"))
+        assertTrue(viewModel.contains("exportDiagnostics"))
+        assertTrue(nodeService.contains("unexpected exit"))
     }
 
     @Test

@@ -179,6 +179,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun exportDiagnostics(
+        uri: Uri,
+        appVersion: String,
+        stLabel: String,
+        nodeLabel: String,
+        status: NodeStatus
+    ) {
+        val application = getApplication<Application>()
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val paths = AppPaths(application)
+                    val output = application.contentResolver.openOutputStream(uri)
+                        ?: throw IllegalStateException(application.getString(R.string.diagnostics_export_open_failed))
+                    output.use { stream ->
+                        DiagnosticExporter.export(
+                            DiagnosticExportRequest(
+                                appVersion = appVersion,
+                                stLabel = stLabel,
+                                nodeLabel = nodeLabel,
+                                generatedAtEpochMs = System.currentTimeMillis(),
+                                status = status,
+                                logsDir = paths.logsDir,
+                                configFile = paths.configFile,
+                                stDir = paths.stDir,
+                                dataDir = paths.dataDir,
+                                outputStream = stream
+                            )
+                        )
+                    }
+                }
+            }
+            result
+                .onSuccess { postUserMessage(application.getString(R.string.diagnostics_export_complete)) }
+                .onFailure { error ->
+                    postUserMessage(
+                        application.getString(
+                            R.string.diagnostics_export_failed,
+                            error.message ?: application.getString(R.string.unknown_error)
+                        )
+                    )
+                }
+        }
+    }
+
     fun installCustomZip(uri: Uri) {
         customInstallManager.installCustomZip(uri)
     }
