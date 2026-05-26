@@ -130,10 +130,10 @@ fun CharacterListScreen(
                     client.importCharacter(document.fileName, document.bytes)
                 }
             }.onSuccess {
-                onShowMessage("Character import complete.")
+                onShowMessage(context.getString(R.string.character_import_success))
                 refreshKey++
             }.onFailure { error ->
-                onShowMessage(error.message ?: "Unable to import character")
+                onShowMessage(error.message ?: context.getString(R.string.character_import_failed))
             }
         }
     }
@@ -148,7 +148,7 @@ fun CharacterListScreen(
             val characters = TavernCoreClient(baseUrl = baseUrl).listCharacters()
             CharacterListLoadState(characters = characters)
         }.getOrElse { error ->
-            CharacterListLoadState(error = error.message ?: "Unable to load characters")
+            CharacterListLoadState(error = error.message ?: context.getString(R.string.character_list_load_failed))
         }
     }
 
@@ -189,10 +189,10 @@ fun CharacterListScreen(
                             runCatching {
                                 TavernCoreClient(baseUrl = baseUrl).deleteCharacter(target, removeChats)
                             }.onSuccess {
-                                onShowMessage("Character deleted.")
+                                onShowMessage(context.getString(R.string.character_delete_success))
                                 refreshKey++
                             }.onFailure { error ->
-                                onShowMessage(error.message ?: "Unable to delete character")
+                                onShowMessage(error.message ?: context.getString(R.string.character_delete_failed))
                             }
                         }
                     }
@@ -351,10 +351,10 @@ fun CharacterListScreen(
                             runCatching {
                                 TavernCoreClient(baseUrl = baseUrl).duplicateCharacter(character.id)
                             }.onSuccess {
-                                onShowMessage("Character duplicated.")
+                                onShowMessage(context.getString(R.string.character_duplicate_success))
                                 refreshKey++
                             }.onFailure { error ->
-                                onShowMessage(error.message ?: "Unable to duplicate character")
+                                onShowMessage(error.message ?: context.getString(R.string.character_duplicate_failed))
                             }
                         }
                     },

@@ -183,7 +183,7 @@ fun CharacterEditScreen(
         }.onSuccess { detail ->
             draft = detail.toDraft()
         }.onFailure { error ->
-            onShowMessage(error.message ?: "Unable to load character")
+            onShowMessage(error.messageOr(context, R.string.character_load_failed))
         }
         loading = false
     }
@@ -216,6 +216,7 @@ fun CharacterEditScreen(
                         pendingDelete = false
                         deleteChats = false
                         deleteCharacter(
+                            context = context,
                             draft = draft,
                             baseUrl = baseUrl,
                             deleteChats = removeChats,
@@ -275,6 +276,7 @@ fun CharacterEditScreen(
                     enabled = serverRunning && !loading && !saving,
                     onClick = {
                         saveCharacter(
+                            context = context,
                             draft = draft,
                             baseUrl = baseUrl,
                             onShowMessage = onShowMessage,
@@ -318,6 +320,7 @@ fun CharacterEditScreen(
                     saving = saving,
                     onRename = {
                         renameCharacter(
+                            context = context,
                             draft = draft,
                             baseUrl = baseUrl,
                             onShowMessage = onShowMessage,
@@ -328,6 +331,7 @@ fun CharacterEditScreen(
                     },
                     onDuplicate = {
                         duplicateCharacter(
+                            context = context,
                             draft = draft,
                             baseUrl = baseUrl,
                             onShowMessage = onShowMessage,
@@ -362,6 +366,7 @@ fun CharacterEditScreen(
                 Button(
                     onClick = {
                         saveCharacter(
+                            context = context,
                             draft = draft,
                             baseUrl = baseUrl,
                             onShowMessage = onShowMessage,
@@ -695,6 +700,7 @@ private fun CharacterDetail.toDraft(): CharacterEditDraft {
 }
 
 private fun saveCharacter(
+    context: Context,
     draft: CharacterEditDraft,
     baseUrl: String,
     onShowMessage: (String) -> Unit,
@@ -704,7 +710,7 @@ private fun saveCharacter(
     scope: kotlinx.coroutines.CoroutineScope
 ) {
     if (draft.name.isBlank()) {
-        onShowMessage("Character name is required.")
+        onShowMessage(context.getString(R.string.character_name_required))
         return
     }
     scope.launch {
@@ -718,10 +724,10 @@ private fun saveCharacter(
                 draft.avatar.orEmpty()
             }
         }.onSuccess { avatar ->
-            onShowMessage("Character saved.")
+            onShowMessage(context.getString(R.string.character_save_success))
             onSaved(avatar)
         }.onFailure { error ->
-            onShowMessage(error.message ?: "Unable to save character")
+            onShowMessage(error.messageOr(context, R.string.character_save_failed))
         }
         onSavingChanged(false)
     }
@@ -738,7 +744,7 @@ private fun updateCharacterAvatar(
 ) {
     val avatar = draft.avatar?.takeIf { it.isNotBlank() }
     if (avatar == null) {
-        onShowMessage("Save the character before changing its avatar.")
+        onShowMessage(context.getString(R.string.character_save_before_avatar))
         return
     }
     scope.launch {
@@ -747,9 +753,9 @@ private fun updateCharacterAvatar(
             val document = context.readPickedDocument(uri)
             TavernCoreClient(baseUrl = baseUrl).updateCharacterAvatar(avatar, document.fileName, document.bytes)
         }.onSuccess {
-            onShowMessage("Avatar updated.")
+            onShowMessage(context.getString(R.string.character_avatar_success))
         }.onFailure { error ->
-            onShowMessage(error.message ?: "Unable to update avatar")
+            onShowMessage(error.messageOr(context, R.string.character_avatar_failed))
         }
         onSavingChanged(false)
     }
@@ -767,7 +773,7 @@ private fun exportCharacter(
 ) {
     val avatar = draft.avatar?.takeIf { it.isNotBlank() }
     if (avatar == null) {
-        onShowMessage("Save the character before exporting it.")
+        onShowMessage(context.getString(R.string.character_save_before_export))
         return
     }
     scope.launch {
@@ -776,9 +782,9 @@ private fun exportCharacter(
             val file = TavernCoreClient(baseUrl = baseUrl).exportCharacter(avatar, format)
             context.writePickedDocument(uri, file.bytes)
         }.onSuccess {
-            onShowMessage("Character exported.")
+            onShowMessage(context.getString(R.string.character_export_success))
         }.onFailure { error ->
-            onShowMessage(error.message ?: "Unable to export character")
+            onShowMessage(error.messageOr(context, R.string.character_export_failed))
         }
         onSavingChanged(false)
     }
@@ -793,6 +799,7 @@ private fun defaultExportFileName(draft: CharacterEditDraft, format: CharacterEx
 }
 
 private fun renameCharacter(
+    context: Context,
     draft: CharacterEditDraft,
     baseUrl: String,
     onShowMessage: (String) -> Unit,
@@ -803,7 +810,7 @@ private fun renameCharacter(
     val avatar = draft.avatar?.takeIf { it.isNotBlank() }
     val newName = draft.name.trim()
     if (avatar == null || newName.isBlank()) {
-        onShowMessage("Character name is required.")
+        onShowMessage(context.getString(R.string.character_name_required))
         return
     }
     scope.launch {
@@ -811,16 +818,17 @@ private fun renameCharacter(
         runCatching {
             TavernCoreClient(baseUrl = baseUrl).renameCharacter(avatar, newName)
         }.onSuccess { newAvatar ->
-            onShowMessage("Character renamed.")
+            onShowMessage(context.getString(R.string.character_rename_success))
             onSaved(newAvatar.ifBlank { avatar })
         }.onFailure { error ->
-            onShowMessage(error.message ?: "Unable to rename character")
+            onShowMessage(error.messageOr(context, R.string.character_rename_failed))
         }
         onSavingChanged(false)
     }
 }
 
 private fun duplicateCharacter(
+    context: Context,
     draft: CharacterEditDraft,
     baseUrl: String,
     onShowMessage: (String) -> Unit,
@@ -830,7 +838,7 @@ private fun duplicateCharacter(
 ) {
     val avatar = draft.avatar?.takeIf { it.isNotBlank() }
     if (avatar == null) {
-        onShowMessage("Save the character before duplicating it.")
+        onShowMessage(context.getString(R.string.character_save_before_duplicate))
         return
     }
     scope.launch {
@@ -838,16 +846,17 @@ private fun duplicateCharacter(
         runCatching {
             TavernCoreClient(baseUrl = baseUrl).duplicateCharacter(avatar)
         }.onSuccess { newAvatar ->
-            onShowMessage("Character duplicated.")
+            onShowMessage(context.getString(R.string.character_duplicate_success))
             onSaved(newAvatar.ifBlank { avatar })
         }.onFailure { error ->
-            onShowMessage(error.message ?: "Unable to duplicate character")
+            onShowMessage(error.messageOr(context, R.string.character_duplicate_failed))
         }
         onSavingChanged(false)
     }
 }
 
 private fun deleteCharacter(
+    context: Context,
     draft: CharacterEditDraft,
     baseUrl: String,
     deleteChats: Boolean,
@@ -858,7 +867,7 @@ private fun deleteCharacter(
 ) {
     val avatar = draft.avatar?.takeIf { it.isNotBlank() }
     if (avatar == null) {
-        onShowMessage("Save the character before deleting it.")
+        onShowMessage(context.getString(R.string.character_save_before_delete))
         return
     }
     scope.launch {
@@ -866,11 +875,15 @@ private fun deleteCharacter(
         runCatching {
             TavernCoreClient(baseUrl = baseUrl).deleteCharacter(avatar, deleteChats)
         }.onSuccess {
-            onShowMessage("Character deleted.")
+            onShowMessage(context.getString(R.string.character_delete_success))
             onDeleted()
         }.onFailure { error ->
-            onShowMessage(error.message ?: "Unable to delete character")
+            onShowMessage(error.messageOr(context, R.string.character_delete_failed))
         }
         onSavingChanged(false)
     }
+}
+
+private fun Throwable.messageOr(context: Context, fallbackResId: Int): String {
+    return message ?: context.getString(fallbackResId)
 }

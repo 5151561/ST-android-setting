@@ -1,6 +1,7 @@
 package io.github.sanitised.st.ui.screens
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -65,5 +66,65 @@ class NativeHubScreensContractTest {
         assertTrue(strings.contains("character_edit_depth_prompt"))
         assertTrue(strings.contains("character_edit_personality"))
         assertTrue(strings.contains("character_edit_scenario"))
+    }
+
+    @Test
+    fun androidLocalesExposeEnglishAndSimplifiedChinese() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        val localeConfig = File("src/main/res/xml/locales_config.xml")
+
+        assertTrue(manifest.contains("android:localeConfig=\"@xml/locales_config\""))
+        assertTrue(localeConfig.exists())
+
+        val configText = localeConfig.readText()
+        assertTrue(configText.contains("android:name=\"en\""))
+        assertTrue(configText.contains("android:name=\"zh-CN\""))
+    }
+
+    @Test
+    fun simplifiedChineseStringsMatchDefaultKeysAndPlaceholders() {
+        val defaultStrings = readStringResources(File("src/main/res/values/strings.xml"))
+        val chineseStrings = readStringResources(File("src/main/res/values-zh-rCN/strings.xml"))
+
+        assertEquals(defaultStrings.keys, chineseStrings.keys)
+        defaultStrings.forEach { (key, value) ->
+            assertEquals("placeholder mismatch for $key", placeholders(value), placeholders(chineseStrings.getValue(key)))
+        }
+
+        assertEquals("返回", chineseStrings.getValue("back"))
+        assertEquals("设置", chineseStrings.getValue("settings_title"))
+        assertEquals("角色", chineseStrings.getValue("character_hub_title"))
+    }
+
+    @Test
+    fun characterManagementDoesNotAddUserVisibleEnglishLiterals() {
+        val files = listOf(
+            File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt"),
+            File("src/main/java/io/github/sanitised/st/ui/screens/CharacterEditScreen.kt")
+        )
+        val userVisibleEnglish = Regex(
+            """(onShowMessage\(".*[A-Za-z].*"\)|error\.message \?: ".*[A-Za-z].*"|Text\((?:text = )?".*[A-Za-z].*"\)|contentDescription = ".*[A-Za-z].*")"""
+        )
+        val matches = files.flatMap { file ->
+            file.readLines().mapIndexedNotNull { index, line ->
+                if (userVisibleEnglish.containsMatchIn(line)) "${file.name}:${index + 1}: ${line.trim()}" else null
+            }
+        }
+
+        assertTrue("user-visible English literals found:\n${matches.joinToString("\n")}", matches.isEmpty())
+    }
+
+    private fun readStringResources(file: File): Map<String, String> {
+        assertTrue("${file.path} should exist", file.exists())
+        val stringPattern = Regex("""<string\s+name="([^"]+)"[^>]*>(.*?)</string>""", RegexOption.DOT_MATCHES_ALL)
+        return stringPattern.findAll(file.readText())
+            .associate { match -> match.groupValues[1] to match.groupValues[2] }
+    }
+
+    private fun placeholders(value: String): List<String> {
+        return Regex("""%(\d+\$)?[sd]|%%""")
+            .findAll(value)
+            .map { it.value }
+            .toList()
     }
 }
