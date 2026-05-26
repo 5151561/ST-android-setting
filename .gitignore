@@ -9,6 +9,7 @@ local.properties
 
 # Log/OS Files
 *.log
+.DS_Store
 
 # Android Studio generated files and folders
 captures/
@@ -39,6 +40,7 @@ google-services.json
 # Node/NDK build outputs
 /out/
 /app/src/main/jniLibs/**/*.so
+/app/src/main/assets/node_payload/bin/**/*.so
 /app/src/main/assets/node_payload/bin/**/node
 /app/src/main/assets/node_payload/st_bundle.tar
 /app/src/main/assets/node_payload/st_bundle.tar.gz

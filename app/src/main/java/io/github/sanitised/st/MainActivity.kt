@@ -22,8 +22,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -34,21 +40,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import io.github.sanitised.st.ui.navigation.BottomNavItem
+import io.github.sanitised.st.ui.navigation.PlaceholderScreen
+import io.github.sanitised.st.ui.navigation.STBottomBar
+import io.github.sanitised.st.ui.navigation.STRoutes
+import io.github.sanitised.st.ui.theme.STAppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -59,88 +73,21 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import org.yaml.snakeyaml.Yaml
 
-private sealed interface AppScreen {
-    object Home : AppScreen
-    object Logs : AppScreen
-    object Config : AppScreen
-    object Legal : AppScreen
-    object Settings : AppScreen
-    object ManageSt : AppScreen
-    data class License(val doc: LegalDoc) : AppScreen
-}
+private val bottomNavItems = listOf(
+    BottomNavItem(STRoutes.HOME, "首页", Icons.Filled.Home),
+    BottomNavItem(STRoutes.CHAT, "聊天", Icons.AutoMirrored.Filled.Chat),
+    BottomNavItem(STRoutes.CHARACTERS, "角色", Icons.Filled.Person),
+    BottomNavItem(STRoutes.TOOLS, "工具", Icons.Filled.Build),
+    BottomNavItem(STRoutes.SETTINGS, "设置", Icons.Filled.Settings)
+)
 
-private sealed interface PendingDialog {
-    object ResetToDefault : PendingDialog
-    object RemoveUserData : PendingDialog
-    data class ConfirmImport(val uri: Uri) : PendingDialog
-}
-
-private val LightAppColorScheme = lightColorScheme()
-private val DarkAppColorScheme = darkColorScheme()
-
-private fun ThemeMode.shouldUseDarkTheme(systemInDarkTheme: Boolean): Boolean {
-    return when (this) {
-        ThemeMode.AUTO -> systemInDarkTheme
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
-    }
-}
-
-private fun appScreenStateSaver(legalDocs: List<LegalDoc>): Saver<AppScreen, String> {
-    return Saver(
-        save = { screen ->
-            when (screen) {
-                AppScreen.Home -> "home"
-                AppScreen.Logs -> "logs"
-                AppScreen.Config -> "config"
-                AppScreen.Legal -> "legal"
-                AppScreen.Settings -> "settings"
-                AppScreen.ManageSt -> "manage-st"
-                is AppScreen.License -> "license:${screen.doc.assetPath}"
-            }
-        },
-        restore = { key ->
-            when {
-                key == "home" -> AppScreen.Home
-                key == "logs" -> AppScreen.Logs
-                key == "config" -> AppScreen.Config
-                key == "legal" -> AppScreen.Legal
-                key == "settings" -> AppScreen.Settings
-                key == "manage-st" -> AppScreen.ManageSt
-                key.startsWith("license:") -> {
-                    val assetPath = key.removePrefix("license:")
-                    val doc = legalDocs.firstOrNull { it.assetPath == assetPath }
-                    if (doc != null) AppScreen.License(doc) else AppScreen.Legal
-                }
-                else -> AppScreen.Home
-            }
-        }
-    )
-}
-
-private fun pendingDialogStateSaver(): Saver<PendingDialog?, String> {
-    return Saver(
-        save = { dialog ->
-            when (dialog) {
-                null -> "none"
-                PendingDialog.ResetToDefault -> "reset"
-                PendingDialog.RemoveUserData -> "remove-data"
-                is PendingDialog.ConfirmImport -> "import:${dialog.uri}"
-            }
-        },
-        restore = { key ->
-            when {
-                key == "none" -> null
-                key == "reset" -> PendingDialog.ResetToDefault
-                key == "remove-data" -> PendingDialog.RemoveUserData
-                key.startsWith("import:") -> PendingDialog.ConfirmImport(
-                    Uri.parse(key.removePrefix("import:"))
-                )
-                else -> null
-            }
-        }
-    )
-}
+private val mainTabRoutes = setOf(
+    STRoutes.HOME,
+    STRoutes.CHAT,
+    STRoutes.CHARACTERS,
+    STRoutes.TOOLS,
+    STRoutes.SETTINGS
+)
 
 class MainActivity : ComponentActivity() {
     private val nodeServiceState = mutableStateOf<NodeService?>(null)
@@ -187,6 +134,10 @@ class MainActivity : ComponentActivity() {
         val symlinkSupported = isSymlinkSupported()
         setContent {
             val viewModel: MainViewModel = viewModel()
+            val navController = rememberNavController()
+            val navBackStackEntry by navController.currentBackStackEntryAsState()
+            val currentRoute = navBackStackEntry?.destination?.route
+
             val legalDocs = remember {
                 listOf(
                     LegalDoc(
@@ -210,9 +161,6 @@ class MainActivity : ComponentActivity() {
                 )
             }
             val statusState = remember { mutableStateOf(NodeStatus(NodeState.STOPPED, "Idle")) }
-            val currentScreen = rememberSaveable(stateSaver = appScreenStateSaver(legalDocs)) {
-                mutableStateOf<AppScreen>(AppScreen.Home)
-            }
             val autoOpenBrowserTriggeredForCurrentRun = rememberSaveable { mutableStateOf(false) }
             val stdoutState = remember { mutableStateOf("") }
             val stderrState = remember { mutableStateOf("") }
@@ -261,10 +209,10 @@ class MainActivity : ComponentActivity() {
                 onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
 
-            LaunchedEffect(currentScreen.value) {
-                if (currentScreen.value !is AppScreen.Logs) return@LaunchedEffect
+            LaunchedEffect(currentRoute) {
+                if (currentRoute != STRoutes.LOGS) return@LaunchedEffect
                 val paths = AppPaths(this@MainActivity)
-                while (currentScreen.value is AppScreen.Logs) {
+                while (true) {
                     val logsDir = paths.logsDir
                     val stdoutFile = File(logsDir, "node_stdout.log")
                     val stderrFile = File(logsDir, "node_stderr.log")
@@ -307,7 +255,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Launchers must live at the top level, outside any conditional branches
             val exportLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.CreateDocument("application/gzip")
             ) { uri ->
@@ -344,219 +291,284 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            MaterialTheme(
-                colorScheme = if (useDarkTheme) {
-                    DarkAppColorScheme
-                } else {
-                    LightAppColorScheme
-                }
-            ) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    when (val screen = currentScreen.value) {
-                    AppScreen.Logs -> {
-                        BackHandler { currentScreen.value = AppScreen.Home }
-                        LogsScreen(
-                            onBack = { currentScreen.value = AppScreen.Home },
-                            stdoutLog = stdoutState.value,
-                            stderrLog = stderrState.value,
-                            serviceLog = serviceState.value
-                        )
-                    }
-
-                    is AppScreen.License -> {
-                        BackHandler { currentScreen.value = AppScreen.Legal }
-                        LicenseTextScreen(
-                            onBack = { currentScreen.value = AppScreen.Legal },
-                            doc = screen.doc
-                        )
-                    }
-
-                    AppScreen.Legal -> {
-                        BackHandler { currentScreen.value = AppScreen.Home }
-                        LegalScreen(
-                            onBack = { currentScreen.value = AppScreen.Home },
-                            onOpenUrl = { url -> openUrl(url) },
-                            legalDocs = legalDocs,
-                            onOpenLicense = { doc -> currentScreen.value = AppScreen.License(doc) }
-                        )
-                    }
-
-                    AppScreen.Config -> {
-                        ConfigScreen(
-                            onBack = { currentScreen.value = AppScreen.Home },
-                            onOpenDocs = { openConfigDocs() },
-                            canEdit = statusState.value.state == NodeState.STOPPED || statusState.value.state == NodeState.ERROR,
-                            configFile = AppPaths(this@MainActivity).configFile,
-                            onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                        )
-                    }
-
-                    AppScreen.Settings -> {
-                        BackHandler { currentScreen.value = AppScreen.Home }
-                        SettingsScreen(
-                            onBack = { currentScreen.value = AppScreen.Home },
-                            autoCheckEnabled = viewModel.autoCheckForUpdates.value,
-                            onAutoCheckChanged = { enabled -> viewModel.setAutoCheckForUpdates(enabled) },
-                            autoOpenBrowserEnabled = viewModel.autoOpenBrowserWhenReady.value,
-                            onAutoOpenBrowserChanged = { enabled -> viewModel.setAutoOpenBrowserWhenReady(enabled) },
-                            themeMode = themeMode,
-                            onThemeModeChanged = { mode -> viewModel.setThemeMode(mode) },
-                            isBatteryUnrestricted = batteryUnrestrictedState.value,
-                            onOpenBatterySettings = { openBatteryOptimizationSettings() },
-                            channel = viewModel.updateChannel.value,
-                            onChannelChanged = { channel -> viewModel.setUpdateChannel(channel) },
-                            onCheckNow = { viewModel.checkForUpdates("manual") },
-                            isChecking = viewModel.isCheckingForUpdates.value,
-                            showUpdatePrompt = showUpdatePrompt,
-                            updateVersionLabel = viewModel.availableUpdateVersionLabel(),
-                            updateDetails = viewModel.updateBannerMessage.value,
-                            isDownloadingUpdate = viewModel.isDownloadingUpdate.value,
-                            downloadProgressPercent = viewModel.downloadProgressPercent.value,
-                            isUpdateReadyToInstall = isUpdateReadyToInstall,
-                            onUpdatePrimary = {
-                                if (isUpdateReadyToInstall) {
-                                    viewModel.installDownloadedUpdate(this@MainActivity)
-                                } else {
-                                    viewModel.startAvailableUpdateDownload()
+            STAppTheme(useDarkTheme = useDarkTheme) {
+                Scaffold(
+                    bottomBar = {
+                        STBottomBar(
+                            items = bottomNavItems,
+                            currentRoute = currentRoute,
+                            onNavigate = { route ->
+                                navController.navigate(route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                            },
-                            onUpdateDismiss = { viewModel.dismissAvailableUpdatePrompt() },
-                            onCancelUpdateDownload = { viewModel.cancelUpdateDownload() }
+                            }
+                        )
+                    },
+                    snackbarHost = {
+                        SnackbarHost(
+                            hostState = snackbarHostState,
+                            modifier = Modifier
+                                .statusBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
                         )
                     }
-
-                    AppScreen.ManageSt -> {
-                        BackHandler { currentScreen.value = AppScreen.Home }
-                        ManageStScreen(
-                            onBack = { currentScreen.value = AppScreen.Home },
-                            isCustomInstalled = viewModel.isCustomInstalled.value,
-                            customInstalledLabel = viewModel.customInstallLabel.value,
-                            serverRunning = statusState.value.state == NodeState.RUNNING ||
-                                    statusState.value.state == NodeState.STARTING,
-                            busyMessage = viewModel.busyMessage,
-                            onExport = triggerExport,
-                            onImport = triggerImport,
-                            customRepoInput = viewModel.customRepoInput.value,
-                            onCustomRepoInputChanged = { viewModel.setCustomRepoInput(it) },
-                            onLoadRepoRefs = { viewModel.loadCustomRepoRefs() },
-                            isLoadingRepoRefs = viewModel.isLoadingCustomRefs.value,
-                            customRepoValidationMessage = viewModel.customRepoValidationMessage.value,
-                            featuredRefs = viewModel.customFeaturedRefs.value,
-                            allRefs = viewModel.customAllRefs.value,
-                            selectedRefKey = viewModel.selectedCustomRefKey.value,
-                            onSelectRepoRef = { key -> viewModel.selectCustomRepoRef(key) },
-                            onDownloadAndInstallRef = { viewModel.startCustomRepoInstall() },
-                            customInstallValidationMessage = viewModel.customInstallValidationMessage.value,
-                            showBackupOperationCard = viewModel.backupOperationCard.value.visible,
-                            backupOperationTitle = viewModel.backupOperationCard.value.title,
-                            backupOperationDetails = viewModel.backupOperationCard.value.details,
-                            backupOperationProgressPercent = viewModel.backupOperationCard.value.progressPercent,
-                            backupOperationAnchor = viewModel.backupOperationCardAnchor.value,
-                            showCustomOperationCard = viewModel.customOperationCard.value.visible,
-                            customOperationTitle = viewModel.customOperationCard.value.title,
-                            customOperationDetails = viewModel.customOperationCard.value.details,
-                            customOperationProgressPercent = viewModel.customOperationCard.value.progressPercent,
-                            customOperationCancelable = viewModel.customOperationCard.value.cancelable,
-                            customOperationAnchor = viewModel.customOperationCardAnchor.value,
-                            onCancelCustomOperation = { viewModel.cancelCustomSourceDownload() },
-                            onLoadCustomZip = {
-                                customZipLauncher.launch(
-                                    arrayOf(
-                                        "application/zip",
-                                        "application/x-zip-compressed",
-                                        "application/octet-stream"
-                                    )
+                ) { innerPadding ->
+                    Box(modifier = Modifier.padding(innerPadding)) {
+                        NavHost(
+                            navController = navController,
+                            startDestination = STRoutes.HOME
+                        ) {
+                            composable(STRoutes.HOME) {
+                                STAndroidApp(
+                                    status = statusState.value,
+                                    busyMessage = viewModel.busyMessage,
+                                    onStart = { startNode() },
+                                    onStop = { stopNode() },
+                                    onOpen = { openNodeUi(statusState.value.port) },
+                                    autoOpenBrowserWhenReady = viewModel.autoOpenBrowserWhenReady.value,
+                                    autoOpenBrowserTriggeredForCurrentRun = autoOpenBrowserTriggeredForCurrentRun.value,
+                                    onAutoOpenBrowserTriggered = { autoOpenBrowserTriggeredForCurrentRun.value = true },
+                                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
+                                    onOpenNotificationSettings = { openNotificationSettings() },
+                                    onOpenBatterySettings = { openBatteryOptimizationSettings() },
+                                    onEditConfig = { navController.navigate(STRoutes.CONFIG) },
+                                    showNotificationPrompt = !notificationGrantedState.value,
+                                    showBatteryPrompt = showBatteryPrompt,
+                                    versionLabel = versionLabel,
+                                    stLabel = if (viewModel.isCustomInstalled.value) {
+                                        val customLabel = viewModel.customInstallLabel.value
+                                        if (customLabel.isNullOrBlank()) {
+                                            getString(R.string.sillytavern_custom_version)
+                                        } else {
+                                            getString(R.string.sillytavern_custom_with_label, customLabel)
+                                        }
+                                    } else stLabel,
+                                    nodeLabel = nodeLabel,
+                                    symlinkSupported = symlinkSupported,
+                                    onShowLegal = { navController.navigate(STRoutes.LEGAL) },
+                                    showAutoCheckOptInPrompt = showAutoCheckOptInPrompt,
+                                    onEnableAutoCheck = { viewModel.acceptAutoCheckOptInPrompt() },
+                                    onLaterAutoCheck = { viewModel.dismissAutoCheckOptInPrompt() },
+                                    onDismissBatteryPrompt = { viewModel.dismissBatteryPrompt() },
+                                    showUpdatePrompt = showUpdatePrompt,
+                                    updateVersionLabel = viewModel.availableUpdateVersionLabel(),
+                                    updateDetails = viewModel.updateBannerMessage.value,
+                                    isDownloadingUpdate = viewModel.isDownloadingUpdate.value,
+                                    downloadProgressPercent = viewModel.downloadProgressPercent.value,
+                                    isUpdateReadyToInstall = isUpdateReadyToInstall,
+                                    onUpdatePrimary = {
+                                        if (isUpdateReadyToInstall) {
+                                            viewModel.installDownloadedUpdate(this@MainActivity)
+                                        } else {
+                                            viewModel.startAvailableUpdateDownload()
+                                        }
+                                    },
+                                    onUpdateDismiss = { viewModel.dismissAvailableUpdatePrompt() },
+                                    onCancelUpdateDownload = { viewModel.cancelUpdateDownload() },
+                                    showBackupOperationCard = viewModel.backupOperationCard.value.visible,
+                                    backupOperationTitle = viewModel.backupOperationCard.value.title,
+                                    backupOperationDetails = viewModel.backupOperationCard.value.details,
+                                    backupOperationProgressPercent = viewModel.backupOperationCard.value.progressPercent,
+                                    showCustomOperationCard = viewModel.customOperationCard.value.visible,
+                                    customOperationTitle = viewModel.customOperationCard.value.title,
+                                    customOperationDetails = viewModel.customOperationCard.value.details,
+                                    customOperationProgressPercent = viewModel.customOperationCard.value.progressPercent,
+                                    customOperationCancelable = viewModel.customOperationCard.value.cancelable,
+                                    onCancelCustomOperation = { viewModel.cancelCustomSourceDownload() },
+                                    onShowSettings = {
+                                        navController.navigate(STRoutes.SETTINGS) {
+                                            popUpTo(navController.graph.findStartDestination().id) {
+                                                saveState = true
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    },
+                                    onShowManageSt = { navController.navigate(STRoutes.MANAGE_ST) }
                                 )
-                            },
-                            onResetToDefault = { pendingDialogState.value = PendingDialog.ResetToDefault },
-                            onRemoveUserData = { pendingDialogState.value = PendingDialog.RemoveUserData }
-                        )
+                            }
+
+                            composable(STRoutes.CHAT) {
+                                PlaceholderScreen(
+                                    title = "聊天",
+                                    subtitle = "需要 TavernApiAdapter 接入 Core API（Phase 2）",
+                                    icon = Icons.AutoMirrored.Filled.Chat
+                                )
+                            }
+
+                            composable(STRoutes.CHARACTERS) {
+                                PlaceholderScreen(
+                                    title = "角色管理",
+                                    subtitle = "需要 TavernApiAdapter 接入 Core API（Phase 2）",
+                                    icon = Icons.Filled.Person
+                                )
+                            }
+
+                            composable(STRoutes.TOOLS) {
+                                PlaceholderScreen(
+                                    title = "工具中心",
+                                    subtitle = "世界书、预设、Prompt Manager 等（Phase 3）",
+                                    icon = Icons.Filled.Build
+                                )
+                            }
+
+                            composable(STRoutes.SETTINGS) {
+                                SettingsScreen(
+                                    onBack = { navController.popBackStack() },
+                                    autoCheckEnabled = viewModel.autoCheckForUpdates.value,
+                                    onAutoCheckChanged = { enabled -> viewModel.setAutoCheckForUpdates(enabled) },
+                                    autoOpenBrowserEnabled = viewModel.autoOpenBrowserWhenReady.value,
+                                    onAutoOpenBrowserChanged = { enabled -> viewModel.setAutoOpenBrowserWhenReady(enabled) },
+                                    themeMode = themeMode,
+                                    onThemeModeChanged = { mode -> viewModel.setThemeMode(mode) },
+                                    isBatteryUnrestricted = batteryUnrestrictedState.value,
+                                    onOpenBatterySettings = { openBatteryOptimizationSettings() },
+                                    channel = viewModel.updateChannel.value,
+                                    onChannelChanged = { channel -> viewModel.setUpdateChannel(channel) },
+                                    onCheckNow = { viewModel.checkForUpdates("manual") },
+                                    isChecking = viewModel.isCheckingForUpdates.value,
+                                    showUpdatePrompt = showUpdatePrompt,
+                                    updateVersionLabel = viewModel.availableUpdateVersionLabel(),
+                                    updateDetails = viewModel.updateBannerMessage.value,
+                                    isDownloadingUpdate = viewModel.isDownloadingUpdate.value,
+                                    downloadProgressPercent = viewModel.downloadProgressPercent.value,
+                                    isUpdateReadyToInstall = isUpdateReadyToInstall,
+                                    onUpdatePrimary = {
+                                        if (isUpdateReadyToInstall) {
+                                            viewModel.installDownloadedUpdate(this@MainActivity)
+                                        } else {
+                                            viewModel.startAvailableUpdateDownload()
+                                        }
+                                    },
+                                    onUpdateDismiss = { viewModel.dismissAvailableUpdatePrompt() },
+                                    onCancelUpdateDownload = { viewModel.cancelUpdateDownload() }
+                                )
+                            }
+
+                            composable(STRoutes.LOGS) {
+                                BackHandler { navController.popBackStack() }
+                                LogsScreen(
+                                    onBack = { navController.popBackStack() },
+                                    stdoutLog = stdoutState.value,
+                                    stderrLog = stderrState.value,
+                                    serviceLog = serviceState.value
+                                )
+                            }
+
+                            composable(STRoutes.CONFIG) {
+                                ConfigScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenDocs = { openConfigDocs() },
+                                    canEdit = statusState.value.state == NodeState.STOPPED || statusState.value.state == NodeState.ERROR,
+                                    configFile = AppPaths(this@MainActivity).configFile,
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.LEGAL) {
+                                BackHandler { navController.popBackStack() }
+                                LegalScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenUrl = { url -> openUrl(url) },
+                                    legalDocs = legalDocs,
+                                    onOpenLicense = { doc ->
+                                        navController.navigate(
+                                            STRoutes.LICENSE.replace(
+                                                "{assetPath}",
+                                                Uri.encode(doc.assetPath)
+                                            )
+                                        )
+                                    }
+                                )
+                            }
+
+                            composable(STRoutes.LICENSE) { backStackEntry ->
+                                val assetPath = backStackEntry.arguments?.getString("assetPath")
+                                val doc = assetPath?.let { path ->
+                                    val decoded = Uri.decode(path)
+                                    legalDocs.firstOrNull { it.assetPath == decoded }
+                                }
+                                if (doc != null) {
+                                    BackHandler { navController.popBackStack() }
+                                    LicenseTextScreen(
+                                        onBack = { navController.popBackStack() },
+                                        doc = doc
+                                    )
+                                }
+                            }
+
+                            composable(STRoutes.MANAGE_ST) {
+                                BackHandler { navController.popBackStack() }
+                                ManageStScreen(
+                                    onBack = { navController.popBackStack() },
+                                    isCustomInstalled = viewModel.isCustomInstalled.value,
+                                    customInstalledLabel = viewModel.customInstallLabel.value,
+                                    serverRunning = statusState.value.state == NodeState.RUNNING ||
+                                            statusState.value.state == NodeState.STARTING,
+                                    busyMessage = viewModel.busyMessage,
+                                    onExport = triggerExport,
+                                    onImport = triggerImport,
+                                    customRepoInput = viewModel.customRepoInput.value,
+                                    onCustomRepoInputChanged = { viewModel.setCustomRepoInput(it) },
+                                    onLoadRepoRefs = { viewModel.loadCustomRepoRefs() },
+                                    isLoadingRepoRefs = viewModel.isLoadingCustomRefs.value,
+                                    customRepoValidationMessage = viewModel.customRepoValidationMessage.value,
+                                    featuredRefs = viewModel.customFeaturedRefs.value,
+                                    allRefs = viewModel.customAllRefs.value,
+                                    selectedRefKey = viewModel.selectedCustomRefKey.value,
+                                    onSelectRepoRef = { key -> viewModel.selectCustomRepoRef(key) },
+                                    onDownloadAndInstallRef = { viewModel.startCustomRepoInstall() },
+                                    customInstallValidationMessage = viewModel.customInstallValidationMessage.value,
+                                    showBackupOperationCard = viewModel.backupOperationCard.value.visible,
+                                    backupOperationTitle = viewModel.backupOperationCard.value.title,
+                                    backupOperationDetails = viewModel.backupOperationCard.value.details,
+                                    backupOperationProgressPercent = viewModel.backupOperationCard.value.progressPercent,
+                                    backupOperationAnchor = viewModel.backupOperationCardAnchor.value,
+                                    showCustomOperationCard = viewModel.customOperationCard.value.visible,
+                                    customOperationTitle = viewModel.customOperationCard.value.title,
+                                    customOperationDetails = viewModel.customOperationCard.value.details,
+                                    customOperationProgressPercent = viewModel.customOperationCard.value.progressPercent,
+                                    customOperationCancelable = viewModel.customOperationCard.value.cancelable,
+                                    customOperationAnchor = viewModel.customOperationCardAnchor.value,
+                                    onCancelCustomOperation = { viewModel.cancelCustomSourceDownload() },
+                                    onLoadCustomZip = {
+                                        customZipLauncher.launch(
+                                            arrayOf(
+                                                "application/zip",
+                                                "application/x-zip-compressed",
+                                                "application/octet-stream"
+                                            )
+                                        )
+                                    },
+                                    onResetToDefault = { pendingDialogState.value = PendingDialog.ResetToDefault },
+                                    onRemoveUserData = { pendingDialogState.value = PendingDialog.RemoveUserData }
+                                )
+                            }
+                        }
                     }
 
-                    AppScreen.Home -> {
-                        STAndroidApp(
-                            status = statusState.value,
-                            busyMessage = viewModel.busyMessage,
-                            onStart = { startNode() },
-                            onStop = { stopNode() },
-                            onOpen = { openNodeUi(statusState.value.port) },
-                            autoOpenBrowserWhenReady = viewModel.autoOpenBrowserWhenReady.value,
-                            autoOpenBrowserTriggeredForCurrentRun = autoOpenBrowserTriggeredForCurrentRun.value,
-                            onAutoOpenBrowserTriggered = { autoOpenBrowserTriggeredForCurrentRun.value = true },
-                            onShowLogs = { currentScreen.value = AppScreen.Logs },
-                            onOpenNotificationSettings = { openNotificationSettings() },
-                            onOpenBatterySettings = { openBatteryOptimizationSettings() },
-                            onEditConfig = { currentScreen.value = AppScreen.Config },
-                            showNotificationPrompt = !notificationGrantedState.value,
-                            showBatteryPrompt = showBatteryPrompt,
-                            versionLabel = versionLabel,
-                            stLabel = if (viewModel.isCustomInstalled.value) {
-                                val customLabel = viewModel.customInstallLabel.value
-                                if (customLabel.isNullOrBlank()) {
-                                    getString(R.string.sillytavern_custom_version)
-                                } else {
-                                    getString(R.string.sillytavern_custom_with_label, customLabel)
-                                }
-                            } else stLabel,
-                            nodeLabel = nodeLabel,
-                            symlinkSupported = symlinkSupported,
-                            onShowLegal = { currentScreen.value = AppScreen.Legal },
-                            showAutoCheckOptInPrompt = showAutoCheckOptInPrompt,
-                            onEnableAutoCheck = { viewModel.acceptAutoCheckOptInPrompt() },
-                            onLaterAutoCheck = { viewModel.dismissAutoCheckOptInPrompt() },
-                            onDismissBatteryPrompt = { viewModel.dismissBatteryPrompt() },
-                            showUpdatePrompt = showUpdatePrompt,
-                            updateVersionLabel = viewModel.availableUpdateVersionLabel(),
-                            updateDetails = viewModel.updateBannerMessage.value,
-                            isDownloadingUpdate = viewModel.isDownloadingUpdate.value,
-                            downloadProgressPercent = viewModel.downloadProgressPercent.value,
-                            isUpdateReadyToInstall = isUpdateReadyToInstall,
-                            onUpdatePrimary = {
-                                if (isUpdateReadyToInstall) {
-                                    viewModel.installDownloadedUpdate(this@MainActivity)
-                                } else {
-                                    viewModel.startAvailableUpdateDownload()
-                                }
-                            },
-                            onUpdateDismiss = { viewModel.dismissAvailableUpdatePrompt() },
-                            onCancelUpdateDownload = { viewModel.cancelUpdateDownload() },
-                            showBackupOperationCard = viewModel.backupOperationCard.value.visible,
-                            backupOperationTitle = viewModel.backupOperationCard.value.title,
-                            backupOperationDetails = viewModel.backupOperationCard.value.details,
-                            backupOperationProgressPercent = viewModel.backupOperationCard.value.progressPercent,
-                            showCustomOperationCard = viewModel.customOperationCard.value.visible,
-                            customOperationTitle = viewModel.customOperationCard.value.title,
-                            customOperationDetails = viewModel.customOperationCard.value.details,
-                            customOperationProgressPercent = viewModel.customOperationCard.value.progressPercent,
-                            customOperationCancelable = viewModel.customOperationCard.value.cancelable,
-                            onCancelCustomOperation = { viewModel.cancelCustomSourceDownload() },
-                            onShowSettings = { currentScreen.value = AppScreen.Settings },
-                            onShowManageSt = { currentScreen.value = AppScreen.ManageSt }
-                        )
-                    }
-                }
-
+                    // Dialogs are rendered above the NavHost
                     when (val dialog = pendingDialogState.value) {
                         PendingDialog.ResetToDefault -> {
                             androidx.compose.material3.AlertDialog(
                                 onDismissRequest = { pendingDialogState.value = null },
-                                title = { Text(text = stringResource(R.string.dialog_reset_title)) },
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.dialog_reset_body)
-                                    )
-                                },
+                                title = { Text(text = getString(R.string.dialog_reset_title)) },
+                                text = { Text(text = getString(R.string.dialog_reset_body)) },
                                 confirmButton = {
                                     Button(onClick = {
                                         pendingDialogState.value = null
                                         viewModel.resetToDefault()
                                     }) {
-                                        Text(text = stringResource(R.string.reset))
+                                        Text(text = getString(R.string.reset))
                                     }
                                 },
                                 dismissButton = {
                                     Button(onClick = { pendingDialogState.value = null }) {
-                                        Text(text = stringResource(R.string.cancel))
+                                        Text(text = getString(R.string.cancel))
                                     }
                                 }
                             )
@@ -565,23 +577,19 @@ class MainActivity : ComponentActivity() {
                         PendingDialog.RemoveUserData -> {
                             androidx.compose.material3.AlertDialog(
                                 onDismissRequest = { pendingDialogState.value = null },
-                                title = { Text(text = stringResource(R.string.dialog_remove_data_title)) },
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.dialog_remove_data_body)
-                                    )
-                                },
+                                title = { Text(text = getString(R.string.dialog_remove_data_title)) },
+                                text = { Text(text = getString(R.string.dialog_remove_data_body)) },
                                 confirmButton = {
                                     Button(onClick = {
                                         pendingDialogState.value = null
                                         viewModel.removeUserData()
                                     }) {
-                                        Text(text = stringResource(R.string.remove))
+                                        Text(text = getString(R.string.remove))
                                     }
                                 },
                                 dismissButton = {
                                     Button(onClick = { pendingDialogState.value = null }) {
-                                        Text(text = stringResource(R.string.cancel))
+                                        Text(text = getString(R.string.cancel))
                                     }
                                 }
                             )
@@ -590,24 +598,20 @@ class MainActivity : ComponentActivity() {
                         is PendingDialog.ConfirmImport -> {
                             androidx.compose.material3.AlertDialog(
                                 onDismissRequest = { pendingDialogState.value = null },
-                                title = { Text(text = stringResource(R.string.dialog_import_title)) },
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.dialog_import_body)
-                                    )
-                                },
+                                title = { Text(text = getString(R.string.dialog_import_title)) },
+                                text = { Text(text = getString(R.string.dialog_import_body)) },
                                 confirmButton = {
                                     Button(onClick = {
                                         val importUri = dialog.uri
                                         pendingDialogState.value = null
                                         viewModel.import(importUri)
                                     }) {
-                                        Text(text = stringResource(R.string.import_action))
+                                        Text(text = getString(R.string.import_action))
                                     }
                                 },
                                 dismissButton = {
                                     Button(onClick = { pendingDialogState.value = null }) {
-                                        Text(text = stringResource(R.string.cancel))
+                                        Text(text = getString(R.string.cancel))
                                     }
                                 }
                             )
@@ -615,14 +619,6 @@ class MainActivity : ComponentActivity() {
 
                         null -> Unit
                     }
-
-                    SnackbarHost(
-                        hostState = snackbarHostState,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .statusBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                    )
                 }
             }
         }
@@ -768,4 +764,42 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+private sealed interface PendingDialog {
+    object ResetToDefault : PendingDialog
+    object RemoveUserData : PendingDialog
+    data class ConfirmImport(val uri: Uri) : PendingDialog
+}
+
+private fun ThemeMode.shouldUseDarkTheme(systemInDarkTheme: Boolean): Boolean {
+    return when (this) {
+        ThemeMode.AUTO -> systemInDarkTheme
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+}
+
+private fun pendingDialogStateSaver(): androidx.compose.runtime.saveable.Saver<PendingDialog?, String> {
+    return androidx.compose.runtime.saveable.Saver(
+        save = { dialog ->
+            when (dialog) {
+                null -> "none"
+                PendingDialog.ResetToDefault -> "reset"
+                PendingDialog.RemoveUserData -> "remove-data"
+                is PendingDialog.ConfirmImport -> "import:${dialog.uri}"
+            }
+        },
+        restore = { key ->
+            when {
+                key == "none" -> null
+                key == "reset" -> PendingDialog.ResetToDefault
+                key == "remove-data" -> PendingDialog.RemoveUserData
+                key.startsWith("import:") -> PendingDialog.ConfirmImport(
+                    Uri.parse(key.removePrefix("import:"))
+                )
+                else -> null
+            }
+        }
+    )
 }

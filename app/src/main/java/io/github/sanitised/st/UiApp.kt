@@ -85,8 +85,7 @@ fun STAndroidApp(
     onShowSettings: () -> Unit,
     onShowManageSt: () -> Unit
 ) {
-    MaterialTheme {
-        val isBusy = busyMessage.isNotBlank()
+    val isBusy = busyMessage.isNotBlank()
         val readyState = remember { mutableStateOf(false) }
         val wasCanOpen = remember { mutableStateOf(false) }
         LaunchedEffect(status.state, status.port) {
@@ -327,7 +326,6 @@ fun STAndroidApp(
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
-    }
 }
 
 private fun probeServer(port: Int): Boolean {
