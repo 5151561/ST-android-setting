@@ -1,6 +1,8 @@
 package io.github.sanitised.st.ui.screens
 
 import io.github.sanitised.st.api.CharacterSummary
+import io.github.sanitised.st.api.STTag
+import io.github.sanitised.st.api.STTagSettings
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -80,6 +82,31 @@ class CharacterFiltersTest {
     }
 
     @Test
+    fun filterCharactersCanLimitToSillyTavernTagMap() {
+        val characters = listOf(
+            CharacterSummary(id = "seraphina.png", name = "Seraphina"),
+            CharacterSummary(id = "rowan.png", name = "Rowan")
+        )
+        val tagSettings = STTagSettings(
+            tags = listOf(STTag(id = "tag-1", name = "Lore")),
+            tagMap = mapOf("seraphina.png" to listOf("tag-1"))
+        )
+
+        assertEquals(
+            listOf("seraphina.png"),
+            filterCharacters(
+                characters = characters,
+                query = "",
+                filter = CharacterListFilter.ALL,
+                sort = CharacterListSort.RECENT,
+                selectedTag = "Lore",
+                selectedTagSource = CharacterTagSource.ST,
+                tagSettings = tagSettings
+            ).map { it.id }
+        )
+    }
+
+    @Test
     fun filterCharactersSupportsOriginalManagerSortOptions() {
         val characters = listOf(
             CharacterSummary(
@@ -119,6 +146,10 @@ class CharacterFiltersTest {
         assertEquals(
             listOf("beta.png", "alpha.png"),
             filterCharacters(characters, "", CharacterListFilter.ALL, CharacterListSort.MOST_TOKENS).map { it.id }
+        )
+        assertEquals(
+            setOf("alpha.png", "beta.png"),
+            filterCharacters(characters, "", CharacterListFilter.ALL, CharacterListSort.RANDOM).map { it.id }.toSet()
         )
     }
 }

@@ -1,6 +1,8 @@
 package io.github.sanitised.st.ui.screens
 
 import io.github.sanitised.st.api.CharacterSummary
+import io.github.sanitised.st.api.STTagSettings
+import kotlin.random.Random
 
 enum class CharacterListFilter {
     ALL,
@@ -18,7 +20,13 @@ enum class CharacterListSort {
     MOST_CHATS,
     LEAST_CHATS,
     MOST_TOKENS,
-    LEAST_TOKENS
+    LEAST_TOKENS,
+    RANDOM
+}
+
+enum class CharacterTagSource {
+    EMBEDDED,
+    ST
 }
 
 fun filterCharacters(
@@ -26,10 +34,18 @@ fun filterCharacters(
     query: String,
     filter: CharacterListFilter,
     sort: CharacterListSort,
-    selectedTag: String? = null
+    selectedTag: String? = null,
+    selectedTagSource: CharacterTagSource = CharacterTagSource.EMBEDDED,
+    tagSettings: STTagSettings? = null
 ): List<CharacterSummary> {
     val normalizedQuery = query.trim().lowercase()
     val normalizedTag = selectedTag?.trim()?.lowercase().orEmpty()
+    val stTagIds = tagSettings
+        ?.tags
+        ?.filter { tag -> tag.id.lowercase() == normalizedTag || tag.name.lowercase() == normalizedTag }
+        ?.map { it.id }
+        ?.toSet()
+        .orEmpty()
     return characters
         .filter { character ->
             when (filter) {
@@ -48,7 +64,16 @@ fun filterCharacters(
             }
         }
         .filter { character ->
-            normalizedTag.isBlank() || character.tags.any { tag -> tag.lowercase() == normalizedTag }
+            normalizedTag.isBlank() || when (selectedTagSource) {
+                CharacterTagSource.EMBEDDED -> character.tags.any { tag -> tag.lowercase() == normalizedTag }
+                CharacterTagSource.ST -> {
+                    val tagMap = tagSettings?.tagMap.orEmpty()
+                    val assignedIds = listOfNotNull(character.id, character.avatarUrl)
+                        .flatMap { key -> tagMap[key].orEmpty() }
+                        .toSet()
+                    assignedIds.any { id -> id in stTagIds }
+                }
+            }
         }
         .sortCharacters(sort)
 }
@@ -89,5 +114,6 @@ private fun List<CharacterSummary>.sortCharacters(sort: CharacterListSort): List
             compareBy<CharacterSummary> { it.dataSize }
                 .thenBy { it.name.lowercase() }
         )
+        CharacterListSort.RANDOM -> shuffled(Random.Default)
     }
 }

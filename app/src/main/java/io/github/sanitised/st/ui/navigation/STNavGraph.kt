@@ -7,6 +7,7 @@ object STRoutes {
     const val CHAT = "chat"
     const val CHARACTERS = "characters"
     const val CHARACTER_NEW = "characters/new"
+    const val CHARACTER_DETAIL = "characters/detail/{avatar}"
     const val CHARACTER_EDIT = "characters/edit/{avatar}"
     const val TOOLS = "tools"
     const val SETTINGS = "settings"
@@ -17,5 +18,6 @@ object STRoutes {
     const val LICENSE = "settings/legal/{assetPath}"
     const val MANAGE_ST = "settings/manage"
 
+    fun characterDetail(avatar: String): String = "characters/detail/${Uri.encode(avatar)}"
     fun characterEdit(avatar: String): String = "characters/edit/${Uri.encode(avatar)}"
 }

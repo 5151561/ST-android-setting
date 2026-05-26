@@ -192,7 +192,7 @@ fun ChatWebViewScreen(
                     logWebView("webview: page-finished url=$url current=${finishedView.url}")
                     finishedView.logDocumentState(logWebView)
                     WebViewNavigator.injectAndroidRuntimeFlags(finishedView)
-                    WebViewNavigator.navigateToTarget(currentTarget.value)
+                    WebViewNavigator.navigateToTarget(finishedView, currentTarget.value)
                 }
 
                 override fun onReceivedError(
@@ -267,7 +267,7 @@ fun ChatWebViewScreen(
         if (!webView.hasLoadedBaseUrl(baseUrl)) {
             webView.loadUrl(baseUrl)
         } else {
-            WebViewNavigator.navigateToTarget(target)
+            WebViewNavigator.navigateToTarget(webView, target)
         }
     }
 

@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -59,6 +60,7 @@ import androidx.navigation.navArgument
 import io.github.sanitised.st.ui.navigation.BottomNavItem
 import io.github.sanitised.st.ui.navigation.STBottomBar
 import io.github.sanitised.st.ui.navigation.STRoutes
+import io.github.sanitised.st.ui.screens.CharacterDetailScreen
 import io.github.sanitised.st.ui.screens.CharacterEditScreen
 import io.github.sanitised.st.ui.screens.CharacterListScreen
 import io.github.sanitised.st.ui.screens.ToolsHubScreen
@@ -132,6 +134,12 @@ class MainActivity : ComponentActivity() {
             val navController = rememberNavController()
             val navBackStackEntry by navController.currentBackStackEntryAsState()
             val currentRoute = navBackStackEntry?.destination?.route
+            val isCharacterManagementRoute = currentRoute in setOf(
+                STRoutes.CHARACTERS,
+                STRoutes.CHARACTER_NEW,
+                STRoutes.CHARACTER_DETAIL,
+                STRoutes.CHARACTER_EDIT
+            )
             val appPaths = remember { AppPaths(this@MainActivity) }
 
             val legalDocs = remember {
@@ -290,7 +298,11 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
+            var pendingWebViewTarget by remember { mutableStateOf<WebViewTarget>(WebViewTarget.CHAT) }
             val navigateMainTab: (String) -> Unit = { route ->
+                if (route == STRoutes.CHAT) {
+                    pendingWebViewTarget = WebViewTarget.CHAT
+                }
                 navController.navigate(route) {
                     popUpTo(navController.graph.findStartDestination().id) {
                         saveState = true
@@ -299,15 +311,23 @@ class MainActivity : ComponentActivity() {
                     restoreState = true
                 }
             }
+            val openCharacterChatFromCharacterManagement: (String, String?) -> Unit = { avatar, chatFile ->
+                pendingWebViewTarget = WebViewTarget.CharacterChat(avatar, chatFile)
+                navController.navigate(STRoutes.CHAT) {
+                    launchSingleTop = true
+                }
+            }
 
             STAppTheme(useDarkTheme = useDarkTheme) {
                 Scaffold(
                     bottomBar = {
-                        STBottomBar(
-                            items = bottomNavItems,
-                            currentRoute = currentRoute,
-                            onNavigate = navigateMainTab
-                        )
+                        if (!isCharacterManagementRoute) {
+                            STBottomBar(
+                                items = bottomNavItems,
+                                currentRoute = currentRoute,
+                                onNavigate = navigateMainTab
+                            )
+                        }
                     },
                     snackbarHost = {
                         SnackbarHost(
@@ -392,11 +412,11 @@ class MainActivity : ComponentActivity() {
                             composable(STRoutes.CHAT) {
                                 ChatWebViewScreen(
                                     status = statusState.value,
-                                    target = WebViewTarget.CHAT,
+                                    target = pendingWebViewTarget,
                                     themeMode = themeMode,
                                     onStartService = { startNode() },
                                     onShowLogs = { navController.navigate(STRoutes.LOGS) },
-                                    onBackToHome = { navigateMainTab(STRoutes.HOME) }
+                                    onBackToHome = { if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME) }
                                 )
                             }
 
@@ -406,12 +426,11 @@ class MainActivity : ComponentActivity() {
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onStartService = { startNode() },
                                     onOpenCharacter = { avatar ->
-                                        navController.navigate(STRoutes.characterEdit(avatar))
+                                        navController.navigate(STRoutes.characterDetail(avatar))
                                     },
                                     onCreateCharacter = {
                                         navController.navigate(STRoutes.CHARACTER_NEW)
                                     },
-                                    onOpenChat = { navigateMainTab(STRoutes.CHAT) },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
@@ -424,12 +443,43 @@ class MainActivity : ComponentActivity() {
                                     onStartService = { startNode() },
                                     onBack = { navController.popBackStack() },
                                     onSaved = { avatar ->
-                                        navController.navigate(STRoutes.characterEdit(avatar)) {
+                                        navController.navigate(STRoutes.characterDetail(avatar)) {
                                             popUpTo(STRoutes.CHARACTERS)
                                         }
                                     },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
+                            }
+
+                            composable(
+                                route = STRoutes.CHARACTER_DETAIL,
+                                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
+                            ) { backStackEntry ->
+                                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
+                                if (avatar != null) {
+                                    CharacterDetailScreen(
+                                        status = statusState.value,
+                                        baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                        avatar = avatar,
+                                        onStartService = { startNode() },
+                                        onBack = { navController.popBackStack() },
+                                        onEdit = { targetAvatar ->
+                                            navController.navigate(STRoutes.characterEdit(targetAvatar))
+                                        },
+                                        onOpenCharacterList = {
+                                            navController.navigate(STRoutes.CHARACTERS) {
+                                                popUpTo(STRoutes.CHARACTERS) {
+                                                    inclusive = false
+                                                }
+                                                launchSingleTop = true
+                                            }
+                                        },
+                                        onOpenChat = { chatFile ->
+                                            openCharacterChatFromCharacterManagement(avatar, chatFile)
+                                        },
+                                        onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                    )
+                                }
                             }
 
                             composable(

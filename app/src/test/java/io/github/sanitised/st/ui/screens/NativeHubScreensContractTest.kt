@@ -28,12 +28,44 @@ class NativeHubScreensContractTest {
 
         assertTrue(File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt").exists())
         assertTrue(File("src/main/java/io/github/sanitised/st/ui/screens/CharacterEditScreen.kt").exists())
+        assertTrue(File("src/main/java/io/github/sanitised/st/ui/screens/CharacterDetailScreen.kt").exists())
         assertTrue(navGraph.contains("CHARACTER_NEW"))
         assertTrue(navGraph.contains("CHARACTER_EDIT"))
+        assertTrue(navGraph.contains("CHARACTER_DETAIL"))
         assertTrue(mainActivity.contains("CharacterListScreen"))
         assertTrue(mainActivity.contains("CharacterEditScreen"))
+        assertTrue(mainActivity.contains("CharacterDetailScreen"))
         assertTrue(strings.contains("character_edit_title"))
         assertTrue(strings.contains("character_list_search_hint"))
+    }
+
+    @Test
+    fun m2CharacterRoutesUsePrototypeLocalBottomBar() {
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val listScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt").readText()
+        val detailScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterDetailScreen.kt")
+        val editScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterEditScreen.kt").readText()
+
+        assertTrue(mainActivity.contains("isCharacterManagementRoute"))
+        assertTrue(mainActivity.contains("if (!isCharacterManagementRoute)"))
+        assertTrue(listScreen.contains("CharacterLocalBottomBar"))
+        assertTrue(detailScreen.exists())
+        assertTrue(detailScreen.readText().contains("CharacterLocalBottomBar"))
+        assertTrue(editScreen.contains("CharacterLocalBottomBar"))
+    }
+
+    @Test
+    fun m2CharacterChatEntryPreservesReturnStack() {
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val listScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt").readText()
+        val roleChrome = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterRoleChrome.kt").readText()
+
+        assertTrue(mainActivity.contains("openCharacterChatFromCharacterManagement"))
+        assertTrue(mainActivity.contains("onBackToHome = { if (!navController.popBackStack())"))
+        assertFalse(mainActivity.contains("onOpenChat = { navigateMainTab(STRoutes.CHAT) }"))
+        assertFalse(listScreen.contains("TextButton(onClick = onOpenChat)"))
+        assertFalse(roleChrome.contains("CharacterLocalNav.CHAT"))
+        assertFalse(roleChrome.contains("character_local_nav_chat"))
     }
 
     @Test
@@ -100,8 +132,9 @@ class NativeHubScreensContractTest {
     fun characterManagementDoesNotAddUserVisibleEnglishLiterals() {
         val files = listOf(
             File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt"),
+            File("src/main/java/io/github/sanitised/st/ui/screens/CharacterDetailScreen.kt"),
             File("src/main/java/io/github/sanitised/st/ui/screens/CharacterEditScreen.kt")
-        )
+        ).filter { it.exists() }
         val userVisibleEnglish = Regex(
             """(onShowMessage\(".*[A-Za-z].*"\)|error\.message \?: ".*[A-Za-z].*"|Text\((?:text = )?".*[A-Za-z].*"\)|contentDescription = ".*[A-Za-z].*")"""
         )

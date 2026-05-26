@@ -57,7 +57,8 @@ data class CharacterDetail(
     val depthPromptRole: String = "system",
     val chat: String = "",
     val createDate: String = "",
-    val rawJsonData: String = ""
+    val rawJsonData: String = "",
+    val sourceUrl: String = ""
 )
 
 data class CharacterSaveRequest(
@@ -86,6 +87,11 @@ data class CharacterSaveRequest(
     val rawJsonData: String = ""
 )
 
+data class CharacterUpload(
+    val fileName: String,
+    val bytes: ByteArray
+)
+
 data class CharacterChatSummary(
     val id: String,
     val fileName: String,
@@ -100,10 +106,30 @@ enum class CharacterExportFormat(val apiValue: String, val fileExtension: String
     JSON("json", "json")
 }
 
+enum class ChatExportFormat(val apiValue: String, val fileExtension: String, val contentType: String) {
+    JSONL("jsonl", "jsonl", "application/jsonl"),
+    TXT("txt", "txt", "text/plain")
+}
+
 data class CharacterExportFile(
     val fileName: String,
     val contentType: String,
     val bytes: ByteArray
+)
+
+data class STTag(
+    val id: String,
+    val name: String,
+    val color: String = "",
+    val isFolder: Boolean = false,
+    val sortOrder: Int = 0
+)
+
+data class STTagSettings(
+    val tags: List<STTag> = emptyList(),
+    val tagMap: Map<String, List<String>> = emptyMap(),
+    val worldNames: List<String> = emptyList(),
+    val rawSettings: Map<String, Any?> = emptyMap()
 )
 
 data class ChatSummary(
@@ -124,15 +150,30 @@ interface TavernCoreApi {
     suspend fun healthCheck(): CoreHealth
     suspend fun listCharacters(): List<CharacterSummary>
     suspend fun getCharacter(avatar: String): CharacterDetail
-    suspend fun createCharacter(request: CharacterSaveRequest): String
-    suspend fun updateCharacter(request: CharacterSaveRequest)
+    suspend fun createCharacter(request: CharacterSaveRequest, avatarUpload: CharacterUpload? = null): String
+    suspend fun updateCharacter(request: CharacterSaveRequest, avatarUpload: CharacterUpload? = null)
+    suspend fun mergeCharacterAttributes(
+        avatar: String,
+        isFavorite: Boolean? = null,
+        embeddedTags: List<String>? = null
+    )
+    suspend fun getTagSettings(): STTagSettings
+    suspend fun saveTagSettings(settings: STTagSettings)
     suspend fun renameCharacter(avatar: String, newName: String): String
     suspend fun duplicateCharacter(avatar: String): String
     suspend fun deleteCharacter(avatar: String, deleteChats: Boolean = false)
     suspend fun listCharacterChats(avatar: String): List<CharacterChatSummary>
     suspend fun importCharacter(fileName: String, bytes: ByteArray, preservedName: String? = null): String
+    suspend fun importExternalCharacter(urlOrUuid: String, preservedName: String? = null): String
     suspend fun exportCharacter(avatar: String, format: CharacterExportFormat): CharacterExportFile
     suspend fun updateCharacterAvatar(avatar: String, fileName: String, bytes: ByteArray)
+    suspend fun renameCharacterChat(avatar: String, originalFile: String, renamedFile: String): String
+    suspend fun deleteCharacterChat(avatar: String, chatFile: String)
+    suspend fun exportCharacterChat(
+        avatar: String,
+        chatFile: String,
+        format: ChatExportFormat
+    ): CharacterExportFile
     suspend fun listRecentChats(): List<ChatSummary>
     suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk>
     suspend fun stopGeneration(chatId: String)
@@ -188,22 +229,82 @@ class TavernCoreClient(
         }
     }
 
-    override suspend fun createCharacter(request: CharacterSaveRequest): String {
+    override suspend fun createCharacter(request: CharacterSaveRequest, avatarUpload: CharacterUpload?): String {
         return withContext(Dispatchers.IO) {
-            postJson(
+            postMultipart(
                 path = "api/characters/create",
-                json = request.toCreateJson()
+                body = request.toMultipartBody(avatar = null, avatarUpload = avatarUpload)
             ).trim()
         }
     }
 
-    override suspend fun updateCharacter(request: CharacterSaveRequest) {
+    override suspend fun updateCharacter(request: CharacterSaveRequest, avatarUpload: CharacterUpload?) {
         val avatar = request.avatar?.takeIf { it.isNotBlank() }
             ?: throw IllegalArgumentException("avatar is required")
         withContext(Dispatchers.IO) {
-            postJson(
+            postMultipart(
                 path = "api/characters/edit",
-                json = request.toEditJson(avatar)
+                body = request.toMultipartBody(avatar = avatar, avatarUpload = avatarUpload)
+            )
+        }
+    }
+
+    override suspend fun mergeCharacterAttributes(
+        avatar: String,
+        isFavorite: Boolean?,
+        embeddedTags: List<String>?
+    ) {
+        withContext(Dispatchers.IO) {
+            val extensions = linkedMapOf<String, Any?>()
+            if (isFavorite != null) extensions["fav"] = isFavorite
+            val data = linkedMapOf<String, Any?>()
+            if (embeddedTags != null) data["tags"] = embeddedTags
+            if (extensions.isNotEmpty()) data["extensions"] = extensions
+
+            postJson(
+                path = "api/characters/merge-attributes",
+                json = jsonObject(
+                    "avatar" to avatar,
+                    "fav" to isFavorite,
+                    "tags" to embeddedTags,
+                    "data" to data
+                )
+            )
+        }
+    }
+
+    override suspend fun getTagSettings(): STTagSettings {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/settings/get", "{}")
+            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val rawSettings = (yaml.load<Any?>(map.stringValue("settings")) as? Map<*, *>)
+                ?.toStringKeyMap()
+                ?: emptyMap()
+            STTagSettings(
+                tags = rawSettings.listMapValue("tags").map { it.toSTTag() },
+                tagMap = rawSettings.anyMapValue("tag_map").mapValues { (_, value) -> value.toStringList() },
+                worldNames = map.stringListValue("world_names"),
+                rawSettings = rawSettings
+            )
+        }
+    }
+
+    override suspend fun saveTagSettings(settings: STTagSettings) {
+        withContext(Dispatchers.IO) {
+            val merged = settings.rawSettings.toMutableMap()
+            merged["tags"] = settings.tags.map { tag ->
+                linkedMapOf(
+                    "id" to tag.id,
+                    "name" to tag.name,
+                    "color" to tag.color,
+                    "folder_type" to if (tag.isFolder) "character" else "",
+                    "sort_order" to tag.sortOrder
+                )
+            }
+            merged["tag_map"] = settings.tagMap
+            postJson(
+                path = "api/settings/save",
+                json = jsonValue(merged)
             )
         }
     }
@@ -290,6 +391,22 @@ class TavernCoreClient(
         }
     }
 
+    override suspend fun importExternalCharacter(urlOrUuid: String, preservedName: String?): String {
+        val downloaded = withContext(Dispatchers.IO) {
+            val path = if (urlOrUuid.startsWith("http://") || urlOrUuid.startsWith("https://")) {
+                "api/content/importURL"
+            } else {
+                "api/content/importUUID"
+            }
+            postJsonFile(
+                path = path,
+                json = jsonObject("url" to urlOrUuid),
+                fallbackFileName = "character.png"
+            )
+        }
+        return importCharacter(downloaded.fileName, downloaded.bytes, preservedName)
+    }
+
     override suspend fun exportCharacter(avatar: String, format: CharacterExportFormat): CharacterExportFile {
         return withContext(Dispatchers.IO) {
             postJsonFile(
@@ -311,6 +428,60 @@ class TavernCoreClient(
                 .addFormDataPart("avatar_url", avatar)
                 .build()
             postMultipart("api/characters/edit-avatar", body)
+        }
+    }
+
+    override suspend fun renameCharacterChat(avatar: String, originalFile: String, renamedFile: String): String {
+        return withContext(Dispatchers.IO) {
+            val body = postJson(
+                path = "api/chats/rename",
+                json = jsonObject(
+                    "avatar_url" to avatar,
+                    "original_file" to originalFile,
+                    "renamed_file" to renamedFile,
+                    "is_group" to false
+                )
+            )
+            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            map.stringValue("sanitizedFileName").ifBlank { renamedFile.removeSuffix(".jsonl") }
+        }
+    }
+
+    override suspend fun deleteCharacterChat(avatar: String, chatFile: String) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/chats/delete",
+                json = jsonObject(
+                    "avatar_url" to avatar,
+                    "chatfile" to chatFile
+                )
+            )
+        }
+    }
+
+    override suspend fun exportCharacterChat(
+        avatar: String,
+        chatFile: String,
+        format: ChatExportFormat
+    ): CharacterExportFile {
+        return withContext(Dispatchers.IO) {
+            val body = postJson(
+                path = "api/chats/export",
+                json = jsonObject(
+                    "avatar_url" to avatar,
+                    "file" to chatFile,
+                    "format" to format.apiValue,
+                    "exportfilename" to chatFile.removeSuffix(".jsonl") + "." + format.fileExtension,
+                    "is_group" to false
+                )
+            )
+            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val fileName = chatFile.removeSuffix(".jsonl") + "." + format.fileExtension
+            CharacterExportFile(
+                fileName = fileName,
+                contentType = format.contentType,
+                bytes = map.stringValue("result").toByteArray()
+            )
         }
     }
 
@@ -478,7 +649,10 @@ class TavernCoreClient(
             depthPromptRole = depthPrompt.stringValue("role").ifBlank { "system" },
             chat = stringValue("chat"),
             createDate = stringValue("create_date"),
-            rawJsonData = stringValue("json_data")
+            rawJsonData = stringValue("json_data"),
+            sourceUrl = extensions.stringValue("source_url")
+                .ifBlank { extensions.stringValue("chub") }
+                .ifBlank { extensions.stringValue("pygmalion_id") }
         )
     }
 
@@ -497,97 +671,44 @@ class TavernCoreClient(
         )
     }
 
-    private fun CharacterSaveRequest.toCreateJson(): String {
-        return jsonObject(
-            "ch_name" to name,
-            "description" to description,
-            "personality" to personality,
-            "scenario" to scenario,
-            "first_mes" to firstMessage,
-            "mes_example" to messageExample,
-            "creator_notes" to creatorNotes,
-            "system_prompt" to systemPrompt,
-            "post_history_instructions" to postHistoryInstructions,
-            "tags" to tags,
-            "creator" to creator,
-            "character_version" to characterVersion,
-            "world" to world,
-            "talkativeness" to talkativeness,
-            "fav" to if (isFavorite) "true" else "false",
-            "alternate_greetings" to alternateGreetings,
-            "depth_prompt_prompt" to depthPrompt,
-            "depth_prompt_depth" to depthPromptDepth,
-            "depth_prompt_role" to depthPromptRole,
-            "extensions" to "{}"
-        )
-    }
-
-    private fun CharacterSaveRequest.toEditJson(avatar: String): String {
-        return jsonObject(
-            "avatar_url" to avatar,
-            "ch_name" to name,
-            "description" to description,
-            "personality" to personality,
-            "scenario" to scenario,
-            "first_mes" to firstMessage,
-            "mes_example" to messageExample,
-            "creator_notes" to creatorNotes,
-            "system_prompt" to systemPrompt,
-            "post_history_instructions" to postHistoryInstructions,
-            "tags" to tags,
-            "creator" to creator,
-            "character_version" to characterVersion,
-            "world" to world,
-            "talkativeness" to talkativeness,
-            "fav" to if (isFavorite) "true" else "false",
-            "alternate_greetings" to alternateGreetings,
-            "depth_prompt_prompt" to depthPrompt,
-            "depth_prompt_depth" to depthPromptDepth,
-            "depth_prompt_role" to depthPromptRole,
-            "chat" to chat,
-            "create_date" to createDate,
-            "json_data" to rawJsonData,
-            "extensions" to "{}"
-        )
-    }
-
-    private fun CharacterSaveRequest.toMergeJson(avatar: String): String {
-        val data = linkedMapOf<String, Any?>(
-            "name" to name,
-            "description" to description,
-            "personality" to personality,
-            "scenario" to scenario,
-            "first_mes" to firstMessage,
-            "mes_example" to messageExample,
-            "creator_notes" to creatorNotes,
-            "system_prompt" to systemPrompt,
-            "post_history_instructions" to postHistoryInstructions,
-            "tags" to tags,
-            "creator" to creator,
-            "character_version" to characterVersion,
-            "extensions" to linkedMapOf(
-                "fav" to isFavorite,
-                "world" to world,
-                "talkativeness" to talkativeness
-            )
-        )
-        return jsonObject(
-            "avatar" to avatar,
-            "name" to name,
-            "description" to description,
-            "personality" to personality,
-            "scenario" to scenario,
-            "first_mes" to firstMessage,
-            "mes_example" to messageExample,
-            "creator_notes" to creatorNotes,
-            "system_prompt" to systemPrompt,
-            "post_history_instructions" to postHistoryInstructions,
-            "tags" to tags,
-            "creator" to creator,
-            "character_version" to characterVersion,
-            "fav" to isFavorite,
-            "data" to data
-        )
+    private fun CharacterSaveRequest.toMultipartBody(
+        avatar: String?,
+        avatarUpload: CharacterUpload?
+    ): MultipartBody {
+        return MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .apply {
+                avatar?.takeIf { it.isNotBlank() }?.let { addFormDataPart("avatar_url", it) }
+                avatarUpload?.let { upload ->
+                    addFormDataPart("avatar", upload.fileName, upload.bytes.toRequestBody(binaryMediaType))
+                }
+                addFormDataPart("ch_name", name)
+                addFormDataPart("description", description)
+                addFormDataPart("personality", personality)
+                addFormDataPart("scenario", scenario)
+                addFormDataPart("first_mes", firstMessage)
+                addFormDataPart("mes_example", messageExample)
+                addFormDataPart("creator_notes", creatorNotes)
+                addFormDataPart("system_prompt", systemPrompt)
+                addFormDataPart("post_history_instructions", postHistoryInstructions)
+                addFormDataPart("tags", tags.joinToString(", "))
+                addFormDataPart("creator", creator)
+                addFormDataPart("character_version", characterVersion)
+                addFormDataPart("world", world)
+                addFormDataPart("talkativeness", talkativeness.toString())
+                addFormDataPart("fav", if (isFavorite) "true" else "false")
+                alternateGreetings.forEach { greeting ->
+                    addFormDataPart("alternate_greetings", greeting)
+                }
+                addFormDataPart("depth_prompt_prompt", depthPrompt)
+                addFormDataPart("depth_prompt_depth", depthPromptDepth.toString())
+                addFormDataPart("depth_prompt_role", depthPromptRole)
+                addFormDataPart("chat", chat)
+                addFormDataPart("create_date", createDate)
+                addFormDataPart("json_data", rawJsonData)
+                addFormDataPart("extensions", "{}")
+            }
+            .build()
     }
 
     private fun Map<*, *>?.stringValue(key: String): String =
@@ -630,6 +751,58 @@ class TavernCoreClient(
 
     private fun Map<*, *>?.mapValue(key: String): Map<*, *> =
         this?.get(key) as? Map<*, *> ?: emptyMap<Any, Any>()
+
+    private fun Map<String, Any?>.anyMapValue(key: String): Map<String, Any?> =
+        (this[key] as? Map<*, *>)?.toStringKeyMap() ?: emptyMap()
+
+    private fun Map<String, Any?>.listMapValue(key: String): List<Map<String, Any?>> =
+        (this[key] as? List<*>)
+            ?.mapNotNull { it as? Map<*, *> }
+            ?.map { it.toStringKeyMap() }
+            ?: emptyList()
+
+    private fun Map<*, *>.toStringKeyMap(): Map<String, Any?> =
+        entries.associate { (key, value) -> key.toString() to normalizeJsonValue(value) }
+
+    private fun normalizeJsonValue(value: Any?): Any? =
+        when (value) {
+            is Map<*, *> -> value.toStringKeyMap()
+            is List<*> -> value.map { normalizeJsonValue(it) }
+            else -> value
+        }
+
+    private fun Map<String, Any?>.toSTTag(): STTag =
+        STTag(
+            id = stringAnyValue("id"),
+            name = stringAnyValue("name"),
+            color = stringAnyValue("color"),
+            isFolder = stringAnyValue("folder_type").isNotBlank() || booleanAnyValue("is_folder"),
+            sortOrder = intAnyValue("sort_order", 0)
+        )
+
+    private fun Map<String, Any?>.stringAnyValue(key: String): String =
+        (get(key) as? String).orEmpty()
+
+    private fun Map<String, Any?>.booleanAnyValue(key: String): Boolean =
+        when (val value = get(key)) {
+            is Boolean -> value
+            is String -> value.equals("true", ignoreCase = true)
+            else -> false
+        }
+
+    private fun Map<String, Any?>.intAnyValue(key: String, default: Int): Int =
+        when (val value = get(key)) {
+            is Number -> value.toInt()
+            is String -> value.toIntOrNull() ?: default
+            else -> default
+        }
+
+    private fun Any?.toStringList(): List<String> =
+        when (this) {
+            is List<*> -> mapNotNull { it as? String }
+            is String -> split(',').map { it.trim() }.filter { it.isNotBlank() }
+            else -> emptyList()
+        }
 
     private fun String.contentDispositionFileName(): String {
         val token = "filename=\""

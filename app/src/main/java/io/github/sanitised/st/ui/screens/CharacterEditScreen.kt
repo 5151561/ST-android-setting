@@ -5,15 +5,19 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Save
@@ -22,6 +26,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +55,7 @@ import io.github.sanitised.st.R
 import io.github.sanitised.st.api.CharacterExportFormat
 import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.api.CharacterSaveRequest
+import io.github.sanitised.st.api.CharacterUpload
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.ui.theme.STTheme
 import kotlinx.coroutines.launch
@@ -107,6 +114,12 @@ private data class CharacterEditDraft(
     }
 }
 
+private enum class CharacterEditorTab {
+    BASIC,
+    PROMPT,
+    METADATA
+}
+
 @Composable
 fun CharacterEditScreen(
     status: NodeStatus,
@@ -126,20 +139,24 @@ fun CharacterEditScreen(
     var saving by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf(false) }
     var deleteChats by remember { mutableStateOf(false) }
+    var pendingAvatarUpload by remember(avatar) { mutableStateOf<CharacterUpload?>(null) }
+    var selectedEditorTab by remember { mutableStateOf(CharacterEditorTab.BASIC) }
     val serverRunning = status.state == NodeState.RUNNING
     val avatarLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        updateCharacterAvatar(
-            context = context,
-            uri = uri,
-            draft = draft,
-            baseUrl = baseUrl,
-            onShowMessage = onShowMessage,
-            onSavingChanged = { saving = it },
-            scope = scope
-        )
+        scope.launch {
+            runCatching {
+                val document = context.readPickedDocument(uri)
+                CharacterUpload(document.fileName, document.bytes)
+            }.onSuccess { upload ->
+                pendingAvatarUpload = upload
+                onShowMessage(context.getString(R.string.character_avatar_selected))
+            }.onFailure { error ->
+                onShowMessage(error.messageOr(context, R.string.character_avatar_failed))
+            }
+        }
     }
     val exportJsonLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -283,6 +300,7 @@ fun CharacterEditScreen(
                             onSavingChanged = { saving = it },
                             onSaved = onSaved,
                             isNew = avatar.isNullOrBlank(),
+                            avatarUpload = pendingAvatarUpload,
                             scope = scope
                         )
                     }
@@ -309,9 +327,22 @@ fun CharacterEditScreen(
                 return@Column
             }
 
+            CharacterAvatarEditorSection(
+                draft = draft,
+                pendingAvatarUpload = pendingAvatarUpload,
+                saving = saving,
+                onChooseAvatar = { avatarLauncher.launch(arrayOf("image/*")) }
+            )
+
+            CharacterEditorTabs(
+                selectedTab = selectedEditorTab,
+                onSelected = { selectedEditorTab = it }
+            )
+
             CharacterEditorFields(
                 draft = draft,
                 saving = saving,
+                selectedTab = selectedEditorTab,
                 onDraftChanged = { draft = it }
             )
 
@@ -373,6 +404,7 @@ fun CharacterEditScreen(
                             onSavingChanged = { saving = it },
                             onSaved = onSaved,
                             isNew = avatar.isNullOrBlank(),
+                            avatarUpload = pendingAvatarUpload,
                             scope = scope
                         )
                     },
@@ -382,6 +414,81 @@ fun CharacterEditScreen(
                     Text(if (saving) stringResource(R.string.saving) else stringResource(R.string.save))
                 }
             }
+
+            CharacterLocalBottomBar(
+                active = CharacterLocalNav.CHARACTERS,
+                onCharacters = onBack,
+                onLorebook = { onShowMessage(context.getString(R.string.character_lorebook_unavailable)) },
+                onPersona = { onShowMessage(context.getString(R.string.character_persona_unavailable)) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun CharacterAvatarEditorSection(
+    draft: CharacterEditDraft,
+    pendingAvatarUpload: CharacterUpload?,
+    saving: Boolean,
+    onChooseAvatar: () -> Unit
+) {
+    CharacterEditorSection(title = stringResource(R.string.character_avatar_section)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            CharacterEditAvatarPreview(label = draft.name.ifBlank { draft.avatar.orEmpty() })
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = pendingAvatarUpload?.fileName ?: draft.avatar.orEmpty().ifBlank {
+                        stringResource(R.string.unknown_short)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = STTheme.colors.muted
+                )
+                OutlinedButton(onClick = onChooseAvatar, enabled = !saving) {
+                    Text(stringResource(R.string.character_avatar_choose))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CharacterEditAvatarPreview(label: String) {
+    Box(
+        modifier = Modifier
+            .size(72.dp)
+            .clip(CircleShape)
+            .background(STTheme.colors.surfaceWarm),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = STTheme.colors.accent
+        )
+    }
+}
+
+@Composable
+private fun CharacterEditorTabs(
+    selectedTab: CharacterEditorTab,
+    onSelected: (CharacterEditorTab) -> Unit
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        CharacterEditorTab.values().forEach { tab ->
+            FilterChip(
+                selected = selectedTab == tab,
+                onClick = { onSelected(tab) },
+                label = {
+                    Text(
+                        when (tab) {
+                            CharacterEditorTab.BASIC -> stringResource(R.string.character_editor_tab_basic)
+                            CharacterEditorTab.PROMPT -> stringResource(R.string.character_editor_tab_prompt)
+                            CharacterEditorTab.METADATA -> stringResource(R.string.character_editor_tab_metadata)
+                        }
+                    )
+                }
+            )
         }
     }
 }
@@ -390,152 +497,153 @@ fun CharacterEditScreen(
 private fun CharacterEditorFields(
     draft: CharacterEditDraft,
     saving: Boolean,
+    selectedTab: CharacterEditorTab,
     onDraftChanged: (CharacterEditDraft) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        CharacterEditorSection(title = stringResource(R.string.character_edit_basic_section)) {
-            CharacterField(
-                label = stringResource(R.string.character_edit_name),
-                value = draft.name,
-                enabled = !saving,
-                onValueChange = { onDraftChanged(draft.copy(name = it)) }
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = draft.isFavorite,
-                    onCheckedChange = { onDraftChanged(draft.copy(isFavorite = it)) },
-                    enabled = !saving
-                )
-                Text(stringResource(R.string.character_edit_favorite))
-            }
-            CharacterField(
-                label = stringResource(R.string.character_edit_tags),
-                value = draft.tagsText,
-                enabled = !saving,
-                onValueChange = { onDraftChanged(draft.copy(tagsText = it)) }
-            )
-            CharacterField(
-                label = stringResource(R.string.character_edit_description),
-                value = draft.description,
-                enabled = !saving,
-                minLines = 4,
-                onValueChange = { onDraftChanged(draft.copy(description = it)) }
-            )
-            CharacterField(
-                label = stringResource(R.string.character_edit_first_message),
-                value = draft.firstMessage,
-                enabled = !saving,
-                minLines = 3,
-                onValueChange = { onDraftChanged(draft.copy(firstMessage = it)) }
-            )
-            CharacterField(
-                label = stringResource(R.string.character_edit_alternate_greetings),
-                value = draft.alternateGreetingsText,
-                enabled = !saving,
-                minLines = 3,
-                onValueChange = { onDraftChanged(draft.copy(alternateGreetingsText = it)) }
-            )
-        }
-
-        CharacterEditorSection(title = stringResource(R.string.character_edit_prompt_section)) {
-            CharacterField(
-                label = stringResource(R.string.character_edit_system_prompt),
-                value = draft.systemPrompt,
-                enabled = !saving,
-                minLines = 3,
-                onValueChange = { onDraftChanged(draft.copy(systemPrompt = it)) }
-            )
-            CharacterField(
-                label = stringResource(R.string.character_edit_post_history),
-                value = draft.postHistoryInstructions,
-                enabled = !saving,
-                minLines = 3,
-                onValueChange = { onDraftChanged(draft.copy(postHistoryInstructions = it)) }
-            )
-        }
-
-        CharacterEditorSection(title = stringResource(R.string.character_edit_metadata_section)) {
-            CharacterField(
-                label = stringResource(R.string.character_edit_creator),
-                value = draft.creator,
-                enabled = !saving,
-                onValueChange = { onDraftChanged(draft.copy(creator = it)) }
-            )
-            CharacterField(
-                label = stringResource(R.string.character_edit_version),
-                value = draft.characterVersion,
-                enabled = !saving,
-                onValueChange = { onDraftChanged(draft.copy(characterVersion = it)) }
-            )
-            CharacterField(
-                label = stringResource(R.string.character_edit_world),
-                value = draft.world,
-                enabled = !saving,
-                onValueChange = { onDraftChanged(draft.copy(world = it)) }
-            )
-            CharacterField(
-                label = stringResource(R.string.character_edit_creator_notes),
-                value = draft.creatorNotes,
-                enabled = !saving,
-                minLines = 3,
-                onValueChange = { onDraftChanged(draft.copy(creatorNotes = it)) }
-            )
-        }
-
-        CharacterEditorSection(title = stringResource(R.string.character_edit_advanced_section)) {
-            CharacterField(
-                label = stringResource(R.string.character_edit_personality),
-                value = draft.personality,
-                enabled = !saving,
-                minLines = 3,
-                onValueChange = { onDraftChanged(draft.copy(personality = it)) }
-            )
-            CharacterField(
-                label = stringResource(R.string.character_edit_scenario),
-                value = draft.scenario,
-                enabled = !saving,
-                minLines = 3,
-                onValueChange = { onDraftChanged(draft.copy(scenario = it)) }
-            )
-            CharacterField(
-                label = stringResource(R.string.character_edit_message_example),
-                value = draft.messageExample,
-                enabled = !saving,
-                minLines = 3,
-                onValueChange = { onDraftChanged(draft.copy(messageExample = it)) }
-            )
-        }
-
-        CharacterEditorSection(title = stringResource(R.string.character_edit_note_section)) {
-            CharacterField(
-                label = stringResource(R.string.character_edit_depth_prompt),
-                value = draft.depthPrompt,
-                enabled = !saving,
-                minLines = 3,
-                onValueChange = { onDraftChanged(draft.copy(depthPrompt = it)) }
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        when (selectedTab) {
+            CharacterEditorTab.BASIC -> CharacterEditorSection(title = stringResource(R.string.character_edit_basic_section)) {
                 CharacterField(
-                    label = stringResource(R.string.character_edit_depth_prompt_depth),
-                    value = draft.depthPromptDepthText,
+                    label = stringResource(R.string.character_edit_name),
+                    value = draft.name,
                     enabled = !saving,
-                    onValueChange = { onDraftChanged(draft.copy(depthPromptDepthText = it)) },
-                    modifier = Modifier.weight(1f)
+                    onValueChange = { onDraftChanged(draft.copy(name = it)) }
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = draft.isFavorite,
+                        onCheckedChange = { onDraftChanged(draft.copy(isFavorite = it)) },
+                        enabled = !saving
+                    )
+                    Text(stringResource(R.string.character_edit_favorite))
+                }
+                CharacterField(
+                    label = stringResource(R.string.character_edit_tags),
+                    value = draft.tagsText,
+                    enabled = !saving,
+                    onValueChange = { onDraftChanged(draft.copy(tagsText = it)) }
                 )
                 CharacterField(
-                    label = stringResource(R.string.character_edit_depth_prompt_role),
-                    value = draft.depthPromptRole,
+                    label = stringResource(R.string.character_edit_description),
+                    value = draft.description,
                     enabled = !saving,
-                    onValueChange = { onDraftChanged(draft.copy(depthPromptRole = it)) },
-                    modifier = Modifier.weight(1f)
+                    minLines = 4,
+                    onValueChange = { onDraftChanged(draft.copy(description = it)) }
+                )
+                CharacterField(
+                    label = stringResource(R.string.character_edit_first_message),
+                    value = draft.firstMessage,
+                    enabled = !saving,
+                    minLines = 3,
+                    onValueChange = { onDraftChanged(draft.copy(firstMessage = it)) }
                 )
             }
-            CharacterField(
-                label = stringResource(R.string.character_edit_talkativeness),
-                value = draft.talkativenessText,
-                enabled = !saving,
-                onValueChange = { onDraftChanged(draft.copy(talkativenessText = it)) }
-            )
+
+            CharacterEditorTab.PROMPT -> {
+                CharacterEditorSection(title = stringResource(R.string.character_edit_prompt_section)) {
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_alternate_greetings),
+                        value = draft.alternateGreetingsText,
+                        enabled = !saving,
+                        minLines = 3,
+                        onValueChange = { onDraftChanged(draft.copy(alternateGreetingsText = it)) }
+                    )
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_system_prompt),
+                        value = draft.systemPrompt,
+                        enabled = !saving,
+                        minLines = 3,
+                        onValueChange = { onDraftChanged(draft.copy(systemPrompt = it)) }
+                    )
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_post_history),
+                        value = draft.postHistoryInstructions,
+                        enabled = !saving,
+                        minLines = 3,
+                        onValueChange = { onDraftChanged(draft.copy(postHistoryInstructions = it)) }
+                    )
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_depth_prompt),
+                        value = draft.depthPrompt,
+                        enabled = !saving,
+                        minLines = 3,
+                        onValueChange = { onDraftChanged(draft.copy(depthPrompt = it)) }
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CharacterField(
+                            label = stringResource(R.string.character_edit_depth_prompt_depth),
+                            value = draft.depthPromptDepthText,
+                            enabled = !saving,
+                            onValueChange = { onDraftChanged(draft.copy(depthPromptDepthText = it)) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        CharacterField(
+                            label = stringResource(R.string.character_edit_depth_prompt_role),
+                            value = draft.depthPromptRole,
+                            enabled = !saving,
+                            onValueChange = { onDraftChanged(draft.copy(depthPromptRole = it)) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            CharacterEditorTab.METADATA -> {
+                CharacterEditorSection(title = stringResource(R.string.character_edit_metadata_section)) {
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_creator),
+                        value = draft.creator,
+                        enabled = !saving,
+                        onValueChange = { onDraftChanged(draft.copy(creator = it)) }
+                    )
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_version),
+                        value = draft.characterVersion,
+                        enabled = !saving,
+                        onValueChange = { onDraftChanged(draft.copy(characterVersion = it)) }
+                    )
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_world),
+                        value = draft.world,
+                        enabled = !saving,
+                        onValueChange = { onDraftChanged(draft.copy(world = it)) }
+                    )
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_creator_notes),
+                        value = draft.creatorNotes,
+                        enabled = !saving,
+                        minLines = 3,
+                        onValueChange = { onDraftChanged(draft.copy(creatorNotes = it)) }
+                    )
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_personality),
+                        value = draft.personality,
+                        enabled = !saving,
+                        minLines = 3,
+                        onValueChange = { onDraftChanged(draft.copy(personality = it)) }
+                    )
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_scenario),
+                        value = draft.scenario,
+                        enabled = !saving,
+                        minLines = 3,
+                        onValueChange = { onDraftChanged(draft.copy(scenario = it)) }
+                    )
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_message_example),
+                        value = draft.messageExample,
+                        enabled = !saving,
+                        minLines = 3,
+                        onValueChange = { onDraftChanged(draft.copy(messageExample = it)) }
+                    )
+                    CharacterField(
+                        label = stringResource(R.string.character_edit_talkativeness),
+                        value = draft.talkativenessText,
+                        enabled = !saving,
+                        onValueChange = { onDraftChanged(draft.copy(talkativenessText = it)) }
+                    )
+                }
+            }
         }
     }
 }
@@ -707,6 +815,7 @@ private fun saveCharacter(
     onSavingChanged: (Boolean) -> Unit,
     onSaved: (String) -> Unit,
     isNew: Boolean,
+    avatarUpload: CharacterUpload?,
     scope: kotlinx.coroutines.CoroutineScope
 ) {
     if (draft.name.isBlank()) {
@@ -718,9 +827,9 @@ private fun saveCharacter(
         runCatching {
             val client = TavernCoreClient(baseUrl = baseUrl)
             if (isNew) {
-                client.createCharacter(draft.toSaveRequest())
+                client.createCharacter(draft.toSaveRequest(), avatarUpload)
             } else {
-                client.updateCharacter(draft.toSaveRequest())
+                client.updateCharacter(draft.toSaveRequest(), avatarUpload)
                 draft.avatar.orEmpty()
             }
         }.onSuccess { avatar ->
