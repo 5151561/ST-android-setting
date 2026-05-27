@@ -27,11 +27,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.EmojiPeople
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -40,6 +45,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Theaters
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -63,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -699,13 +707,13 @@ private fun CharacterDetailSections(
     detail: CharacterDetail?,
     fallback: PrototypeCharacterCard
 ) {
-    PrototypeEditSection(title = "基本信息", iconLabel = "ID", open = true) {
+    PrototypeEditSection(title = "基本信息", icon = Icons.Filled.Badge, open = true) {
         PrototypeFieldRow("角色名", detail?.name ?: fallback.name)
         PrototypeFieldRow("创作者", detail?.creator?.ifBlank { "未知" } ?: "原型演示")
         PrototypeFieldRow("版本", detail?.characterVersion?.ifBlank { "未标注" } ?: "v2.1")
         PrototypeFieldRow("语言", "中文 · 双语")
     }
-    PrototypeEditSection(title = "角色描述", iconLabel = "文", open = true, count = detail?.description?.length) {
+    PrototypeEditSection(title = "角色描述", icon = Icons.Filled.Description, open = true, count = detail?.description?.length) {
         Text(
             text = detail?.description?.ifBlank { fallback.subtitle }
                 ?: "${fallback.subtitle}。她不是英雄，也不是反派；她只是想把故事继续讲下去。",
@@ -714,9 +722,9 @@ private fun CharacterDetailSections(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
         PrototypeFieldRow("个性", detail?.personality?.lineSequence()?.firstOrNull()?.ifBlank { null } ?: "冷静 / 直接 / 私下幽默")
-        PrototypeFieldRow("场景", detail?.scenario?.lineSequence()?.firstOrNull()?.ifBlank { null } ?: "当前对话默认场景")
+        PrototypeFieldRow("说话方式", detail?.personality?.lineSequence()?.drop(1)?.firstOrNull()?.ifBlank { null } ?: "短句、偶尔粗口、行话很多")
     }
-    PrototypeEditSection(title = "开场白", iconLabel = "Hi", open = true, count = detail?.firstMessage?.length) {
+    PrototypeEditSection(title = "开场白", icon = Icons.Filled.EmojiPeople, open = true, count = detail?.firstMessage?.length) {
         Text(
             text = "\"${detail?.firstMessage?.ifBlank { "诶？又是你啊。今天还是老样子？" } ?: "诶？又是你啊。今天还是老样子？"}\"",
             style = MaterialTheme.typography.bodyMedium,
@@ -732,23 +740,26 @@ private fun CharacterDetailSections(
             listOf("主开场", "备选 1", "备选 2").forEach { PrototypeBadge(it) }
         }
     }
-    PrototypeEditSection(title = "对话示例", iconLabel = "聊", count = if (detail?.messageExample.isNullOrBlank()) null else "已设置") {}
-    PrototypeEditSection(title = "高级 — Persona / Post-history Instructions", iconLabel = "调") {}
-    PrototypeEditSection(title = "绑定世界书", iconLabel = "书", count = detail?.world?.takeIf { it.isNotBlank() }) {}
+    PrototypeEditSection(title = "场景 (Scenario)", icon = Icons.Filled.Theaters) {}
+    PrototypeEditSection(title = "对话示例", icon = Icons.Filled.Forum, count = if (detail?.messageExample.isNullOrBlank()) null else "已设置") {}
+    PrototypeEditSection(title = "高级 — Persona / Post-history Instructions", icon = Icons.Filled.Tune) {}
+    PrototypeEditSection(title = "绑定世界书", icon = Icons.Filled.AutoStories, count = detail?.world?.takeIf { it.isNotBlank() }) {}
 }
 
 @Composable
 private fun PrototypeEditSection(
     title: String,
-    iconLabel: String,
+    icon: ImageVector,
     open: Boolean = false,
     count: Any? = null,
     content: @Composable () -> Unit
 ) {
+    var expanded by remember { mutableStateOf(open) }
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable { expanded = !expanded }
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -759,7 +770,7 @@ private fun PrototypeEditSection(
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(text = iconLabel, style = MaterialTheme.typography.labelMedium)
+                    Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(20.dp))
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
@@ -778,12 +789,12 @@ private fun PrototypeEditSection(
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Icon(
-                imageVector = if (open) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        if (open) content()
+        if (expanded) content()
         androidx.compose.material3.HorizontalDivider(
             modifier = Modifier.padding(horizontal = 16.dp),
             color = MaterialTheme.colorScheme.outlineVariant

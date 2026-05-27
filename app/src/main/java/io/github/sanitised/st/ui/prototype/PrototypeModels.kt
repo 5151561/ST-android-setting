@@ -115,7 +115,10 @@ fun prototypeFallbackChats(): List<PrototypeChatItem> = listOf(
     PrototypeChatItem("aria/demo", "aria", null, "Aria", "那我多加了一份饼干哦，别告诉店长。", "刚才", "A", true, unread = 2),
     PrototypeChatItem("zoey/demo", "zoey", null, "Zoey", "你：等等，所以她真的把那个发到群里了？？", "12 分钟前", "Z", false),
     PrototypeChatItem("vex/demo", "vex", null, "Captain Vex", "*她的目光扫过控制台上闪烁的红色警示灯，没有移开。*", "今天 14:02", "V", true, streaming = true),
-    PrototypeChatItem("eleanor/demo", "eleanor", null, "Eleanor Wright", "那一章的结尾，我想了三个版本。你来听听看？", "昨天", "E", false)
+    PrototypeChatItem("eleanor/demo", "eleanor", null, "Eleanor Wright", "那一章的结尾，我想了三个版本。你来听听看？", "昨天", "E", false),
+    PrototypeChatItem("group/1", "group", null, "雨夜小聚", "Zoey: 那个小蛋糕真的超级好吃！", "刚才", "群", true, unread = 2),
+    PrototypeChatItem("group/2", "group", null, "银河探索队", "Captain Vex: Wraith号准备跃迁，大家抓稳。", "今天 10:15", "队", false),
+    PrototypeChatItem("checkpoint/1", "aria", null, "Aria [检查点: 雨天谈话]", "我们上次说到哪里了？", "2 天前", "查", false)
 )
 
 fun prototypeFallbackCharacters(): List<PrototypeCharacterCard> = listOf(

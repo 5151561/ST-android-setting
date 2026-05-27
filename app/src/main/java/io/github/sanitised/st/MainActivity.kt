@@ -91,6 +91,7 @@ import io.github.sanitised.st.ui.prototype.PrototypeCharacterCreateScreen
 import io.github.sanitised.st.ui.prototype.PrototypeCharacterLibraryScreen
 import io.github.sanitised.st.ui.prototype.PrototypeCharacterProfileScreen
 import io.github.sanitised.st.ui.prototype.PrototypeChatListScreen
+import io.github.sanitised.st.ui.prototype.PrototypeGroupChatScreen
 import io.github.sanitised.st.ui.prototype.PrototypeDrawerState
 import io.github.sanitised.st.ui.prototype.PrototypeMeScreen
 import io.github.sanitised.st.ui.prototype.PrototypeMemoryScreen
@@ -126,7 +127,7 @@ private val bottomNavItems = listOf(
 private val drawerNavItems = listOf(
     DrawerNavItem(STRoutes.HOME, "对话", Icons.AutoMirrored.Filled.Chat, badgeText = "23"),
     DrawerNavItem(STRoutes.CHARACTERS, "角色库", Icons.Filled.Groups, badgeText = "247"),
-    DrawerNavItem(STRoutes.CHARACTERS, "群聊", Icons.Filled.GroupAdd, badgeText = "2"),
+    DrawerNavItem(STRoutes.GROUP_CHAT, "群聊", Icons.Filled.GroupAdd, badgeText = "2"),
     DrawerNavItem(STRoutes.PERSONA, "扮演者", Icons.Filled.Face, badgeText = "4"),
     DrawerNavItem(STRoutes.WORLD_INFO, "世界书", Icons.Filled.Book, badgeText = "4"),
     DrawerNavItem(STRoutes.CHAT_BACKUPS, "记忆与回顾", Icons.Filled.CloudSync),
@@ -287,7 +288,8 @@ class MainActivity : ComponentActivity() {
                 STRoutes.PERSONA,
                 STRoutes.PRESETS,
                 STRoutes.CONNECTIONS,
-                STRoutes.CHAT_BACKUPS -> STRoutes.SETTINGS
+                STRoutes.CHAT_BACKUPS,
+                STRoutes.GROUP_CHAT -> STRoutes.SETTINGS
                 STRoutes.LOGS,
                 STRoutes.CONFIG,
                 STRoutes.LEGAL,
@@ -712,6 +714,15 @@ class MainActivity : ComponentActivity() {
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.GROUP_CHAT) {
+                                BackHandler { navController.popBackStack() }
+                                PrototypeGroupChatScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onConfirm = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }

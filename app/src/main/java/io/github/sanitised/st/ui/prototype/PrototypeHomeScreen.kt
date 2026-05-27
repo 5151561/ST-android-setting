@@ -115,9 +115,9 @@ fun PrototypeChatListScreen(
                             items = listOf(
                                 "全部 ${chatItems.size}",
                                 "收藏 ${chatItems.count { it.favorite }}",
-                                "进行中",
-                                "群聊",
-                                "检查点"
+                                "进行中 ${chatItems.count { it.streaming }}",
+                                "群聊 ${chatItems.count { it.id.contains("group") }}",
+                                "检查点 ${chatItems.count { it.id.contains("checkpoint") }}"
                             ),
                             selectedIndex = selectedFilter,
                             onSelected = { selectedFilter = it },
@@ -179,11 +179,23 @@ private fun PrototypeChatListItem(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            PrototypeAvatar(
-                label = item.initial,
-                size = 52.dp,
-                gradient = prototypeGradientFor(item.id.hashCode())
-            )
+            if (item.id.contains("group")) {
+                val groupInitials = when (item.id) {
+                    "group/1" -> listOf("A", "Z", "K")
+                    "group/2" -> listOf("V", "E")
+                    else -> listOf(item.initial)
+                }
+                PrototypeGroupAvatar(
+                    initials = groupInitials,
+                    size = 52.dp
+                )
+            } else {
+                PrototypeAvatar(
+                    label = item.initial,
+                    size = 52.dp,
+                    gradient = prototypeGradientFor(item.id.hashCode())
+                )
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 // First row: Name + Star <--> Time

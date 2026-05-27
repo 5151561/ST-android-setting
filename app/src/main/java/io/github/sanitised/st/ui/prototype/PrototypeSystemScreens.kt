@@ -1,6 +1,9 @@
 package io.github.sanitised.st.ui.prototype
 
 import java.util.Locale
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -26,7 +30,9 @@ import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Cable
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
@@ -47,10 +53,12 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -58,6 +66,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -155,13 +165,19 @@ fun PrototypeWorldInfoScreen(
                 listOf(
                     WorldInfoSummary("cafe", "常去的咖啡馆"),
                     WorldInfoSummary("galaxy", "星舰联邦 (远征卷)"),
-                    WorldInfoSummary("london", "布鲁姆斯伯里 1887")
+                    WorldInfoSummary("london", "布鲁姆斯伯里 1887"),
+                    WorldInfoSummary("archive", "档案室 — 检索表")
                 )
             }
             rows.forEachIndexed { index, book ->
                 PrototypeListItem(
                     headline = book.name,
-                    supporting = if (index == 0) "12 条目 · 与当前角色相关的世界设定" else "关键词触发 · 可按需注入",
+                    supporting = when (index) {
+                        0 -> "12 条目 · 与角色 Aria 相关的世界设定"
+                        1 -> "87 条目 · Vex 所属世界。覆盖星图、势力、术语"
+                        2 -> "34 条目 · 维多利亚伦敦的街道、人物、报刊"
+                        else -> "203 条目 · SCP 风格条目目录"
+                    },
                     leading = {
                         PrototypeTileIcon(
                             icon = Icons.Filled.AutoStories,
@@ -178,8 +194,9 @@ fun PrototypeWorldInfoScreen(
         PrototypeSectionHeader(title = "常用条目预览")
         val entries = firstBook?.entries.orEmpty()
         if (entries.isEmpty()) {
-            LoreEntryPreview("焦糖海盐蛋糕, 招牌蛋糕", "咖啡馆店长每周一现做。售完为止。Aria 会偷偷给熟客留一块。", true, false)
-            LoreEntryPreview("常客, 老顾客", "咖啡馆的常客包括每天来读报的退休医生、一对中学生情侣，以及周三总迟到的小说家。", false, true)
+            LoreEntryPreview("焦糖海盐蛋糕, 招牌蛋糕", "咖啡馆店长每周一现做。售完为止。Aria 会偷偷给熟客留一块。", constant = false, selective = true, order = 100)
+            LoreEntryPreview("店长, 老板娘", "六十多岁，叫雪。开店三十年。睡得早，下午一般不在店里。", constant = true, selective = false, order = 200)
+            LoreEntryPreview("常客, 老顾客", "咖啡馆的常客包括每天来读报的退休医生、一对中学生情侣，以及周三总迟到的小说家。", constant = false, selective = true, order = 150)
         } else {
             entries.take(4).forEach { entry ->
                 LoreEntryPreview(
@@ -210,19 +227,68 @@ fun PrototypePersonaScreen(
                 .onFailure { onShowMessage(it.message ?: "扮演者加载失败") }
         }
     }
-    PrototypeBackRoot(title = "扮演者", onBack = onBack, modifier = modifier, actions = {
-        PrototypeIconButton(Icons.Filled.Add, "新建", { onShowMessage("新建扮演者稍后接入") })
-    }) {
-        Text(
-            text = "模型会用“你”扮演的身份来回应。可以为不同角色绑定不同扮演者。",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-        )
-        PrototypeSectionHeader("当前激活")
-        val fallback = listOf(PersonaProfile("me.png", "我（默认）", description = "一名普通的常客，下班顺路。", isDefault = true))
-        (personas.ifEmpty { fallback }).sortedByDescending { it.isDefault }.forEachIndexed { index, persona ->
-            PrototypePersonaRow(persona, active = persona.isDefault || index == 0)
+    val fallbackPersonas = listOf(
+        PersonaProfile("me.png", "我（默认）", description = "一名普通的常客，下班顺路。", isDefault = true),
+        PersonaProfile("detective.png", "侦探 Reed", description = "退役军人转私家侦探。穿驼色风衣。", isDefault = false),
+        PersonaProfile("student.png", "高中生 Lyra", description = "17岁。社团是天文社。会画一点画。", isDefault = false),
+        PersonaProfile("wanderer.png", "流浪剑客", description = "没有名字。只有一柄无鞘的刀。", isDefault = false)
+    )
+    val displayPersonas = personas.ifEmpty { fallbackPersonas }
+    val activePersonas = displayPersonas.filter { it.isDefault }
+    val otherPersonas = displayPersonas.filter { !it.isDefault }
+
+    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .statusBarsPadding()
+            ) {
+                PrototypeTopHeader(
+                    title = "扮演者",
+                    leading = {
+                        PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                    },
+                    actions = {
+                        PrototypeIconButton(Icons.Filled.AutoFixHigh, "AI 生成", { onShowMessage("AI 生成扮演者稍后接入") })
+                        PrototypeIconButton(Icons.Filled.Add, "新建", { onShowMessage("新建扮演者稍后接入") })
+                    },
+                    titleBottomPadding = 4.dp
+                )
+                Text(
+                    text = "模型会用“你”扮演的身份来回应。可以为不同角色绑定不同扮演者。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                )
+
+                PrototypeSectionHeader("当前激活")
+                activePersonas.ifEmpty { displayPersonas.take(1) }.forEach { persona ->
+                    PrototypePersonaRow(persona, active = true)
+                }
+
+                PrototypeSectionHeader("所有扮演者", trailing = {
+                    Text("管理绑定", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                })
+                otherPersonas.forEach { persona ->
+                    PrototypePersonaRow(persona, active = false)
+                }
+
+                Spacer(modifier = Modifier.height(104.dp))
+            }
+
+            ExtendedFloatingActionButton(
+                onClick = { onShowMessage("新建扮演者稍后接入") },
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                text = { Text("新建") },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(16.dp),
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            )
         }
     }
 }
@@ -244,12 +310,18 @@ fun PrototypeAISettingsScreen(
         PrototypeTemplateRow(Icons.Filled.Code, "Instruct 模板", "ChatML", "开 · 角色名 / 系统提示遵循模型格式", toggle = true)
         PrototypeTemplateRow(Icons.Filled.Bookmarks, "上下文模板", "Default", "角色描述 + 场景 + 历史的组织方式")
         PrototypeTemplateRow(Icons.Filled.Tune, "系统提示", "角色扮演 v3", "开 · 注入到对话最前", toggle = true, checked = true)
+        PrototypeTemplateRow(Icons.Filled.StickyNote2, "作者注 / 深度笔记", "未设置", "按需注入到指定深度")
         PrototypeSliderSection("核心采样", listOf("温度 Temperature" to 1.05f, "Top P" to 0.92f, "Top K" to 0.20f, "Min P" to 0.05f))
         PrototypeSliderSection("重复抑制", listOf("频率惩罚" to 0.50f, "存在惩罚" to 0.30f, "重复惩罚范围" to 0.25f))
+        PrototypeSectionHeader("响应控制", trailing = {
+            Text("展开", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        })
+        PrototypeSliderSection("响应参数", listOf("最大新 Token 数" to 0.25f, "上下文窗口" to 0.16f))
         PrototypeSectionHeader("高级 — 极少改动")
         PrototypeSwitchRow("启用流式输出", "边生成边显示", true)
         PrototypeSwitchRow("禁止思考链泄露", "过滤掉 <think> 标签内容", true)
         PrototypeSwitchRow("DRY (动态重复抑制)", "抗循环更激进的算法", false)
+        PrototypeSwitchRow("温度最后采样", "先 Top-P 再温度", false)
     }
 }
 
@@ -393,13 +465,22 @@ fun PrototypeMeScreen(
     modifier: Modifier = Modifier
 ) {
     val openDrawer = LocalSTOpenDrawer.current
+    var messageBubbleStyle by remember { mutableStateOf(true) }
+    var vibrationFeedback by remember { mutableStateOf(false) }
+    var secondConfirmation by remember { mutableStateOf(true) }
+    var swipeDrawer by remember { mutableStateOf(true) }
+    var enableExtensions by remember { mutableStateOf(true) }
+    var developerMode by remember { mutableStateOf(false) }
+
     PrototypeRoot(modifier = modifier) {
         PrototypeTopHeader(
             title = "我的",
             leading = { PrototypeIconButton(Icons.Filled.Menu, "打开抽屉", openDrawer) },
             actions = { PrototypeIconButton(Icons.Filled.Search, "搜索设置", { onShowMessage("搜索设置稍后接入") }) }
         )
+        // User card with chevron
         Surface(
+            onClick = { onShowMessage("用户资料稍后接入") },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -411,37 +492,93 @@ fun PrototypeMeScreen(
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text("我（默认）", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-                    Text("已使用 SillyTavern · 本地移动客户端", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("已使用 SillyTavern · 142 天 · 2.4M token", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
+        // ── 外观 ──
         PrototypeSectionHeader("外观")
         PrototypeSettingsGroup {
-            PrototypeNavRow(Icons.Filled.Palette, "主题", "模式：${themeMode.storageValue} · 色彩：${colorSource.storageValue}") {
-                val next = if (colorSource == ThemeColorSource.BRAND) ThemeColorSource.DYNAMIC else ThemeColorSource.BRAND
-                onColorSourceChanged(next)
-            }
-            PrototypeNavRow(Icons.Filled.TextFields, "字号", "15 sp · 中") { onShowMessage("字号设置稍后接入") }
-            PrototypeNavRow(Icons.Filled.Image, "聊天背景", "夜雨咖啡馆") { onShowMessage("聊天背景稍后接入") }
-            PrototypeSwitchRow("消息冒泡风格", "关闭则使用全宽文档样式", true)
+            PrototypeListItem(
+                headline = "主题",
+                supporting = "暖琥珀 · ${themeMode.storageValue}",
+                leading = { PrototypeTileIcon(Icons.Filled.Palette) },
+                trailing = { PrototypeMiniSwatch() },
+                divider = true,
+                onClick = {
+                    val next = if (colorSource == ThemeColorSource.BRAND) ThemeColorSource.DYNAMIC else ThemeColorSource.BRAND
+                    onColorSourceChanged(next)
+                }
+            )
+            PrototypeListItem(
+                headline = "字号",
+                supporting = "15 sp · 中",
+                leading = { PrototypeTileIcon(Icons.Filled.TextFields) },
+                divider = true,
+                onClick = { onShowMessage("字号设置稍后接入") }
+            )
+            PrototypeListItem(
+                headline = "聊天背景",
+                supporting = "夜雨咖啡馆",
+                leading = { PrototypeTileIcon(Icons.Filled.Image) },
+                divider = true,
+                onClick = { onShowMessage("聊天背景稍后接入") }
+            )
+            PrototypeSwitchRow("消息冒泡风格", "关闭则使用全宽文档样式", messageBubbleStyle, { messageBubbleStyle = it })
         }
+        // ── 行为 ──
         PrototypeSectionHeader("行为")
         PrototypeSettingsGroup {
+            PrototypeSwitchRow("流式生成时震动反馈", "逐字到达时轻微震动", vibrationFeedback, { vibrationFeedback = it })
+            PrototypeSwitchRow("敏感操作二次确认", "删除消息、清空对话等", secondConfirmation, { secondConfirmation = it })
             PrototypeSwitchRow("启动时自动连接 API", null, autoOpenBrowserEnabled, onAutoOpenBrowserChanged)
-            PrototypeSwitchRow("自动检查更新", "当前通道：${channel.storageValue}", autoCheckEnabled, onAutoCheckChanged)
-            PrototypeNavRow(Icons.Filled.Backup, "电池后台权限", if (isBatteryUnrestricted) "已允许后台持续运行" else "建议加入电池白名单", onOpenBatterySettings)
-            PrototypeNavRow(Icons.Filled.Refresh, "立即检查更新", if (isChecking) "检查中…" else "手动触发一次", onCheckNow)
+            PrototypeSwitchRow("滑动呼出抽屉", "从左边缘横扫", swipeDrawer, { swipeDrawer = it })
         }
-        PrototypeSectionHeader("数据与核心")
+        // ── 数据 ──
+        PrototypeSectionHeader("数据")
         PrototypeSettingsGroup {
-            PrototypeNavRow(Icons.Filled.Face, "扮演者", "切换当前用户身份", onOpenPersona)
-            PrototypeNavRow(Icons.Filled.Tune, "AI 采样设置", "温度、Top P、提示模板", onOpenPresets)
-            PrototypeNavRow(Icons.Filled.Cable, "API 连接", "提供商、密钥、连接预设", onOpenConnections)
-            PrototypeNavRow(Icons.Filled.AutoStories, "世界书", "关键词触发与常驻条目", onOpenWorldInfo)
-            PrototypeNavRow(Icons.Filled.CloudSync, "记忆与回顾", "聊天备份与检查点", onOpenChatBackups)
-            PrototypeNavRow(Icons.Filled.Settings, "ST 内核", "服务、内核版本、备份、日志", onOpenManageSt)
-            PrototypeNavRow(Icons.Filled.Code, "配置文件", "端口、启动参数", onOpenConfig)
-            PrototypeNavRow(Icons.Filled.Info, "运行日志", "stdout · stderr · service", onOpenLogs)
+            PrototypeListItem(
+                headline = "自动备份",
+                supporting = "每周 · 上次：3 天前",
+                leading = { PrototypeTileIcon(Icons.Filled.Backup) },
+                trailing = { Switch(checked = true, onCheckedChange = null) },
+                divider = true,
+                onClick = { onShowMessage("备份设置稍后接入") }
+            )
+            PrototypeListItem(
+                headline = "同步",
+                supporting = "未开启",
+                leading = { PrototypeTileIcon(Icons.Filled.CloudSync) },
+                divider = true,
+                onClick = { onShowMessage("同步设置稍后接入") }
+            )
+            PrototypeListItem(
+                headline = "导出全部数据",
+                supporting = ".charx + .json 包",
+                leading = { PrototypeTileIcon(Icons.Filled.FolderZip) },
+                onClick = { onShowMessage("数据导出稍后接入") }
+            )
+        }
+        // ── 实验性 ──
+        PrototypeSectionHeader("实验性")
+        PrototypeSettingsGroup {
+            PrototypeSwitchRow("启用扩展", "6 个已安装", enableExtensions, { enableExtensions = it })
+            PrototypeSwitchRow("开发者模式", "显示 token 计数与请求 JSON", developerMode, { developerMode = it })
+        }
+        // ── 关于 ──
+        PrototypeSectionHeader("关于")
+        PrototypeSettingsGroup {
+            PrototypeListItem(
+                headline = "SillyTavern Mobile",
+                supporting = "1.13.0 · 第三方移动客户端",
+                leading = { PrototypeTileIcon(Icons.Filled.Info) },
+                onClick = { onShowMessage("版本信息") }
+            )
         }
     }
 }
@@ -765,7 +902,7 @@ private fun PrototypeBackRoot(
 }
 
 @Composable
-private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, selective: Boolean) {
+private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, selective: Boolean, order: Int = 0) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -774,13 +911,26 @@ private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, s
         color = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (constant) PrototypeBadge("常驻", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
-                if (selective) PrototypeBadge("关键词触发", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (constant) PrototypeBadge("常驻", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+                    if (selective) PrototypeBadge("关键词触发", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                }
+                if (order > 0) {
+                    Text("序号 $order", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            Text("关键词", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
-            Text(keys, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
-            Text(content, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+            Text("关键词", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                keys.split(", ").forEach { keyword ->
+                    PrototypeBadge(keyword, MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Text(content, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight)
         }
     }
 }
@@ -792,20 +942,30 @@ private fun PrototypePersonaRow(persona: PersonaProfile, active: Boolean) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
         shape = MaterialTheme.shapes.large,
-        color = if (active) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.surface
+        color = if (active) MaterialTheme.colorScheme.surfaceContainer else Color.Transparent,
+        border = if (active) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null
     ) {
-        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             PrototypeAvatar(persona.name, size = 48.dp, ringColor = if (active) MaterialTheme.colorScheme.primary else null)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(persona.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     if (active) {
-                        Spacer(Modifier.width(6.dp))
                         PrototypeBadge("当前", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary)
                     }
                 }
-                Text(persona.description.ifBlank { persona.title.ifBlank { "未填写描述" } }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = persona.description.ifBlank { persona.title.ifBlank { "未填写描述" } },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            IconButton(onClick = { }) {
+                Icon(Icons.Filled.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -890,6 +1050,7 @@ private fun PrototypeSwitchRow(label: String, sub: String?, checked: Boolean, on
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable { onChanged(!checked) }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1312,5 +1473,23 @@ private fun PrototypeSystemInfoCard(title: String, body: String, action: @Compos
 private fun PrototypeBadge(label: String, containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest, contentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     Surface(shape = MaterialTheme.shapes.small, color = containerColor, contentColor = contentColor) {
         Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+    }
+}
+
+@Composable
+private fun PrototypeMiniSwatch() {
+    val colors = listOf(0xFFFFB871, 0xFFC6CB95, 0xFFE5C0A2, 0xFF251F17)
+    Row {
+        colors.forEachIndexed { index, colorLong ->
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .then(if (index > 0) Modifier.padding(start = 0.dp) else Modifier)
+                    .background(Color(colorLong), CircleShape)
+                    .then(
+                        Modifier.padding(0.dp) // border via overlay approach
+                    )
+            )
+        }
     }
 }

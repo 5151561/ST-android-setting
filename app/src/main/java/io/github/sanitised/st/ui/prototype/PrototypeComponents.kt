@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -177,6 +179,44 @@ fun PrototypeAvatar(
             color = Color.White.copy(alpha = 0.94f),
             fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+@Composable
+fun PrototypeGroupAvatar(
+    initials: List<String>,
+    modifier: Modifier = Modifier,
+    size: Dp = 52.dp
+) {
+    Box(
+        modifier = modifier.size(size),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        val count = initials.size.coerceAtMost(3)
+        val avatarSize = when (count) {
+            1 -> size
+            2 -> size * 0.68f
+            else -> size * 0.58f
+        }
+        initials.take(3).forEachIndexed { index, label ->
+            val offsetDp = when (count) {
+                1 -> 0.dp
+                2 -> (index * (size.value * 0.32f)).dp
+                else -> (index * (size.value * 0.22f)).dp
+            }
+            val yOffsetDp = if (count > 2 && index == 1) (size.value * 0.12f).dp else 0.dp
+            val gradient = prototypeGradientFor(label.hashCode())
+            
+            PrototypeAvatar(
+                label = label,
+                size = avatarSize,
+                gradient = gradient,
+                ringColor = MaterialTheme.colorScheme.surface,
+                modifier = Modifier
+                    .offset(x = offsetDp, y = yOffsetDp)
+                    .zIndex((3 - index).toFloat())
+            )
+        }
     }
 }
 
