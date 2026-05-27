@@ -1,5 +1,6 @@
 package io.github.sanitised.st.ui.prototype
 
+import java.util.Locale
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -62,6 +63,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -248,6 +253,7 @@ fun PrototypeAISettingsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrototypeApiConnectionScreen(
     status: NodeStatus,
@@ -268,17 +274,94 @@ fun PrototypeApiConnectionScreen(
             }.onFailure { onShowMessage(it.message ?: "API 连接加载失败") }
         }
     }
+
+    var activeMode by remember { mutableStateOf("cc") }
+    var activeProvider by remember(activeMode) {
+        mutableStateOf(if (activeMode == "cc") "Claude" else if (activeMode == "tc") "KoboldCpp" else "")
+    }
+    var selectedProfileId by remember { mutableStateOf("daily") }
+    var selectedProfileName by remember { mutableStateOf("日常 — Claude Sonnet 4.5") }
+    var showProfileSheet by remember { mutableStateOf(false) }
+
     PrototypeBackRoot(title = "API 连接", onBack = onBack, modifier = modifier, actions = {
         PrototypeIconButton(Icons.Filled.Help, "帮助", { onShowMessage("API 帮助稍后接入") })
     }) {
-        PrototypeConnectionProfileCard(profiles = profiles)
-        PrototypeModeControl()
+        PrototypeConnectionProfileCard(
+            profiles = profiles,
+            selectedProfileName = selectedProfileName,
+            onClick = { showProfileSheet = true }
+        )
+        PrototypeModeControl(
+            activeMode = activeMode,
+            onModeChange = { activeMode = it }
+        )
         PrototypeSectionHeader("当前激活")
-        PrototypeActiveConnectionCard(connectedCount = secrets.sumOf { it.entries.size }.coerceAtLeast(3))
-        PrototypeSectionHeader("聊天补全 — 提供商", trailing = {
-            Text("9 个", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        })
-        ProviderGrid()
+        PrototypeActiveConnectionCard(
+            activeMode = activeMode,
+            connectedCount = secrets.sumOf { it.entries.size }.coerceAtLeast(3)
+        )
+        PrototypeSectionHeader(
+            title = if (activeMode == "tc") "文本补全 — 后端" else "聊天补全 — 提供商",
+            trailing = {
+                Text("9 个", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            }
+        )
+        ProviderGrid(
+            activeMode = activeMode,
+            activeProvider = activeProvider,
+            onProviderChange = { activeProvider = it }
+        )
+
+        if (activeMode == "cc") {
+            PrototypeSectionHeader("本地 / 自建")
+            PrototypeListItem(
+                headline = "自定义 OpenAI 兼容",
+                supporting = "任意 base URL + API key · 适合自建反代",
+                leading = { PrototypeTileIcon(Icons.Filled.Code) },
+                onClick = { onShowMessage("自建配置稍后接入") }
+            )
+            PrototypeSectionHeader("免费")
+            PrototypeListItem(
+                headline = "KoboldAI Horde",
+                supporting = "社区共享算力 · 排队中",
+                leading = { PrototypeTileIcon(Icons.Filled.Face) },
+                onClick = { onShowMessage("Horde 状态：排队中") }
+            )
+        } else if (activeMode == "tc") {
+            PrototypeSectionHeader("当前后端的格式")
+            PrototypeListItem(
+                headline = "Instruct 模板",
+                supporting = "Mistral V3 — Tekken · [INST] / [/INST] 包裹",
+                leading = { PrototypeTileIcon(Icons.Filled.Code) },
+                onClick = { onShowMessage("Instruct 模板设置稍后接入") }
+            )
+            PrototypeListItem(
+                headline = "上下文模板",
+                supporting = "Default — 角色卡 + 场景 + 历史",
+                leading = { PrototypeTileIcon(Icons.Filled.Bookmarks) },
+                onClick = { onShowMessage("上下文模板设置稍后接入") }
+            )
+        }
+
+        if (showProfileSheet) {
+            ConnectionProfileBottomSheet(
+                onDismiss = { showProfileSheet = false },
+                selectedProfileId = selectedProfileId,
+                onProfileSelected = { id, name, mode ->
+                    selectedProfileId = id
+                    selectedProfileName = name
+                    activeMode = mode
+                    activeProvider = if (mode == "cc") {
+                        if (id == "daily" || id == "long") "Claude" else "OpenAI"
+                    } else if (mode == "tc") {
+                        "KoboldCpp"
+                    } else {
+                        ""
+                    }
+                    showProfileSheet = false
+                }
+            )
+        }
     }
 }
 
@@ -437,10 +520,103 @@ fun PrototypeStCoreScreen(
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val running = status.state == NodeState.RUNNING
+    val starting = status.state == NodeState.STARTING
+    
+    // Live Uptime calculation
+    var uptimeSec by remember(running) { mutableStateOf(0) }
+    LaunchedEffect(running) {
+        if (running) {
+            uptimeSec = 0
+            while (true) {
+                kotlinx.coroutines.delay(1000)
+                uptimeSec++
+            }
+        } else {
+            uptimeSec = 0
+        }
+    }
+    val uptimeText = if (running) {
+        val min = uptimeSec / 60
+        val sec = uptimeSec % 60
+        if (min > 0) "${min} 分 ${sec} 秒" else "${sec} 秒"
+    } else {
+        "—"
+    }
+
+    var autoStartService by remember { mutableStateOf(true) }
+    var autoOpenBrowser by remember { mutableStateOf(true) }
+    var allowBackgroundRun by remember { mutableStateOf(true) }
+
     PrototypeBackRoot(title = "ST 核心", onBack = onBack, modifier = modifier, actions = {
         PrototypeIconButton(Icons.Filled.MoreVert, "更多", { onShowMessage("更多内核操作稍后接入") })
     }) {
         PrototypeStStatusHero(status, stLabel, nodeLabel, onStartService, onStopService, onOpenBrowser)
+        
+        if (running || starting) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("进程 PID", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = if (running) "${status.pid ?: 21487}" else "—",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("运行时长", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(uptimeText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("监听地址", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("127.0.0.1:${status.port}", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurface)
+                    }
+                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("健康检查", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (running) Icons.Filled.CheckCircle else Icons.Filled.Face,
+                                contentDescription = null,
+                                tint = if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = if (running) "已就绪" else "等待 HTTP 200…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         if (busyMessage.isNotBlank()) {
             PrototypeSystemInfoCard("正在处理", busyMessage)
         }
@@ -452,15 +628,69 @@ fun PrototypeStCoreScreen(
                 if (customOperationCancelable) onCancelCustomOperation()
             }
         }
+        
         PrototypeSectionHeader("管理")
         PrototypeSettingsGroup {
-            PrototypeNavRow(Icons.Filled.Download, "内核版本", if (isCustomInstalled) "自定义 · ${customInstalledLabel.orEmpty()}" else "自带 · $stLabel", onLoadCustomZip)
-            PrototypeNavRow(Icons.Filled.Upload, "数据备份", "导出或导入完整数据", onExport)
-            PrototypeNavRow(Icons.Filled.FileDownload, "导入备份", "恢复 tar.gz / zip", onImport)
-            PrototypeNavRow(Icons.Filled.Info, "运行日志", "stdout · stderr · service", onShowLogs)
-            PrototypeNavRow(Icons.Filled.RestartAlt, "恢复自带内核", "清理自定义版本", onResetToDefault)
-            PrototypeNavRow(Icons.Filled.Delete, "移除用户数据", "危险操作，需要二次确认", onRemoveUserData)
+            PrototypeListItem(
+                headline = "内核版本",
+                supporting = if (isCustomInstalled) "自定义 · ${customInstalledLabel.orEmpty()}" else "自带 · $stLabel",
+                leading = { PrototypeTileIcon(Icons.Filled.Settings, tint = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) },
+                divider = true,
+                onClick = onLoadCustomZip
+            )
+            PrototypeListItem(
+                headline = "数据备份与快照",
+                supporting = "导出或导入完整数据",
+                leading = { PrototypeTileIcon(Icons.Filled.Upload, tint = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) },
+                divider = true,
+                onClick = onExport
+            )
+            PrototypeListItem(
+                headline = "运行日志",
+                supporting = "stdout · stderr · service",
+                leading = { PrototypeTileIcon(Icons.Filled.Info, tint = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer) },
+                divider = true,
+                onClick = onShowLogs
+            )
+            PrototypeListItem(
+                headline = "清除用户数据",
+                supporting = "危险操作，清除全部数据",
+                leading = { PrototypeTileIcon(Icons.Filled.Delete, tint = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer) },
+                divider = true,
+                onClick = onRemoveUserData
+            )
+            PrototypeListItem(
+                headline = "恢复自带内核",
+                supporting = "清理自定义 ST 版本",
+                leading = { PrototypeTileIcon(Icons.Filled.RestartAlt, tint = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface) },
+                onClick = onResetToDefault
+            )
         }
+
+        PrototypeSectionHeader("自动化")
+        PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
+            PrototypeListItem(
+                headline = "启动 App 时自动唤起服务",
+                supporting = "进入主屏后立即拉起 Node 进程",
+                trailing = { Switch(checked = autoStartService, onCheckedChange = { autoStartService = it }) },
+                divider = true,
+                onClick = { autoStartService = !autoStartService }
+            )
+            PrototypeListItem(
+                headline = "服务就绪后自动打开浏览器",
+                supporting = "对 :8000 进行 TCP 探测后跳转",
+                trailing = { Switch(checked = autoOpenBrowser, onCheckedChange = { autoOpenBrowser = it }) },
+                divider = true,
+                onClick = { autoOpenBrowser = !autoOpenBrowser }
+            )
+            PrototypeListItem(
+                headline = "允许后台持续运行",
+                supporting = "加入电池白名单后更稳定",
+                trailing = { Switch(checked = allowBackgroundRun, onCheckedChange = { allowBackgroundRun = it }) },
+                onClick = { allowBackgroundRun = !allowBackgroundRun }
+            )
+        }
+
         PrototypeSectionHeader("设置快照", trailing = {
             Text(if (settingsSnapshotsLoading) "加载中" else "${settingsSnapshots.size} 个", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         })
@@ -618,9 +848,39 @@ private fun PrototypeSliderSection(title: String, values: List<Pair<String, Floa
     PrototypeSectionHeader(title)
     Column(modifier = Modifier.padding(horizontal = 20.dp)) {
         values.forEach { (label, initial) ->
-            var value by remember(label) { mutableFloatStateOf(initial) }
-            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 8.dp))
-            Slider(value = value, onValueChange = { value = it })
+            val range = remember(label) {
+                when {
+                    label.contains("温度") || label.contains("Temperature") -> 0f..2f
+                    label.contains("惩罚") && !label.contains("范围") -> -2f..2f
+                    else -> 0f..1f
+                }
+            }
+            var value by remember(label) { mutableFloatStateOf(initial.coerceIn(range.start, range.endInclusive)) }
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.2f", value),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Slider(
+                    value = value,
+                    onValueChange = { value = it },
+                    valueRange = range,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }
@@ -642,15 +902,23 @@ private fun PrototypeSwitchRow(label: String, sub: String?, checked: Boolean, on
 }
 
 @Composable
-private fun PrototypeConnectionProfileCard(profiles: List<ConnectionProfile>) {
-    val active = profiles.firstOrNull()?.label ?: "日常 — Claude Sonnet 4.5"
-    Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
+private fun PrototypeConnectionProfileCard(
+    profiles: List<ConnectionProfile>,
+    selectedProfileName: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer
+    ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             PrototypeTileIcon(Icons.Filled.Bookmarks, tint = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("连接预设", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(active, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(selectedProfileName, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             PrototypeBadge("${profiles.size.coerceAtLeast(4)} 个", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
         }
@@ -658,67 +926,293 @@ private fun PrototypeConnectionProfileCard(profiles: List<ConnectionProfile>) {
 }
 
 @Composable
-private fun PrototypeModeControl() {
-    val modes = listOf("聊天补全", "文本补全", "Kobold", "NovelAI")
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        modes.forEachIndexed { index, label ->
-            Surface(
-                modifier = Modifier.weight(1f),
-                shape = MaterialTheme.shapes.medium,
-                color = if (index == 0) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLowest,
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (index == 0) MaterialTheme.colorScheme.primary else Color.Transparent
-                )
-            ) {
-                Text(label, style = MaterialTheme.typography.labelMedium, color = if (index == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 10.dp), maxLines = 1)
+private fun PrototypeModeControl(
+    activeMode: String,
+    onModeChange: (String) -> Unit
+) {
+    val modes = listOf(
+        "cc" to "聊天补全",
+        "tc" to "文本补全",
+        "kobold" to "Kobold",
+        "novel" to "NovelAI"
+    )
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = "API 模式",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            modes.forEach { (modeId, label) ->
+                val sel = modeId == activeMode
+                Surface(
+                    onClick = { onModeChange(modeId) },
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.medium,
+                    color = if (sel) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLowest,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (sel) MaterialTheme.colorScheme.primary else Color.Transparent
+                    )
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 10.dp),
+                        maxLines = 1,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
             }
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        val desc = when (activeMode) {
+            "tc" -> "当前：Text Completion · 适合本地推理 / 微调模型。会启用 Instruct 模板和原始 prompt 拼接。"
+            "cc" -> "当前：Chat Completion · 适合云端商用模型。按 messages 数组发送，不需要 Instruct 模板。"
+            "kobold" -> "当前：KoboldAI Classic · 适合老版本 Horde / United 等经典格式。"
+            "novel" -> "当前：NovelAI · 适合 Kayra / Erato 等小说写作专用大模型。"
+            else -> ""
+        }
+        Text(
+            text = desc,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
 @Composable
-private fun PrototypeActiveConnectionCard(connectedCount: Int) {
-    Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
+private fun PrototypeActiveConnectionCard(
+    activeMode: String,
+    connectedCount: Int
+) {
+    val title = when (activeMode) {
+        "cc" -> "Claude (Anthropic)"
+        "tc" -> "KoboldCpp · 本地"
+        "kobold" -> "KoboldAI Horde · 社区"
+        "novel" -> "NovelAI Erato"
+        else -> "未选择"
+    }
+    val subtitle = when (activeMode) {
+        "cc" -> "claude-sonnet-4.5 · 200k"
+        "tc" -> "Mistral-Nemo-Instruct-2407.Q5_K_M · 32k"
+        "kobold" -> "Horde Community Models"
+        "novel" -> "Erato · 8k 上下文"
+        else -> ""
+    }
+    val avatarLabel = when (activeMode) {
+        "cc" -> "C"
+        "tc" -> "K"
+        "kobold" -> "H"
+        "novel" -> "N"
+        else -> "?"
+    }
+    val avatarGradient = when (activeMode) {
+        "cc" -> listOf(0xFF1A1A1A, 0xFF4A2700)
+        "tc" -> listOf(0xFF102A1F, 0xFF004A27)
+        "kobold" -> listOf(0xFF2A102A, 0xFF4A004A)
+        "novel" -> listOf(0xFF2A2A10, 0xFF4A4A00)
+        else -> listOf(0xFF1A1A1A, 0xFF4A2700)
+    }
+    val status = when (activeMode) {
+        "kobold" -> "排队中"
+        else -> "就绪"
+    }
+    val statusColor = when (activeMode) {
+        "kobold" -> MaterialTheme.colorScheme.outline
+        else -> MaterialTheme.colorScheme.tertiary
+    }
+    val latency = when (activeMode) {
+        "cc" -> "约 0.8s"
+        "tc" -> "12 tok/s"
+        "kobold" -> "约 8s"
+        "novel" -> "约 0.5s"
+        else -> "—"
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PrototypeAvatar("C", size = 40.dp, square = true, gradient = listOf(0xFF1A1A1A, 0xFF4A2700))
+                PrototypeAvatar(avatarLabel, size = 40.dp, square = true, gradient = avatarGradient)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Claude (Anthropic)", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Text("claude-sonnet-4.5 · 200k", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                PrototypeStatusDot(MaterialTheme.colorScheme.tertiary)
+                PrototypeStatusDot(statusColor)
             }
             Row(modifier = Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PrototypeStat("状态", "就绪", Modifier.weight(1f), ok = true)
-                PrototypeStat("密钥", "$connectedCount 个", Modifier.weight(1f))
-                PrototypeStat("延迟", "约 0.8s", Modifier.weight(1f))
+                PrototypeStat("状态", status, Modifier.weight(1f), ok = status == "就绪")
+                PrototypeStat(if (activeMode == "cc") "密钥" else "上下文", if (activeMode == "cc") "$connectedCount 个" else if (activeMode == "tc") "32k" else if (activeMode == "novel") "8k" else "社区共享", Modifier.weight(1f))
+                PrototypeStat("延迟", latency, Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun ProviderGrid() {
-    val providers = listOf("OpenAI" to "O", "Claude" to "C", "Google AI" to "G", "Mistral" to "M", "OpenRouter" to "⌥", "DeepSeek" to "D", "xAI Grok" to "X", "KoboldCpp" to "K", "Ollama" to "O")
+private fun ProviderGrid(
+    activeMode: String,
+    activeProvider: String,
+    onProviderChange: (String) -> Unit
+) {
+    val ccProviders = listOf(
+        "OpenAI" to "O", "Claude" to "C", "Google AI" to "G",
+        "Mistral" to "M", "OpenRouter" to "⌥", "DeepSeek" to "D",
+        "xAI Grok" to "X", "Cohere" to "C", "Perplexity" to "P"
+    )
+    val tcProviders = listOf(
+        "KoboldCpp" to "K", "Text-Gen WebUI" to "T", "TabbyAPI" to "τ",
+        "Aphrodite" to "φ", "Mancer" to "M", "Featherless" to "F",
+        "Horde (文本)" to "H", "llama.cpp" to "L", "Ollama" to "O"
+    )
+    val providers = if (activeMode == "tc") tcProviders else ccProviders
+
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         providers.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                row.forEachIndexed { index, provider ->
-                    val active = provider.first == "Claude"
-                    Surface(modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.large, color = if (active) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer) {
-                        Column(modifier = Modifier.padding(vertical = 14.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            PrototypeAvatar(provider.second, size = 36.dp, square = true)
-                            Text(provider.first, style = MaterialTheme.typography.labelLarge, color = if (active) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
-                            Text(if (index == 1 || active) "已连接" else "未连接", style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) {
+                row.forEach { (name, icon) ->
+                    val active = name == activeProvider
+                    Surface(
+                        onClick = { onProviderChange(name) },
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.large,
+                        color = if (active) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                        border = androidx.compose.foundation.BorderStroke(
+                            2.dp,
+                            if (active) MaterialTheme.colorScheme.primary else Color.Transparent
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 14.dp, horizontal = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            PrototypeAvatar(icon, size = 36.dp, square = true)
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (active) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                            Text(
+                                text = if (active || name == "OpenAI" || name == "llama.cpp" || name == "KoboldCpp") "已连接" else "未连接",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (active) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConnectionProfileBottomSheet(
+    onDismiss: () -> Unit,
+    selectedProfileId: String,
+    onProfileSelected: (String, String, String) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+    val profiles = listOf(
+        Triple("daily", "日常 — Claude Sonnet 4.5", "cc"),
+        Triple("long", "长篇写作 — Claude Opus", "cc"),
+        Triple("local", "本地 — KoboldCpp · Mistral-Nemo", "tc"),
+        Triple("free", "免费 — Horde", "kobold"),
+        Triple("novel", "小说 — NovelAI Erato", "novel")
+    )
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text("切换连接预设", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text("每个预设保存 API 模式 + 模型 + 采样器组合。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
+            
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                profiles.forEach { (id, name, mode) ->
+                    val active = id == selectedProfileId
+                    Surface(
+                        onClick = {
+                            onProfileSelected(id, name, mode)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                        color = if (active) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = MaterialTheme.shapes.medium,
+                                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = mode.uppercase(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                                val sub = when (mode) {
+                                    "cc" -> "Chat Completion · Anthropic · 200k"
+                                    "tc" -> "Text Completion · KoboldCpp · 32k"
+                                    "kobold" -> "KoboldAI Horde · 排队约 8 秒"
+                                    "novel" -> "NovelAI · 8k 上下文"
+                                    else -> ""
+                                }
+                                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (active) {
+                                Icon(
+                                    imageVector = Icons.Filled.CheckCircle,
+                                    contentDescription = "已选择",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(onClick = { /* 新建预设 */ }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.Add, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("新建预设")
+                }
+                TextButton(onClick = { /* 导入/导出 */ }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.Download, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("导入 / 导出")
                 }
             }
         }

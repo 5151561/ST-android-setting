@@ -82,7 +82,7 @@ import io.github.sanitised.st.ui.components.CharacterTagCheckboxList
 import io.github.sanitised.st.ui.components.FavoriteIconButton
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STInfoCard
-import io.github.sanitised.st.ui.components.STPrototypeSearchFieldButton
+import io.github.sanitised.st.ui.prototype.PrototypeSearchBar
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 import kotlinx.coroutines.launch
 
@@ -459,7 +459,7 @@ fun CharacterListScreen(
                 onImportCharacters = { importLauncher.launch(characterImportMimeTypes) },
                 onImportFromUrl = { showExternalImport = true }
             )
-            STPrototypeSearchFieldButton(
+            PrototypeSearchBar(
                 text = if (query.isBlank()) {
                     stringResource(R.string.character_list_search_hint)
                 } else {

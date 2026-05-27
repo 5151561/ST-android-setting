@@ -64,9 +64,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.CharacterDetail
@@ -191,8 +193,6 @@ fun PrototypeCharacterLibraryScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(bottom = 88.dp)
             ) {
                 PrototypeTopHeader(
                     title = "角色",
@@ -241,7 +241,7 @@ fun PrototypeCharacterLibraryScreen(
                             start = 16.dp,
                             top = 4.dp,
                             end = 16.dp,
-                            bottom = 28.dp
+                            bottom = 104.dp
                         )
                     ) {
                         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
@@ -273,7 +273,6 @@ fun PrototypeCharacterLibraryScreen(
                 text = { Text("创建") },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
                     .padding(16.dp),
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -522,10 +521,10 @@ private fun PrototypeCharacterCardView(
     onClick: () -> Unit
 ) {
     Surface(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .height(276.dp)
-            .clickable(onClick = onClick),
+            .height(276.dp),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainer
     ) {
@@ -536,11 +535,25 @@ private fun PrototypeCharacterCardView(
                     .height(170.dp)
                     .background(Brush.linearGradient(card.gradient.map { Color(it) }))
             ) {
+                val density = LocalDensity.current
+                val heightPx = remember { with(density) { 170.dp.toPx() } }
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                                radius = heightPx * 1.5f
+                            )
+                        )
+                )
                 Text(
                     text = card.initial,
-                    style = MaterialTheme.typography.displaySmall,
-                    color = Color.White.copy(alpha = 0.88f),
-                    fontWeight = FontWeight.SemiBold,
+                    style = androidx.compose.ui.text.TextStyle(
+                        fontSize = 84.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = Color.White.copy(alpha = 0.85f),
                     modifier = Modifier.align(Alignment.Center)
                 )
                 if (card.favorite) {
@@ -573,7 +586,9 @@ private fun PrototypeCharacterCardView(
             Column(modifier = Modifier.padding(12.dp)) {
                 Text(
                     text = card.name,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Medium
+                    ),
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -609,20 +624,35 @@ private fun CharacterHero(card: PrototypeCharacterCard) {
             .height(220.dp)
             .background(Brush.linearGradient(card.gradient.map { Color(it) }))
     ) {
+        val density = LocalDensity.current
+        val heightPx = remember { with(density) { 220.dp.toPx() } }
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                        radius = heightPx * 1.5f
+                    )
+                )
+        )
         Text(
             text = card.initial,
-            style = MaterialTheme.typography.displaySmall,
-            color = Color.White.copy(alpha = 0.82f),
-            fontWeight = FontWeight.SemiBold,
+            style = androidx.compose.ui.text.TextStyle(
+                fontSize = 110.sp,
+                fontWeight = FontWeight.Bold
+            ),
+            color = Color.White.copy(alpha = 0.85f),
             modifier = Modifier.align(Alignment.Center)
         )
+        val surfaceColor = MaterialTheme.colorScheme.surface
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color(0xDD18130E)),
-                        startY = 90f
+                        colors = listOf(Color.Transparent, surfaceColor.copy(alpha = 0.85f), surfaceColor),
+                        startY = heightPx * 0.4f
                     )
                 )
         )
@@ -633,15 +663,17 @@ private fun CharacterHero(card: PrototypeCharacterCard) {
         ) {
             Text(
                 text = card.name,
-                style = MaterialTheme.typography.headlineSmall,
-                color = Color.White,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontWeight = FontWeight.Bold
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = card.subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.82f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp)
@@ -653,8 +685,8 @@ private fun CharacterHero(card: PrototypeCharacterCard) {
                 card.tags.ifEmpty { listOf("角色卡") }.forEach { tag ->
                     PrototypeBadge(
                         label = tag,
-                        containerColor = Color.Black.copy(alpha = 0.40f),
-                        contentColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

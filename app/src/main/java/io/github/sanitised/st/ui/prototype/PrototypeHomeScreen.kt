@@ -37,12 +37,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
+
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.PaddingValues
 
 @Composable
 fun PrototypeChatListScreen(
@@ -63,65 +70,81 @@ fun PrototypeChatListScreen(
     }
     var selectedFilter by remember { mutableIntStateOf(0) }
 
+    val filteredChats = remember(chatItems, selectedFilter) {
+        when (selectedFilter) {
+            1 -> chatItems.filter { it.favorite }
+            2 -> chatItems.filter { it.streaming }
+            3 -> chatItems.filter { it.id.contains("group") }
+            4 -> chatItems.filter { it.id.contains("checkpoint") }
+            else -> chatItems
+        }
+    }
+
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 104.dp)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 104.dp)
             ) {
-                PrototypeTopHeader(
-                    title = "对话",
-                    leading = {
-                        PrototypeIconButton(
-                            icon = Icons.Filled.Menu,
-                            contentDescription = "打开抽屉",
-                            onClick = openDrawer
+                item {
+                    Column(modifier = Modifier.statusBarsPadding()) {
+                        PrototypeTopHeader(
+                            title = "对话",
+                            leading = {
+                                PrototypeIconButton(
+                                    icon = Icons.Filled.Menu,
+                                    contentDescription = "打开抽屉",
+                                    onClick = openDrawer
+                                )
+                            },
+                            actions = {
+                                PrototypeIconButton(
+                                    icon = Icons.Filled.Search,
+                                    contentDescription = "搜索会话",
+                                    onClick = { onShowMessage("搜索会话稍后接入") }
+                                )
+                                PrototypeIconButton(
+                                    icon = Icons.Filled.FilterList,
+                                    contentDescription = "过滤会话",
+                                    onClick = { onShowMessage("过滤会话稍后接入") }
+                                )
+                            }
                         )
-                    },
-                    actions = {
-                        PrototypeIconButton(
-                            icon = Icons.Filled.Search,
-                            contentDescription = "搜索会话",
-                            onClick = { onShowMessage("搜索会话稍后接入") }
-                        )
-                        PrototypeIconButton(
-                            icon = Icons.Filled.FilterList,
-                            contentDescription = "过滤会话",
-                            onClick = { onShowMessage("过滤会话稍后接入") }
+
+                        PrototypeChipRow(
+                            items = listOf(
+                                "全部 ${chatItems.size}",
+                                "收藏 ${chatItems.count { it.favorite }}",
+                                "进行中",
+                                "群聊",
+                                "检查点"
+                            ),
+                            selectedIndex = selectedFilter,
+                            onSelected = { selectedFilter = it },
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
                         )
                     }
-                )
-
-                PrototypeChipRow(
-                    items = listOf("全部 ${chatItems.size}", "收藏 ${chatItems.count { it.favorite }}", "进行中", "群聊", "检查点"),
-                    selectedIndex = selectedFilter,
-                    onSelected = { selectedFilter = it },
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-
-                if (status.state != NodeState.RUNNING) {
-                    PrototypeServiceInlineCard(
-                        status = status,
-                        stLabel = stLabel,
-                        nodeLabel = nodeLabel,
-                        onStart = onStart,
-                        onStop = onStop,
-                        onShowMessage = onShowMessage,
-                        modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
-                    )
                 }
 
-                Column(modifier = Modifier.padding(top = 8.dp)) {
-                    chatItems.forEach { chat ->
-                        PrototypeChatRow(
-                            item = chat,
-                            onClick = { onOpenChat(chat) }
+                if (status.state != NodeState.RUNNING) {
+                    item {
+                        PrototypeServiceInlineCard(
+                            status = status,
+                            stLabel = stLabel,
+                            nodeLabel = nodeLabel,
+                            onStart = onStart,
+                            onStop = onStop,
+                            onShowMessage = onShowMessage,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
+                }
+
+                items(filteredChats, key = { it.id }) { chat ->
+                    PrototypeChatListItem(
+                        item = chat,
+                        onClick = { onOpenChat(chat) }
+                    )
                 }
             }
 
@@ -141,59 +164,107 @@ fun PrototypeChatListScreen(
 }
 
 @Composable
-private fun PrototypeChatRow(
+private fun PrototypeChatListItem(
     item: PrototypeChatItem,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 0.dp)
-            .height(80.dp)
-            .padding(horizontal = 16.dp)
-            .then(androidx.compose.ui.Modifier),
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent
     ) {
-        PrototypeListItem(
-            headline = item.title,
-            supporting = buildString {
-                if (item.streaming) append("● 进行中 · ")
-                append(item.preview)
-            },
-            leading = {
-                PrototypeAvatar(
-                    label = item.initial,
-                    size = 52.dp,
-                    gradient = prototypeGradientFor(item.id.hashCode())
-                )
-            },
-            trailing = {
-                Column(horizontalAlignment = Alignment.End) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PrototypeAvatar(
+                label = item.initial,
+                size = 52.dp,
+                gradient = prototypeGradientFor(item.id.hashCode())
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                // First row: Name + Star <--> Time
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (item.favorite) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = "已收藏",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = item.time,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
                     )
-                    if (item.favorite) {
-                        Icon(
-                            imageVector = Icons.Filled.Star,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 6.dp)
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                // Second row: [● 进行中] Preview <--> Unread badge
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (item.streaming) {
+                            Text(
+                                text = "● 进行中 · ",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = MaterialTheme.colorScheme.tertiary,
+                                maxLines = 1
+                            )
+                        }
+                        Text(
+                            text = item.preview,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
-                    } else if (item.unread > 0) {
+                    }
+                    if (item.unread > 0) {
+                        Spacer(modifier = Modifier.width(8.dp))
                         PrototypeBadge(
                             label = item.unread.toString(),
                             containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.padding(top = 6.dp)
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     }
                 }
-            },
-            onClick = onClick
-        )
+            }
+        }
     }
 }
 

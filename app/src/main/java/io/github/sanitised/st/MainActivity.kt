@@ -83,8 +83,8 @@ import io.github.sanitised.st.ui.navigation.BottomNavItem
 import io.github.sanitised.st.ui.navigation.DrawerNavItem
 import io.github.sanitised.st.ui.navigation.STNavigationScaffold
 import io.github.sanitised.st.ui.navigation.STRoutes
-import io.github.sanitised.st.ui.components.STPrototypeAvatar
-import io.github.sanitised.st.ui.components.STPrototypeStatusDot
+import io.github.sanitised.st.ui.prototype.PrototypeAvatar
+import io.github.sanitised.st.ui.prototype.PrototypeStatusDot
 import io.github.sanitised.st.ui.prototype.PrototypeAISettingsScreen
 import io.github.sanitised.st.ui.prototype.PrototypeApiConnectionScreen
 import io.github.sanitised.st.ui.prototype.PrototypeCharacterCreateScreen
@@ -171,7 +171,7 @@ private fun STAppDrawerHeader(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                STPrototypeAvatar(
+                PrototypeAvatar(
                     label = "我",
                     size = 56.dp,
                     ringColor = colors.primary
@@ -233,7 +233,7 @@ private fun STAppDrawerHeader(
                             maxLines = 1
                         )
                     }
-                    STPrototypeStatusDot(color = if (drawerState.connected) colors.tertiary else colors.outline)
+                    PrototypeStatusDot(color = if (drawerState.connected) colors.tertiary else colors.outline)
                 }
             }
         }

@@ -37,6 +37,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -148,7 +150,9 @@ fun PrototypeAvatar(
     ringColor: Color? = null,
     gradient: List<Long> = prototypeGradientFor(0)
 ) {
+    val density = LocalDensity.current
     val shape = if (square) RoundedCornerShape((size.value * 0.18f).dp) else CircleShape
+    val sizePx = remember(size, density) { with(density) { size.toPx() } }
     Box(
         modifier = modifier
             .size(size)
@@ -163,7 +167,7 @@ fun PrototypeAvatar(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(Color.White.copy(alpha = 0.24f), Color.Transparent),
-                        radius = size.value * 1.8f
+                        radius = sizePx * 1.8f
                     )
                 )
         )

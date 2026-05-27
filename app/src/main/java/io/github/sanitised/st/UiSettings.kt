@@ -49,7 +49,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import io.github.sanitised.st.ui.components.STPrototypeTopHeader
+import io.github.sanitised.st.ui.prototype.PrototypeTopHeader
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 
 @Composable
@@ -96,7 +96,7 @@ fun SettingsScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            STPrototypeTopHeader(
+            PrototypeTopHeader(
                 title = "我的",
                 leading = {
                     IconButton(onClick = openDrawer) {

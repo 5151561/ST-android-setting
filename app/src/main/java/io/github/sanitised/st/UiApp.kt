@@ -55,13 +55,13 @@ import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.ui.components.STInfoCard
 import io.github.sanitised.st.ui.components.STOperationProgressCard
-import io.github.sanitised.st.ui.components.STPrototypeAvatar
-import io.github.sanitised.st.ui.components.STPrototypeListContainer
-import io.github.sanitised.st.ui.components.STPrototypeListRow
-import io.github.sanitised.st.ui.components.STPrototypeSectionHeader
-import io.github.sanitised.st.ui.components.STPrototypeStatusDot
-import io.github.sanitised.st.ui.components.STPrototypeTileIcon
-import io.github.sanitised.st.ui.components.STPrototypeTopHeader
+import io.github.sanitised.st.ui.prototype.PrototypeAvatar
+import io.github.sanitised.st.ui.prototype.PrototypeListSurface
+import io.github.sanitised.st.ui.prototype.PrototypeListItem
+import io.github.sanitised.st.ui.prototype.PrototypeSectionHeader
+import io.github.sanitised.st.ui.prototype.PrototypeStatusDot
+import io.github.sanitised.st.ui.prototype.PrototypeTileIcon
+import io.github.sanitised.st.ui.prototype.PrototypeTopHeader
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -158,7 +158,7 @@ fun STAndroidApp(
                     .padding(bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                STPrototypeTopHeader(
+                PrototypeTopHeader(
                     title = "对话",
                     leading = {
                         IconButton(onClick = openDrawer) {
@@ -220,7 +220,7 @@ fun STAndroidApp(
                     )
                 }
 
-                STPrototypeSectionHeader(
+                PrototypeSectionHeader(
                     title = stringResource(R.string.dashboard_recent_chats),
                     trailing = {
                         Text(
@@ -238,7 +238,7 @@ fun STAndroidApp(
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 } else {
-                    STPrototypeListContainer(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
                         recentChats.forEachIndexed { index, chat ->
                             RecentChatListRow(
                                 chat = chat,
@@ -249,7 +249,7 @@ fun STAndroidApp(
                     }
                 }
 
-                STPrototypeSectionHeader(
+                PrototypeSectionHeader(
                     title = stringResource(R.string.dashboard_recent_characters),
                     trailing = {
                         Text(
@@ -267,7 +267,7 @@ fun STAndroidApp(
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 } else {
-                    STPrototypeListContainer(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
                         recentCharacters.take(4).forEachIndexed { index, character ->
                             RecentCharacterListRow(
                                 character = character,
@@ -278,31 +278,31 @@ fun STAndroidApp(
                     }
                 }
 
-                STPrototypeSectionHeader(title = "ST 核心")
-                STPrototypeListContainer(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    STPrototypeListRow(
+                PrototypeSectionHeader(title = "ST 核心")
+                PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    PrototypeListItem(
                         headline = stringResource(R.string.manage_st_title),
                         supporting = stringResource(R.string.tools_hub_manage_body),
                         leading = {
-                            STPrototypeTileIcon(icon = Icons.Filled.FolderOpen)
+                            PrototypeTileIcon(icon = Icons.Filled.FolderOpen)
                         },
                         divider = true,
                         onClick = onShowManageSt
                     )
-                    STPrototypeListRow(
+                    PrototypeListItem(
                         headline = stringResource(R.string.logs_title),
                         supporting = stringResource(R.string.tools_hub_logs_body),
                         leading = {
-                            STPrototypeTileIcon(icon = Icons.Filled.History)
+                            PrototypeTileIcon(icon = Icons.Filled.History)
                         },
                         divider = true,
                         onClick = onShowLogs
                     )
-                    STPrototypeListRow(
+                    PrototypeListItem(
                         headline = stringResource(R.string.config_button_title),
                         supporting = stringResource(R.string.tools_hub_config_body),
                         leading = {
-                            STPrototypeTileIcon(icon = Icons.Filled.Dns)
+                            PrototypeTileIcon(icon = Icons.Filled.Dns)
                         },
                         onClick = onEditConfig
                     )
@@ -424,7 +424,7 @@ private fun DashboardServiceHero(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                STPrototypeStatusDot(color = statusColor)
+                PrototypeStatusDot(color = statusColor)
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = statusLabel,
@@ -498,17 +498,13 @@ private fun RecentChatListRow(
     divider: Boolean,
     onOpen: () -> Unit
 ) {
-    STPrototypeListRow(
+    PrototypeListItem(
         headline = chat.characterName,
         supporting = chat.lastMessage ?: stringResource(R.string.dashboard_recent_chat_no_preview),
         leading = {
-            STPrototypeAvatar(
+            PrototypeAvatar(
                 label = chat.characterName,
-                size = 52.dp,
-                colors = listOf(
-                    MaterialTheme.colorScheme.primaryContainer,
-                    MaterialTheme.colorScheme.secondaryContainer
-                )
+                size = 52.dp
             )
         },
         trailing = {
@@ -532,13 +528,13 @@ private fun RecentCharacterListRow(
     divider: Boolean,
     onOpen: () -> Unit
 ) {
-    STPrototypeListRow(
+    PrototypeListItem(
         headline = character.name,
         supporting = character.tags.take(3).joinToString(" / ").ifBlank {
             stringResource(R.string.character_hub_character_body)
         },
         leading = {
-            STPrototypeTileIcon(
+            PrototypeTileIcon(
                 icon = Icons.Filled.Person,
                 tint = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant

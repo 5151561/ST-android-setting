@@ -76,7 +76,7 @@ import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STInfoCard
 import io.github.sanitised.st.ui.components.STSectionCard
-import io.github.sanitised.st.ui.components.STPrototypeTopHeader
+import io.github.sanitised.st.ui.prototype.PrototypeTopHeader
 import kotlinx.coroutines.launch
 
 private enum class PersonaViewMode {
@@ -243,7 +243,7 @@ fun WorldInfoScreen(
         )
     }
 
-    M3ManagerScaffold(
+    TavernManagerScaffold(
         title = stringResource(R.string.m3_world_info_title),
         subtitle = stringResource(R.string.m3_world_info_subtitle),
         status = status,
@@ -252,10 +252,10 @@ fun WorldInfoScreen(
         onRefresh = ::refresh,
         modifier = modifier
     ) {
-        if (!serverRunning) return@M3ManagerScaffold
+        if (!serverRunning) return@TavernManagerScaffold
         when (viewMode) {
             WorldInfoViewMode.LIST -> {
-                M3SearchField(search = search, onSearchChanged = { search = it })
+                TavernSearchField(search = search, onSearchChanged = { search = it })
                 OutlinedButton(onClick = { newWorldDialog = true }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Add, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
@@ -439,7 +439,7 @@ fun PersonaScreen(
         )
     }
 
-    M3ManagerScaffold(
+    TavernManagerScaffold(
         title = stringResource(R.string.m3_persona_title),
         subtitle = stringResource(R.string.m3_persona_subtitle),
         status = status,
@@ -448,10 +448,10 @@ fun PersonaScreen(
         onRefresh = ::refresh,
         modifier = modifier
     ) {
-        if (!serverRunning) return@M3ManagerScaffold
+        if (!serverRunning) return@TavernManagerScaffold
         when (viewMode) {
             PersonaViewMode.LIST -> {
-                M3SearchField(search = search, onSearchChanged = { search = it })
+                TavernSearchField(search = search, onSearchChanged = { search = it })
                 OutlinedButton(
                     onClick = {
                         selectedAvatar = null
@@ -633,7 +633,7 @@ fun PresetLiteScreen(
         if (serverRunning) refresh()
     }
 
-    M3ManagerScaffold(
+    TavernManagerScaffold(
         title = stringResource(R.string.m3_presets_title),
         subtitle = stringResource(R.string.m3_presets_subtitle),
         status = status,
@@ -642,7 +642,7 @@ fun PresetLiteScreen(
         onRefresh = ::refresh,
         modifier = modifier
     ) {
-        if (!serverRunning) return@M3ManagerScaffold
+        if (!serverRunning) return@TavernManagerScaffold
         when (viewMode) {
             PresetViewMode.LIST -> {
                 PresetCategoryChips(
@@ -823,7 +823,7 @@ fun ConnectionProfilesScreen(
         if (serverRunning) refresh()
     }
 
-    M3ManagerScaffold(
+    TavernManagerScaffold(
         title = stringResource(R.string.m3_connections_title),
         subtitle = stringResource(R.string.m3_connections_subtitle),
         status = status,
@@ -832,7 +832,7 @@ fun ConnectionProfilesScreen(
         onRefresh = ::refresh,
         modifier = modifier
     ) {
-        if (!serverRunning) return@M3ManagerScaffold
+        if (!serverRunning) return@TavernManagerScaffold
         when (viewMode) {
             ConnectionViewMode.LIST -> {
                 val selected = secrets.firstOrNull { it.key == selectedKey }
@@ -1117,7 +1117,7 @@ fun ChatBackupsScreen(
         )
     }
 
-    M3ManagerScaffold(
+    TavernManagerScaffold(
         title = stringResource(R.string.m3_chat_backups_title),
         subtitle = stringResource(R.string.m3_chat_backups_subtitle),
         status = status,
@@ -1126,7 +1126,7 @@ fun ChatBackupsScreen(
         onRefresh = ::refresh,
         modifier = modifier
     ) {
-        if (!serverRunning) return@M3ManagerScaffold
+        if (!serverRunning) return@TavernManagerScaffold
         STSectionCard(borderColor = MaterialTheme.colorScheme.outlineVariant, contentSpacing = 8.dp) {
             if (backups.isEmpty()) {
                 Text(
@@ -1222,7 +1222,7 @@ private fun M3SectionSurface(
 }
 
 @Composable
-private fun M3ManagerScaffold(
+private fun TavernManagerScaffold(
     title: String,
     subtitle: String,
     status: NodeStatus,
@@ -1243,7 +1243,7 @@ private fun M3ManagerScaffold(
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            STPrototypeTopHeader(
+            PrototypeTopHeader(
                 title = title,
                 subtitle = subtitle,
                 titleBottomPadding = 8.dp,
@@ -1279,7 +1279,7 @@ private fun M3ManagerScaffold(
 }
 
 @Composable
-private fun M3SearchField(search: String, onSearchChanged: (String) -> Unit) {
+private fun TavernSearchField(search: String, onSearchChanged: (String) -> Unit) {
     OutlinedTextField(
         value = search,
         onValueChange = onSearchChanged,
