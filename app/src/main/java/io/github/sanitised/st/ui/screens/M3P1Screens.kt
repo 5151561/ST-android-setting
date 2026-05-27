@@ -76,6 +76,7 @@ import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STInfoCard
 import io.github.sanitised.st.ui.components.STSectionCard
+import io.github.sanitised.st.ui.components.STPrototypeTopHeader
 import kotlinx.coroutines.launch
 
 private enum class PersonaViewMode {
@@ -1239,47 +1240,39 @@ private fun M3ManagerScaffold(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+            STPrototypeTopHeader(
+                title = title,
+                subtitle = subtitle,
+                titleBottomPadding = 8.dp,
+                leading = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onRefresh, enabled = serverRunning) {
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.m3_refresh))
+                    }
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                IconButton(onClick = onRefresh, enabled = serverRunning) {
-                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.m3_refresh))
-                }
-            }
+            )
             if (!serverRunning) {
                 STInfoCard(
                     title = stringResource(R.string.webview_error_service_stopped_title),
                     body = stringResource(R.string.m3_requires_server),
                     actionLabel = stringResource(R.string.webview_start_service),
-                    onAction = onStartService
+                    onAction = onStartService,
+                    modifier = Modifier.padding(horizontal = 16.dp)
                 )
             } else {
-                content()
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    content()
+                }
             }
         }
     }

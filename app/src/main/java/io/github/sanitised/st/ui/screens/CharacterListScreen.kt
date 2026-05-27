@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -81,6 +82,8 @@ import io.github.sanitised.st.ui.components.CharacterTagCheckboxList
 import io.github.sanitised.st.ui.components.FavoriteIconButton
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STInfoCard
+import io.github.sanitised.st.ui.components.STPrototypeSearchFieldButton
+import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 import kotlinx.coroutines.launch
 
 private data class CharacterListLoadState(
@@ -456,6 +459,15 @@ fun CharacterListScreen(
                 onImportCharacters = { importLauncher.launch(characterImportMimeTypes) },
                 onImportFromUrl = { showExternalImport = true }
             )
+            STPrototypeSearchFieldButton(
+                text = if (query.isBlank()) {
+                    stringResource(R.string.character_list_search_hint)
+                } else {
+                    query
+                },
+                onClick = { showSearchDialog = true },
+                showMic = false
+            )
 
             if (!serverRunning) {
                 CharacterServiceCard(onStartService = onStartService)
@@ -786,7 +798,7 @@ private fun CharacterPullRefreshContainer(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 20.dp, vertical = 20.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             content = content
         )
@@ -811,17 +823,25 @@ private fun CharacterListTopBar(
     onImportFromUrl: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
+    val openDrawer = LocalSTOpenDrawer.current
     var createMenuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        IconButton(onClick = openDrawer) {
+            Icon(
+                Icons.Filled.Menu,
+                contentDescription = stringResource(R.string.settings_title),
+                modifier = Modifier.size(22.dp)
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = stringResource(R.string.character_hub_title),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Normal,
                 color = colors.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -974,8 +994,9 @@ private fun CharacterListCard(
     val colors = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(1.dp, colors.outline)
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
+        border = BorderStroke(1.dp, colors.outlineVariant)
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
             when (viewMode) {
@@ -1161,9 +1182,9 @@ private fun CharacterGridCell(
     Surface(
         modifier = modifier
             .height(190.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(MaterialTheme.shapes.large)
             .clickable(onClick = onOpenCharacter),
-        color = colors.primaryContainer,
+        color = colors.surfaceContainer,
         border = BorderStroke(1.dp, colors.outlineVariant)
     ) {
         Column(
@@ -1214,6 +1235,7 @@ private fun CharacterHotSwaps(
     val colors = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = colors.primaryContainer),
         border = BorderStroke(1.dp, colors.outlineVariant)
     ) {
@@ -1290,8 +1312,9 @@ private fun CharacterBatchBar(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
@@ -1371,7 +1394,8 @@ private fun CharacterPaginationBar(
     var pageSizeMenuExpanded by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(

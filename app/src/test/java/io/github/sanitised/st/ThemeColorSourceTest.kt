@@ -5,10 +5,10 @@ import org.junit.Test
 
 class ThemeColorSourceTest {
     @Test
-    fun defaultsToDynamicMaterialYouColors() {
-        assertEquals(ThemeColorSource.DYNAMIC, ThemeColorSource.fromStorage(null))
-        assertEquals(ThemeColorSource.DYNAMIC, ThemeColorSource.fromStorage(""))
-        assertEquals(ThemeColorSource.DYNAMIC, ThemeColorSource.fromStorage("unknown"))
+    fun defaultsToBrandPrototypeColors() {
+        assertEquals(ThemeColorSource.BRAND, ThemeColorSource.fromStorage(null))
+        assertEquals(ThemeColorSource.BRAND, ThemeColorSource.fromStorage(""))
+        assertEquals(ThemeColorSource.BRAND, ThemeColorSource.fromStorage("unknown"))
     }
 
     @Test

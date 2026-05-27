@@ -22,35 +22,35 @@ data class STColors(
 )
 
 val STLightColors = STColors(
-    bg = Color(0xFFF8FAFD),
-    surface = Color(0xFFFFFFFF),
-    surfaceWarm = Color(0xFFE8F0FE),
-    fg = Color(0xFF202124),
-    fg2 = Color(0xFF3C4043),
-    muted = Color(0xFF5F6368),
-    border = Color(0xFFDADCE0),
-    borderSoft = Color(0xFFEDF0F2),
-    accent = Color(0xFF1A73E8),
+    bg = Color(0xFFFFF8F2),
+    surface = Color(0xFFFFF8F2),
+    surfaceWarm = Color(0xFFFFDCBE),
+    fg = Color(0xFF231A12),
+    fg2 = Color(0xFF51453A),
+    muted = Color(0xFF7D6B5B),
+    border = Color(0xFF847466),
+    borderSoft = Color(0xFFE9D8C7),
+    accent = Color(0xFF875213),
     accentOn = Color(0xFFFFFFFF),
-    success = Color(0xFF188038),
-    warn = Color(0xFFF9AB00),
-    danger = Color(0xFFD93025)
+    success = Color(0xFF5D641F),
+    warn = Color(0xFF8A5600),
+    danger = Color(0xFFBA1A1A)
 )
 
 val STDarkColors = STColors(
-    bg = Color(0xFF1A1C1E),
-    surface = Color(0xFF2D2F31),
-    surfaceWarm = Color(0xFF1E2A3A),
-    fg = Color(0xFFE3E3E3),
-    fg2 = Color(0xFFC4C7C5),
-    muted = Color(0xFF9AA0A6),
-    border = Color(0xFF444746),
-    borderSoft = Color(0xFF3C3E40),
-    accent = Color(0xFF8AB4F8),
-    accentOn = Color(0xFF1A1C1E),
-    success = Color(0xFF81C995),
-    warn = Color(0xFFFDD663),
-    danger = Color(0xFFF28B82)
+    bg = Color(0xFF18130E),
+    surface = Color(0xFF18130E),
+    surfaceWarm = Color(0xFF6B3B05),
+    fg = Color(0xFFECE0D3),
+    fg2 = Color(0xFFD5C3B0),
+    muted = Color(0xFFBCA996),
+    border = Color(0xFF9D8B7C),
+    borderSoft = Color(0xFF51453A),
+    accent = Color(0xFFFFB871),
+    accentOn = Color(0xFF4A2700),
+    success = Color(0xFFC6CB95),
+    warn = Color(0xFFE5C0A2),
+    danger = Color(0xFFFFB4AB)
 )
 
 val LocalSTColors = staticCompositionLocalOf { STLightColors }

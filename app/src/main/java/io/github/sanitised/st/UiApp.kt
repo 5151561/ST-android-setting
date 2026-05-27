@@ -1,6 +1,10 @@
 package io.github.sanitised.st
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,12 +13,30 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -26,15 +48,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.ui.components.STInfoCard
 import io.github.sanitised.st.ui.components.STOperationProgressCard
-import io.github.sanitised.st.ui.screens.DashboardLibrarySections
-import io.github.sanitised.st.ui.screens.DashboardStatusCard
+import io.github.sanitised.st.ui.components.STPrototypeAvatar
+import io.github.sanitised.st.ui.components.STPrototypeListContainer
+import io.github.sanitised.st.ui.components.STPrototypeListRow
+import io.github.sanitised.st.ui.components.STPrototypeSectionHeader
+import io.github.sanitised.st.ui.components.STPrototypeStatusDot
+import io.github.sanitised.st.ui.components.STPrototypeTileIcon
+import io.github.sanitised.st.ui.components.STPrototypeTopHeader
+import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -88,6 +116,7 @@ fun STAndroidApp(
     recentCharacters: List<CharacterSummary> = emptyList(),
     onShowCharacters: () -> Unit = {}
 ) {
+    val openDrawer = LocalSTOpenDrawer.current
     val readyState = remember { mutableStateOf(false) }
     val wasReadyToAutoOpen = remember { mutableStateOf(false) }
     LaunchedEffect(status.state, status.port) {
@@ -118,188 +147,414 @@ fun STAndroidApp(
         }
         wasReadyToAutoOpen.value = readyToAutoOpen
     }
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
                     .navigationBarsPadding()
-                    .padding(horizontal = 24.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 96.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                // Scrollable area
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Spacer(modifier = Modifier.height(72.dp))
-                    Text(
-                        text = stringResource(R.string.app_title),
-                        style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = stringResource(R.string.app_subtitle),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = stringResource(R.string.app_version_label, versionLabel),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clickable(onClick = onShowLegal)
-                            .padding(vertical = 6.dp, horizontal = 12.dp)
-                    ) {
-                        Text(
-                            text = stLabel,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = nodeLabel,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = stringResource(R.string.licenses),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(20.dp))
-                    if (!symlinkSupported) {
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = stringResource(R.string.symlink_not_supported),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.padding(12.dp)
+                STPrototypeTopHeader(
+                    title = "对话",
+                    leading = {
+                        IconButton(onClick = openDrawer) {
+                            Icon(
+                                imageVector = Icons.Filled.Menu,
+                                contentDescription = stringResource(R.string.settings_title)
                             )
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
+                    },
+                    actions = {
+                        IconButton(onClick = onOpen) {
+                            Icon(
+                                imageVector = Icons.Filled.Search,
+                                contentDescription = stringResource(R.string.m3_search)
+                            )
+                        }
+                        IconButton(onClick = onShowCharacters) {
+                            Icon(
+                                imageVector = Icons.Filled.FilterList,
+                                contentDescription = null
+                            )
+                        }
                     }
-                    DashboardStatusCard(
-                        status = status,
-                        stLabel = stLabel,
-                        nodeLabel = nodeLabel,
-                        onStart = onStart,
-                        onStop = onStop,
-                        onOpenChat = onOpen
+                )
+
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("全部" to true, "收藏" to false, "进行中" to false, "群聊" to false).forEach { item ->
+                        FilterChip(
+                            selected = item.second,
+                            onClick = {},
+                            label = { Text(item.first) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                DashboardServiceHero(
+                    status = status,
+                    stLabel = stLabel,
+                    nodeLabel = nodeLabel,
+                    onStart = onStart,
+                    onStop = onStop,
+                    onOpenChat = onOpen,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+
+                if (!symlinkSupported) {
+                    STInfoCard(
+                        title = "环境限制",
+                        body = stringResource(R.string.symlink_not_supported),
+                        borderColor = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    DashboardLibrarySections(
-                        recentChats = recentChats,
-                        characters = recentCharacters,
-                        onOpenChat = onOpen,
-                        onOpenCharacters = onShowCharacters
+                }
+
+                STPrototypeSectionHeader(
+                    title = stringResource(R.string.dashboard_recent_chats),
+                    trailing = {
+                        Text(
+                            text = stringResource(R.string.app_version_label, versionLabel),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable(onClick = onShowLegal)
+                        )
+                    }
+                )
+                if (recentChats.isEmpty()) {
+                    STInfoCard(
+                        title = stringResource(R.string.dashboard_recent_chats_empty_title),
+                        body = stringResource(R.string.dashboard_recent_chats_empty_body),
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(
-                            onClick = onShowLogs,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(text = stringResource(R.string.logs_title))
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        OutlinedButton(
-                            onClick = onEditConfig,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(text = stringResource(R.string.config_button_title))
+                } else {
+                    STPrototypeListContainer(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        recentChats.forEachIndexed { index, chat ->
+                            RecentChatListRow(
+                                chat = chat,
+                                divider = index != recentChats.lastIndex,
+                                onOpen = onOpen
+                            )
                         }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(
-                            onClick = onShowSettings,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(text = stringResource(R.string.settings_title))
+                }
+
+                STPrototypeSectionHeader(
+                    title = stringResource(R.string.dashboard_recent_characters),
+                    trailing = {
+                        Text(
+                            text = stringResource(R.string.dashboard_open_all),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable(onClick = onShowCharacters)
+                        )
+                    }
+                )
+                if (recentCharacters.isEmpty()) {
+                    STInfoCard(
+                        title = stringResource(R.string.dashboard_recent_characters_empty_title),
+                        body = stringResource(R.string.dashboard_recent_characters_empty_body),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                } else {
+                    STPrototypeListContainer(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        recentCharacters.take(4).forEachIndexed { index, character ->
+                            RecentCharacterListRow(
+                                character = character,
+                                divider = index != recentCharacters.take(4).lastIndex,
+                                onOpen = onShowCharacters
+                            )
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        OutlinedButton(
-                            onClick = onShowManageSt,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(text = stringResource(R.string.manage_st_title))
-                        }
                     }
-                    if (showAutoCheckOptInPrompt) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        AutoCheckOptInCard(
-                            visible = true,
-                            onEnable = onEnableAutoCheck,
-                            onLater = onLaterAutoCheck
-                        )
-                    }
-                    if (showNotificationPrompt) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        NotificationPermissionCard(
-                            visible = true,
-                            onOpenSettings = onOpenNotificationSettings
-                        )
-                    }
-                    if (showBatteryPrompt) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        BatteryOptimizationCard(
-                            visible = true,
-                            onSet = onOpenBatterySettings,
-                            onDismiss = onDismissBatteryPrompt
-                        )
-                    }
-                    if (showUpdatePrompt) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        UpdatePromptCard(
-                            visible = true,
-                            versionLabel = updateVersionLabel,
-                            details = updateDetails,
-                            isDownloading = isDownloadingUpdate,
-                            downloadProgressPercent = downloadProgressPercent,
-                            isReadyToInstall = isUpdateReadyToInstall,
-                            onPrimary = onUpdatePrimary,
-                            onDismiss = onUpdateDismiss,
-                            onCancelDownload = onCancelUpdateDownload
-                        )
-                    }
-                    if (showBackupOperationCard) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        STOperationProgressCard(
-                            title = backupOperationTitle,
-                            details = backupOperationDetails,
-                            progressPercent = backupOperationProgressPercent,
-                            showCancel = false,
-                            onCancel = {}
-                        )
-                    }
-                    if (showCustomOperationCard) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        STOperationProgressCard(
-                            title = customOperationTitle,
-                            details = customOperationDetails,
-                            progressPercent = customOperationProgressPercent,
-                            showCancel = customOperationCancelable,
-                            onCancel = onCancelCustomOperation
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                STPrototypeSectionHeader(title = "ST 核心")
+                STPrototypeListContainer(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    STPrototypeListRow(
+                        headline = stringResource(R.string.manage_st_title),
+                        supporting = stringResource(R.string.tools_hub_manage_body),
+                        leading = {
+                            STPrototypeTileIcon(icon = Icons.Filled.FolderOpen)
+                        },
+                        divider = true,
+                        onClick = onShowManageSt
+                    )
+                    STPrototypeListRow(
+                        headline = stringResource(R.string.logs_title),
+                        supporting = stringResource(R.string.tools_hub_logs_body),
+                        leading = {
+                            STPrototypeTileIcon(icon = Icons.Filled.History)
+                        },
+                        divider = true,
+                        onClick = onShowLogs
+                    )
+                    STPrototypeListRow(
+                        headline = stringResource(R.string.config_button_title),
+                        supporting = stringResource(R.string.tools_hub_config_body),
+                        leading = {
+                            STPrototypeTileIcon(icon = Icons.Filled.Dns)
+                        },
+                        onClick = onEditConfig
+                    )
+                }
+
+                if (showAutoCheckOptInPrompt) {
+                    AutoCheckOptInCard(
+                        visible = true,
+                        onEnable = onEnableAutoCheck,
+                        onLater = onLaterAutoCheck
+                    )
+                }
+                if (showNotificationPrompt) {
+                    NotificationPermissionCard(
+                        visible = true,
+                        onOpenSettings = onOpenNotificationSettings
+                    )
+                }
+                if (showBatteryPrompt) {
+                    BatteryOptimizationCard(
+                        visible = true,
+                        onSet = onOpenBatterySettings,
+                        onDismiss = onDismissBatteryPrompt
+                    )
+                }
+                if (showUpdatePrompt) {
+                    UpdatePromptCard(
+                        visible = true,
+                        versionLabel = updateVersionLabel,
+                        details = updateDetails,
+                        isDownloading = isDownloadingUpdate,
+                        downloadProgressPercent = downloadProgressPercent,
+                        isReadyToInstall = isUpdateReadyToInstall,
+                        onPrimary = onUpdatePrimary,
+                        onDismiss = onUpdateDismiss,
+                        onCancelDownload = onCancelUpdateDownload
+                    )
+                }
+                if (showBackupOperationCard) {
+                    STOperationProgressCard(
+                        title = backupOperationTitle,
+                        details = backupOperationDetails,
+                        progressPercent = backupOperationProgressPercent,
+                        showCancel = false,
+                        onCancel = {}
+                    )
+                }
+                if (showCustomOperationCard) {
+                    STOperationProgressCard(
+                        title = customOperationTitle,
+                        details = customOperationDetails,
+                        progressPercent = customOperationProgressPercent,
+                        showCancel = customOperationCancelable,
+                        onCancel = onCancelCustomOperation
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            ExtendedFloatingActionButton(
+                onClick = {
+                    if (status.state == NodeState.RUNNING) onOpen() else onStart()
+                },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = null
+                    )
+                },
+                text = {
+                    Text(
+                        text = if (status.state == NodeState.RUNNING) "新对话" else stringResource(R.string.start)
+                    )
+                },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 16.dp, bottom = 24.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DashboardServiceHero(
+    status: NodeStatus,
+    stLabel: String,
+    nodeLabel: String,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onOpenChat: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    val isRunning = status.state == NodeState.RUNNING
+    val isBusy = status.state == NodeState.STARTING || status.state == NodeState.STOPPING
+    val statusColor = when (status.state) {
+        NodeState.RUNNING -> colors.tertiary
+        NodeState.STARTING, NodeState.STOPPING -> colors.secondary
+        NodeState.ERROR -> colors.error
+        NodeState.STOPPED -> colors.outline
+    }
+    val statusLabel = when (status.state) {
+        NodeState.RUNNING -> stringResource(R.string.dashboard_status_running)
+        NodeState.STARTING, NodeState.STOPPING -> stringResource(R.string.dashboard_status_busy)
+        NodeState.ERROR -> stringResource(R.string.dashboard_status_error)
+        NodeState.STOPPED -> stringResource(R.string.dashboard_status_stopped)
+    }
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = colors.surfaceContainer,
+        border = BorderStroke(1.dp, colors.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                STPrototypeStatusDot(color = statusColor)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = statusLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.onSurface
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = colors.surfaceContainerHigh,
+                    contentColor = colors.onSurfaceVariant
+                ) {
+                    Text(
+                        text = ":${status.port}",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            Text(
+                text = when (status.state) {
+                    NodeState.RUNNING -> "SillyTavern 正在为你运行"
+                    NodeState.STARTING -> "正在唤醒 Node 服务…"
+                    NodeState.STOPPING -> "正在停止本地服务…"
+                    NodeState.ERROR -> "服务需要处理"
+                    NodeState.STOPPED -> "SillyTavern 已停止"
+                },
+                style = MaterialTheme.typography.headlineSmall,
+                color = colors.onSurface
+            )
+            Text(
+                text = "$stLabel · $nodeLabel",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = if (isRunning) onOpenChat else onStart,
+                    enabled = !isBusy,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = if (isRunning) Icons.AutoMirrored.Filled.OpenInNew else Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (isRunning) stringResource(R.string.dashboard_continue_chat) else stringResource(R.string.start))
+                }
+                OutlinedButton(
+                    onClick = onStop,
+                    enabled = status.state == NodeState.RUNNING || status.state == NodeState.STARTING,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Stop,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.stop))
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RecentChatListRow(
+    chat: ChatSummary,
+    divider: Boolean,
+    onOpen: () -> Unit
+) {
+    STPrototypeListRow(
+        headline = chat.characterName,
+        supporting = chat.lastMessage ?: stringResource(R.string.dashboard_recent_chat_no_preview),
+        leading = {
+            STPrototypeAvatar(
+                label = chat.characterName,
+                size = 52.dp,
+                colors = listOf(
+                    MaterialTheme.colorScheme.primaryContainer,
+                    MaterialTheme.colorScheme.secondaryContainer
+                )
+            )
+        },
+        trailing = {
+            if (chat.isPinned) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        },
+        divider = divider,
+        onClick = onOpen
+    )
+}
+
+@Composable
+private fun RecentCharacterListRow(
+    character: CharacterSummary,
+    divider: Boolean,
+    onOpen: () -> Unit
+) {
+    STPrototypeListRow(
+        headline = character.name,
+        supporting = character.tags.take(3).joinToString(" / ").ifBlank {
+            stringResource(R.string.character_hub_character_body)
+        },
+        leading = {
+            STPrototypeTileIcon(
+                icon = Icons.Filled.Person,
+                tint = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        trailing = {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Chat,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+        },
+        divider = divider,
+        onClick = onOpen
+    )
 }
 
 @Preview(showBackground = true)

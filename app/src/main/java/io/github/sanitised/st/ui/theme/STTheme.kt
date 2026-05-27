@@ -15,6 +15,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -41,20 +42,21 @@ data class STSpacing(
 data class STRadius(
     val sm: Dp = 4.dp,
     val md: Dp = 12.dp,
-    val lg: Dp = 24.dp,
+    val lg: Dp = 20.dp,
+    val xl: Dp = 28.dp,
     val pill: Dp = 9999.dp
 )
 
 @Immutable
 data class STTypography(
-    val displayLarge: TextStyle = TextStyle(fontSize = 48.sp, fontWeight = FontWeight.Bold, lineHeight = 54.sp),
-    val displayMedium: TextStyle = TextStyle(fontSize = 32.sp, fontWeight = FontWeight.Bold, lineHeight = 36.sp),
-    val headlineLarge: TextStyle = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold, lineHeight = 27.sp),
-    val headlineMedium: TextStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp),
+    val displayLarge: TextStyle = TextStyle(fontSize = 48.sp, fontWeight = FontWeight.Normal, lineHeight = 56.sp),
+    val displayMedium: TextStyle = TextStyle(fontSize = 36.sp, fontWeight = FontWeight.Normal, lineHeight = 44.sp),
+    val headlineLarge: TextStyle = TextStyle(fontSize = 32.sp, fontWeight = FontWeight.Normal, lineHeight = 40.sp),
+    val headlineMedium: TextStyle = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Normal, lineHeight = 36.sp),
     val bodyLarge: TextStyle = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Normal, lineHeight = 24.sp),
-    val bodyMedium: TextStyle = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Normal, lineHeight = 21.sp),
-    val bodySmall: TextStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal, lineHeight = 18.sp),
-    val labelMedium: TextStyle = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, lineHeight = 21.sp),
+    val bodyMedium: TextStyle = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Normal, lineHeight = 20.sp),
+    val bodySmall: TextStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal, lineHeight = 16.sp),
+    val labelMedium: TextStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, lineHeight = 16.sp),
     val mono: TextStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp)
 )
 
@@ -81,73 +83,96 @@ object STTheme {
 }
 
 private val LightBrandColorScheme = lightColorScheme(
-    primary = STLightColors.accent,
-    onPrimary = STLightColors.accentOn,
-    primaryContainer = STLightColors.surfaceWarm,
-    onPrimaryContainer = STLightColors.fg,
-    secondary = STLightColors.fg2,
-    onSecondary = STLightColors.accentOn,
-    secondaryContainer = STLightColors.borderSoft,
-    onSecondaryContainer = STLightColors.fg,
-    tertiary = STLightColors.success,
-    onTertiary = STLightColors.accentOn,
-    tertiaryContainer = STLightColors.success.copy(alpha = 0.14f),
-    onTertiaryContainer = STLightColors.success,
-    surface = STLightColors.surface,
-    onSurface = STLightColors.fg,
-    surfaceVariant = STLightColors.bg,
-    onSurfaceVariant = STLightColors.muted,
-    background = STLightColors.bg,
-    onBackground = STLightColors.fg,
-    outline = STLightColors.border,
-    outlineVariant = STLightColors.borderSoft,
-    error = STLightColors.danger,
-    onError = STLightColors.accentOn,
-    errorContainer = STLightColors.danger.copy(alpha = 0.12f),
-    onErrorContainer = STLightColors.danger
+    primary = Color(0xFF875213),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFFFDCBE),
+    onPrimaryContainer = Color(0xFF2D1600),
+    secondary = Color(0xFF755A43),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFFFDCBE),
+    onSecondaryContainer = Color(0xFF2B1708),
+    tertiary = Color(0xFF5D641F),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFE2E7B0),
+    onTertiaryContainer = Color(0xFF1B1F00),
+    surface = Color(0xFFFFF8F2),
+    onSurface = Color(0xFF231A12),
+    surfaceVariant = Color(0xFFF1DFD0),
+    onSurfaceVariant = Color(0xFF51453A),
+    background = Color(0xFFFFF8F2),
+    onBackground = Color(0xFF231A12),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFFFF1E6),
+    surfaceContainer = Color(0xFFF8EADD),
+    surfaceContainerHigh = Color(0xFFF2E4D6),
+    surfaceContainerHighest = Color(0xFFEBDDCF),
+    outline = Color(0xFF847466),
+    outlineVariant = Color(0xFFD5C3B0),
+    error = Color(0xFFBA1A1A),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFFFFDAD6),
+    onErrorContainer = Color(0xFF410002)
 )
 
 private val DarkBrandColorScheme = darkColorScheme(
-    primary = STDarkColors.accent,
-    onPrimary = STDarkColors.accentOn,
-    primaryContainer = STDarkColors.surfaceWarm,
-    onPrimaryContainer = STDarkColors.fg,
-    secondary = STDarkColors.fg2,
-    onSecondary = STDarkColors.accentOn,
-    secondaryContainer = STDarkColors.borderSoft,
-    onSecondaryContainer = STDarkColors.fg,
-    tertiary = STDarkColors.success,
-    onTertiary = STDarkColors.accentOn,
-    tertiaryContainer = STDarkColors.success.copy(alpha = 0.14f),
-    onTertiaryContainer = STDarkColors.success,
-    surface = STDarkColors.surface,
-    onSurface = STDarkColors.fg,
-    surfaceVariant = STDarkColors.bg,
-    onSurfaceVariant = STDarkColors.muted,
-    background = STDarkColors.bg,
-    onBackground = STDarkColors.fg,
-    outline = STDarkColors.border,
-    outlineVariant = STDarkColors.borderSoft,
-    error = STDarkColors.danger,
-    onError = STDarkColors.accentOn,
-    errorContainer = STDarkColors.danger.copy(alpha = 0.12f),
-    onErrorContainer = STDarkColors.danger
+    primary = Color(0xFFFFB871),
+    onPrimary = Color(0xFF4A2700),
+    primaryContainer = Color(0xFF6B3B05),
+    onPrimaryContainer = Color(0xFFFFDCBE),
+    secondary = Color(0xFFE5C0A2),
+    onSecondary = Color(0xFF422B17),
+    secondaryContainer = Color(0xFF5B412B),
+    onSecondaryContainer = Color(0xFFFFDCBE),
+    tertiary = Color(0xFFC6CB95),
+    onTertiary = Color(0xFF2F340D),
+    tertiaryContainer = Color(0xFF454B21),
+    onTertiaryContainer = Color(0xFFE2E7B0),
+    surface = Color(0xFF18130E),
+    onSurface = Color(0xFFECE0D3),
+    surfaceVariant = Color(0xFF51453A),
+    onSurfaceVariant = Color(0xFFD5C3B0),
+    background = Color(0xFF18130E),
+    onBackground = Color(0xFFECE0D3),
+    surfaceContainerLowest = Color(0xFF120E09),
+    surfaceContainerLow = Color(0xFF211B14),
+    surfaceContainer = Color(0xFF251F17),
+    surfaceContainerHigh = Color(0xFF302921),
+    surfaceContainerHighest = Color(0xFF3B342B),
+    outline = Color(0xFF9D8B7C),
+    outlineVariant = Color(0xFF51453A),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6)
 )
 
-private val AppTypography = MaterialTypography()
+private val AppTypography = MaterialTypography(
+    headlineLarge = TextStyle(fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.Normal),
+    headlineMedium = TextStyle(fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Normal),
+    headlineSmall = TextStyle(fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.Normal),
+    titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium),
+    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium),
+    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal),
+    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
+    labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
+    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
+    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium)
+)
 
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
     small = RoundedCornerShape(8.dp),
     medium = RoundedCornerShape(12.dp),
-    large = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(20.dp),
     extraLarge = RoundedCornerShape(28.dp)
 )
 
 @Composable
 fun STAppTheme(
     useDarkTheme: Boolean = isSystemInDarkTheme(),
-    colorSource: ThemeColorSource = ThemeColorSource.DYNAMIC,
+    colorSource: ThemeColorSource = ThemeColorSource.BRAND,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current

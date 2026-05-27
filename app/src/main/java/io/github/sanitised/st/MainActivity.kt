@@ -19,16 +19,39 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Help
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SettingsEthernet
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -38,6 +61,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -56,8 +80,23 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.sanitised.st.ui.navigation.BottomNavItem
+import io.github.sanitised.st.ui.navigation.DrawerNavItem
 import io.github.sanitised.st.ui.navigation.STNavigationScaffold
 import io.github.sanitised.st.ui.navigation.STRoutes
+import io.github.sanitised.st.ui.components.STPrototypeAvatar
+import io.github.sanitised.st.ui.components.STPrototypeStatusDot
+import io.github.sanitised.st.ui.prototype.PrototypeAISettingsScreen
+import io.github.sanitised.st.ui.prototype.PrototypeApiConnectionScreen
+import io.github.sanitised.st.ui.prototype.PrototypeCharacterCreateScreen
+import io.github.sanitised.st.ui.prototype.PrototypeCharacterLibraryScreen
+import io.github.sanitised.st.ui.prototype.PrototypeCharacterProfileScreen
+import io.github.sanitised.st.ui.prototype.PrototypeChatListScreen
+import io.github.sanitised.st.ui.prototype.PrototypeDrawerState
+import io.github.sanitised.st.ui.prototype.PrototypeMeScreen
+import io.github.sanitised.st.ui.prototype.PrototypeMemoryScreen
+import io.github.sanitised.st.ui.prototype.PrototypePersonaScreen
+import io.github.sanitised.st.ui.prototype.PrototypeStCoreScreen
+import io.github.sanitised.st.ui.prototype.PrototypeWorldInfoScreen
 import io.github.sanitised.st.ui.screens.CharacterDetailScreen
 import io.github.sanitised.st.ui.screens.CharacterEditScreen
 import io.github.sanitised.st.ui.screens.CharacterListScreen
@@ -87,12 +126,119 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 private val bottomNavItems = listOf(
-    BottomNavItem(STRoutes.HOME, "首页", Icons.Filled.Home),
-    BottomNavItem(STRoutes.CHAT, "聊天", Icons.AutoMirrored.Filled.Chat),
-    BottomNavItem(STRoutes.CHARACTERS, "角色", Icons.Filled.Person),
-    BottomNavItem(STRoutes.TOOLS, "工具", Icons.Filled.Build),
-    BottomNavItem(STRoutes.SETTINGS, "设置", Icons.Filled.Settings)
+    BottomNavItem(STRoutes.HOME, "对话", Icons.AutoMirrored.Filled.Chat),
+    BottomNavItem(STRoutes.CHARACTERS, "角色", Icons.Filled.Groups),
+    BottomNavItem(STRoutes.WORLD_INFO, "世界书", Icons.Filled.Book),
+    BottomNavItem(STRoutes.SETTINGS, "我的", Icons.Filled.AccountCircle)
 )
+
+private val drawerNavItems = listOf(
+    DrawerNavItem(STRoutes.HOME, "对话", Icons.AutoMirrored.Filled.Chat, badgeText = "23"),
+    DrawerNavItem(STRoutes.CHARACTERS, "角色库", Icons.Filled.Groups, badgeText = "247"),
+    DrawerNavItem(STRoutes.CHARACTERS, "群聊", Icons.Filled.GroupAdd, badgeText = "2"),
+    DrawerNavItem(STRoutes.PERSONA, "扮演者", Icons.Filled.Face, badgeText = "4"),
+    DrawerNavItem(STRoutes.WORLD_INFO, "世界书", Icons.Filled.Book, badgeText = "4"),
+    DrawerNavItem(STRoutes.CHAT_BACKUPS, "记忆与回顾", Icons.Filled.CloudSync),
+    DrawerNavItem(STRoutes.PRESETS, "作者注 & CFG", Icons.Filled.History),
+    DrawerNavItem(STRoutes.PRESETS, "AI 采样设置", Icons.Filled.Tune, isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.CONNECTIONS, "API 连接", Icons.Filled.SettingsEthernet, supportingText = "3 个已连接", isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.PRESETS, "扩展", Icons.Filled.Extension, supportingText = "6 个", isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.SETTINGS, "主题外观", Icons.Filled.Palette, isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.MANAGE_ST, "ST 内核", Icons.Filled.Memory, supportingText = "运行中", isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.SETTINGS, "设置", Icons.Filled.Settings, isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.LEGAL, "帮助 & 文档", Icons.Filled.Help, isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.SETTINGS, "退出登录", Icons.Filled.Logout, isPrimaryGroup = false)
+)
+
+@Composable
+private fun STAppDrawerHeader(
+    stLabel: String,
+    nodeLabel: String,
+    status: NodeStatus
+) {
+    val colors = MaterialTheme.colorScheme
+    val drawerState = PrototypeDrawerState.from(
+        status = status,
+        stLabel = stLabel,
+        nodeLabel = nodeLabel
+    )
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainer
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                STPrototypeAvatar(
+                    label = "我",
+                    size = 56.dp,
+                    ringColor = colors.primary
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "当前扮演者",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant
+                    )
+                    Text(
+                        text = drawerState.personaName,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.onSurface
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Filled.SwapHoriz,
+                    contentDescription = null,
+                    tint = colors.onSurfaceVariant
+                )
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                shape = MaterialTheme.shapes.large,
+                color = colors.surfaceContainerHigh
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier.size(32.dp),
+                        shape = MaterialTheme.shapes.small,
+                        color = colors.tertiaryContainer,
+                        contentColor = colors.onTertiaryContainer
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "C",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = drawerState.connectionEyebrow,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.onSurfaceVariant
+                        )
+                        Text(
+                            text = drawerState.connectionLabel,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.onSurface,
+                            maxLines = 1
+                        )
+                    }
+                    STPrototypeStatusDot(color = if (drawerState.connected) colors.tertiary else colors.outline)
+                }
+            }
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
     private val nodeServiceState = mutableStateOf<NodeService?>(null)
@@ -146,11 +292,12 @@ class MainActivity : ComponentActivity() {
                 STRoutes.CHARACTER_NEW,
                 STRoutes.CHARACTER_DETAIL,
                 STRoutes.CHARACTER_EDIT -> STRoutes.CHARACTERS
-                STRoutes.WORLD_INFO,
+                STRoutes.WORLD_INFO -> STRoutes.WORLD_INFO
+                STRoutes.TOOLS,
                 STRoutes.PERSONA,
                 STRoutes.PRESETS,
                 STRoutes.CONNECTIONS,
-                STRoutes.CHAT_BACKUPS -> STRoutes.TOOLS
+                STRoutes.CHAT_BACKUPS -> STRoutes.SETTINGS
                 STRoutes.LOGS,
                 STRoutes.CONFIG,
                 STRoutes.LEGAL,
@@ -391,6 +538,7 @@ class MainActivity : ComponentActivity() {
             STAppTheme(useDarkTheme = useDarkTheme, colorSource = themeColorSource) {
                 STNavigationScaffold(
                     items = bottomNavItems,
+                    drawerItems = drawerNavItems,
                     currentRoute = bottomBarSelectedRoute,
                     onNavigate = navigateMainTab,
                     snackbarHost = {
@@ -400,6 +548,13 @@ class MainActivity : ComponentActivity() {
                                 .statusBarsPadding()
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         )
+                    },
+                    drawerHeader = {
+                        STAppDrawerHeader(
+                            stLabel = currentStLabel,
+                            nodeLabel = nodeLabel,
+                            status = statusState.value
+                        )
                     }
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
@@ -408,21 +563,11 @@ class MainActivity : ComponentActivity() {
                             startDestination = STRoutes.HOME
                         ) {
                             composable(STRoutes.HOME) {
-                                STAndroidApp(
+                                // Replaces the old STAndroidApp dashboard with the prototype ChatListScreen.
+                                PrototypeChatListScreen(
                                     status = statusState.value,
                                     onStart = { startNode() },
                                     onStop = { stopNode() },
-                                    onOpen = { navigateMainTab(STRoutes.CHAT) },
-                                    autoOpenBrowserWhenReady = viewModel.autoOpenBrowserWhenReady.value,
-                                    autoOpenBrowserTriggeredForCurrentRun = autoOpenBrowserTriggeredForCurrentRun.value,
-                                    onAutoOpenBrowserTriggered = { autoOpenBrowserTriggeredForCurrentRun.value = true },
-                                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
-                                    onOpenNotificationSettings = { openNotificationSettings() },
-                                    onOpenBatterySettings = { openBatteryOptimizationSettings() },
-                                    onEditConfig = { navController.navigate(STRoutes.CONFIG) },
-                                    showNotificationPrompt = !notificationGrantedState.value,
-                                    showBatteryPrompt = showBatteryPrompt,
-                                    versionLabel = versionLabel,
                                     stLabel = if (viewModel.isCustomInstalled.value) {
                                         val customLabel = viewModel.customInstallLabel.value
                                         if (customLabel.isNullOrBlank()) {
@@ -432,44 +577,15 @@ class MainActivity : ComponentActivity() {
                                         }
                                     } else stLabel,
                                     nodeLabel = nodeLabel,
-                                    symlinkSupported = symlinkSupported,
-                                    onShowLegal = { navController.navigate(STRoutes.LEGAL) },
-                                    showAutoCheckOptInPrompt = showAutoCheckOptInPrompt,
-                                    onEnableAutoCheck = { viewModel.acceptAutoCheckOptInPrompt() },
-                                    onLaterAutoCheck = { viewModel.dismissAutoCheckOptInPrompt() },
-                                    onDismissBatteryPrompt = { viewModel.dismissBatteryPrompt() },
-                                    showUpdatePrompt = showUpdatePrompt,
-                                    updateVersionLabel = viewModel.availableUpdateVersionLabel(),
-                                    updateDetails = viewModel.updateBannerMessage.value,
-                                    isDownloadingUpdate = viewModel.isDownloadingUpdate.value,
-                                    downloadProgressPercent = viewModel.downloadProgressPercent.value,
-                                    isUpdateReadyToInstall = isUpdateReadyToInstall,
-                                    onUpdatePrimary = {
-                                        if (isUpdateReadyToInstall) {
-                                            viewModel.installDownloadedUpdate(this@MainActivity)
+                                    recentChats = librarySnapshot.recentChats,
+                                    onOpenChat = { chat ->
+                                        if (chat.id.endsWith("/demo")) {
+                                            navigateMainTab(STRoutes.CHAT)
                                         } else {
-                                            viewModel.startAvailableUpdateDownload()
+                                            openCharacterChatFromCharacterManagement(chat.characterId, chat.chatFile)
                                         }
                                     },
-                                    onUpdateDismiss = { viewModel.dismissAvailableUpdatePrompt() },
-                                    onCancelUpdateDownload = { viewModel.cancelUpdateDownload() },
-                                    showBackupOperationCard = viewModel.backupOperationCard.value.visible,
-                                    backupOperationTitle = viewModel.backupOperationCard.value.title,
-                                    backupOperationDetails = viewModel.backupOperationCard.value.details,
-                                    backupOperationProgressPercent = viewModel.backupOperationCard.value.progressPercent,
-                                    showCustomOperationCard = viewModel.customOperationCard.value.visible,
-                                    customOperationTitle = viewModel.customOperationCard.value.title,
-                                    customOperationDetails = viewModel.customOperationCard.value.details,
-                                    customOperationProgressPercent = viewModel.customOperationCard.value.progressPercent,
-                                    customOperationCancelable = viewModel.customOperationCard.value.cancelable,
-                                    onCancelCustomOperation = { viewModel.cancelCustomSourceDownload() },
-                                    onShowSettings = {
-                                        navigateMainTab(STRoutes.SETTINGS)
-                                    },
-                                    onShowManageSt = { navController.navigate(STRoutes.MANAGE_ST) },
-                                    recentChats = librarySnapshot.recentChats,
-                                    recentCharacters = librarySnapshot.characters,
-                                    onShowCharacters = { navigateMainTab(STRoutes.CHARACTERS) }
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
@@ -487,7 +603,8 @@ class MainActivity : ComponentActivity() {
                             }
 
                             composable(STRoutes.CHARACTERS) {
-                                CharacterListScreen(
+                                // CharacterListScreen remains as the functional fallback; the visible route uses the prototype CharLibScreen.
+                                PrototypeCharacterLibraryScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onStartService = { startNode() },
@@ -505,10 +622,10 @@ class MainActivity : ComponentActivity() {
                             }
 
                             composable(STRoutes.CHARACTER_NEW) {
-                                CharacterEditScreen(
+                                // CharacterEditScreen remains available for advanced edit routes; creation now uses the prototype CharEdit surface.
+                                PrototypeCharacterCreateScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    avatar = null,
                                     onStartService = { startNode() },
                                     onBack = { navController.popBackStack() },
                                     onSaved = { avatar ->
@@ -526,23 +643,15 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
                                 if (avatar != null) {
-                                    CharacterDetailScreen(
+                                    // CharacterDetailScreen remains compiled for advanced management; this route shows the prototype CharEdit layout.
+                                    PrototypeCharacterProfileScreen(
                                         status = statusState.value,
                                         baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                         avatar = avatar,
                                         onStartService = { startNode() },
                                         onBack = { navController.popBackStack() },
-                                        onEdit = { targetAvatar ->
-                                            navController.navigate(STRoutes.characterEdit(targetAvatar))
-                                        },
                                         onOpenChat = { chatFile ->
                                             openCharacterChatFromCharacterManagement(avatar, chatFile)
-                                        },
-                                        onOpenWorldInfo = {
-                                            navController.navigate(STRoutes.WORLD_INFO)
-                                        },
-                                        onOpenPersona = {
-                                            navController.navigate(STRoutes.PERSONA)
                                         },
                                         onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                     )
@@ -579,21 +688,19 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.WORLD_INFO) {
                                 BackHandler { navController.popBackStack() }
-                                WorldInfoScreen(
+                                PrototypeWorldInfoScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onStartService = { startNode() },
-                                    onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
                             composable(STRoutes.PERSONA) {
                                 BackHandler { navController.popBackStack() }
-                                PersonaScreen(
+                                PrototypePersonaScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onStartService = { startNode() },
                                     onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
@@ -601,10 +708,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.PRESETS) {
                                 BackHandler { navController.popBackStack() }
-                                PresetLiteScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onStartService = { startNode() },
+                                PrototypeAISettingsScreen(
                                     onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
@@ -612,10 +716,9 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.CONNECTIONS) {
                                 BackHandler { navController.popBackStack() }
-                                ConnectionProfilesScreen(
+                                PrototypeApiConnectionScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onStartService = { startNode() },
                                     onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
@@ -623,18 +726,16 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.CHAT_BACKUPS) {
                                 BackHandler { navController.popBackStack() }
-                                ChatBackupsScreen(
+                                PrototypeMemoryScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onStartService = { startNode() },
                                     onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
                             composable(STRoutes.SETTINGS) {
-                                SettingsScreen(
-                                    onBack = { navController.popBackStack() },
+                                PrototypeMeScreen(
                                     autoCheckEnabled = viewModel.autoCheckForUpdates.value,
                                     onAutoCheckChanged = { enabled -> viewModel.setAutoCheckForUpdates(enabled) },
                                     autoOpenBrowserEnabled = viewModel.autoOpenBrowserWhenReady.value,
@@ -649,24 +750,15 @@ class MainActivity : ComponentActivity() {
                                     onChannelChanged = { channel -> viewModel.setUpdateChannel(channel) },
                                     onCheckNow = { viewModel.checkForUpdates("manual") },
                                     isChecking = viewModel.isCheckingForUpdates.value,
-                                    showUpdatePrompt = showUpdatePrompt,
-                                    updateVersionLabel = viewModel.availableUpdateVersionLabel(),
-                                    updateDetails = viewModel.updateBannerMessage.value,
-                                    isDownloadingUpdate = viewModel.isDownloadingUpdate.value,
-                                    downloadProgressPercent = viewModel.downloadProgressPercent.value,
-                                    isUpdateReadyToInstall = isUpdateReadyToInstall,
-                                    onUpdatePrimary = {
-                                        if (isUpdateReadyToInstall) {
-                                            viewModel.installDownloadedUpdate(this@MainActivity)
-                                        } else {
-                                            viewModel.startAvailableUpdateDownload()
-                                        }
-                                    },
-                                    onUpdateDismiss = { viewModel.dismissAvailableUpdatePrompt() },
-                                    onCancelUpdateDownload = { viewModel.cancelUpdateDownload() },
-                                    onOpenInBrowser = {
-                                        openSillyTavernInBrowser(statusState.value.port)
-                                    }
+                                    onOpenWorldInfo = { navController.navigate(STRoutes.WORLD_INFO) },
+                                    onOpenPersona = { navController.navigate(STRoutes.PERSONA) },
+                                    onOpenPresets = { navController.navigate(STRoutes.PRESETS) },
+                                    onOpenConnections = { navController.navigate(STRoutes.CONNECTIONS) },
+                                    onOpenChatBackups = { navController.navigate(STRoutes.CHAT_BACKUPS) },
+                                    onOpenLogs = { navController.navigate(STRoutes.LOGS) },
+                                    onOpenConfig = { navController.navigate(STRoutes.CONFIG) },
+                                    onOpenManageSt = { navController.navigate(STRoutes.MANAGE_ST) },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
@@ -725,17 +817,20 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.MANAGE_ST) {
                                 BackHandler { navController.popBackStack() }
-                                ManageStScreen(
+                                PrototypeStCoreScreen(
                                     onBack = { navController.popBackStack() },
+                                    status = statusState.value,
+                                    stLabel = currentStLabel,
+                                    nodeLabel = nodeLabel,
                                     isCustomInstalled = viewModel.isCustomInstalled.value,
                                     customInstalledLabel = viewModel.customInstallLabel.value,
-                                    serverRunning = statusState.value.state == NodeState.RUNNING ||
-                                            statusState.value.state == NodeState.STARTING,
                                     busyMessage = viewModel.busyMessage,
+                                    onStartService = { startNode() },
+                                    onStopService = { stopNode() },
+                                    onOpenBrowser = { openSillyTavernInBrowser(statusState.value.port) },
+                                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
                                     onExport = triggerExport,
                                     onImport = triggerImport,
-                                    settingsSnapshotsEnabled = statusState.value.state == NodeState.RUNNING &&
-                                            viewModel.busyMessage.isBlank(),
                                     settingsSnapshots = viewModel.settingsSnapshots.value,
                                     settingsSnapshotsLoading = viewModel.settingsSnapshotsLoading.value,
                                     settingsSnapshotMessage = viewModel.settingsSnapshotMessage.value,
@@ -748,17 +843,6 @@ class MainActivity : ComponentActivity() {
                                     onRestoreSettingsSnapshot = { name ->
                                         pendingDialogState.value = PendingDialog.RestoreSettingsSnapshot(name)
                                     },
-                                    customRepoInput = viewModel.customRepoInput.value,
-                                    onCustomRepoInputChanged = { viewModel.setCustomRepoInput(it) },
-                                    onLoadRepoRefs = { viewModel.loadCustomRepoRefs() },
-                                    isLoadingRepoRefs = viewModel.isLoadingCustomRefs.value,
-                                    customRepoValidationMessage = viewModel.customRepoValidationMessage.value,
-                                    featuredRefs = viewModel.customFeaturedRefs.value,
-                                    allRefs = viewModel.customAllRefs.value,
-                                    selectedRefKey = viewModel.selectedCustomRefKey.value,
-                                    onSelectRepoRef = { key -> viewModel.selectCustomRepoRef(key) },
-                                    onDownloadAndInstallRef = { viewModel.startCustomRepoInstall() },
-                                    customInstallValidationMessage = viewModel.customInstallValidationMessage.value,
                                     showBackupOperationCard = viewModel.backupOperationCard.value.visible,
                                     backupOperationTitle = viewModel.backupOperationCard.value.title,
                                     backupOperationDetails = viewModel.backupOperationCard.value.details,
@@ -781,7 +865,8 @@ class MainActivity : ComponentActivity() {
                                         )
                                     },
                                     onResetToDefault = { pendingDialogState.value = PendingDialog.ResetToDefault },
-                                    onRemoveUserData = { pendingDialogState.value = PendingDialog.RemoveUserData }
+                                    onRemoveUserData = { pendingDialogState.value = PendingDialog.RemoveUserData },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
                         }

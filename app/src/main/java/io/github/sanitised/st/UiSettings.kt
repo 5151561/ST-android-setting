@@ -1,6 +1,7 @@
 package io.github.sanitised.st
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Box
@@ -9,15 +10,31 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.ManageAccounts
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SettingsEthernet
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
@@ -26,11 +43,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.github.sanitised.st.ui.components.STPrototypeTopHeader
+import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 
 @Composable
 fun SettingsScreen(
@@ -58,25 +78,113 @@ fun SettingsScreen(
     onUpdatePrimary: () -> Unit,
     onUpdateDismiss: () -> Unit,
     onCancelUpdateDownload: () -> Unit,
-    onOpenInBrowser: () -> Unit
+    onOpenInBrowser: () -> Unit,
+    onOpenWorldInfo: () -> Unit,
+    onOpenPersona: () -> Unit,
+    onOpenPresets: () -> Unit,
+    onOpenConnections: () -> Unit,
+    onOpenChatBackups: () -> Unit,
+    onOpenLogs: () -> Unit,
+    onOpenConfig: () -> Unit,
+    onOpenManageSt: () -> Unit
 ) {
-    Surface(modifier = Modifier.fillMaxSize()) {
+    val openDrawer = LocalSTOpenDrawer.current
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            SecondaryTopAppBar(
-                title = stringResource(R.string.settings_title),
-                onBack = onBack
+            STPrototypeTopHeader(
+                title = "我的",
+                leading = {
+                    IconButton(onClick = openDrawer) {
+                        Icon(
+                            imageVector = Icons.Filled.Menu,
+                            contentDescription = stringResource(R.string.back)
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onOpenInBrowser) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = stringResource(R.string.m3_search)
+                        )
+                    }
+                },
+                titleBottomPadding = 12.dp
             )
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 20.dp)
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
             ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainer
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(56.dp),
+                            shape = MaterialTheme.shapes.extraLarge,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.Person, contentDescription = null)
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "SillyTavern Mobile",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_open_in_browser_subtitle),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "常用管理",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                SettingsNavSection {
+                    SettingsNavRow(Icons.Filled.Book, stringResource(R.string.m3_world_info_title), stringResource(R.string.m3_world_info_subtitle), onOpenWorldInfo)
+                    SettingsNavRow(Icons.Filled.ManageAccounts, stringResource(R.string.m3_persona_title), stringResource(R.string.m3_persona_subtitle), onOpenPersona)
+                    SettingsNavRow(Icons.Filled.Tune, stringResource(R.string.m3_presets_title), stringResource(R.string.tools_hub_presets_body), onOpenPresets)
+                    SettingsNavRow(Icons.Filled.SettingsEthernet, stringResource(R.string.m3_connections_title), stringResource(R.string.tools_hub_connections_body), onOpenConnections)
+                    SettingsNavRow(Icons.Filled.CloudSync, stringResource(R.string.m3_chat_backups_title), stringResource(R.string.tools_hub_chat_backups_body), onOpenChatBackups)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "ST 核心",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                SettingsNavSection {
+                    SettingsNavRow(Icons.Filled.FolderOpen, stringResource(R.string.manage_st_title), stringResource(R.string.tools_hub_manage_body), onOpenManageSt)
+                    SettingsNavRow(Icons.Filled.History, stringResource(R.string.logs_title), stringResource(R.string.tools_hub_logs_body), onOpenLogs)
+                    SettingsNavRow(Icons.Filled.Dns, stringResource(R.string.config_button_title), stringResource(R.string.tools_hub_config_body), onOpenConfig)
+                }
+                Spacer(modifier = Modifier.height(18.dp))
                 SettingsToggleRow(
                     title = stringResource(R.string.settings_auto_open_title),
                     subtitle = stringResource(R.string.settings_auto_open_subtitle),
@@ -246,6 +354,68 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsNavSection(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun SettingsNavRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = false, onClick = onClick, role = Role.Button)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier.size(40.dp),
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Icon(
+            imageVector = Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 
@@ -460,6 +630,14 @@ private fun SettingsScreenPreview() {
         onUpdatePrimary = {},
         onUpdateDismiss = {},
         onCancelUpdateDownload = {},
-        onOpenInBrowser = {}
+        onOpenInBrowser = {},
+        onOpenWorldInfo = {},
+        onOpenPersona = {},
+        onOpenPresets = {},
+        onOpenConnections = {},
+        onOpenChatBackups = {},
+        onOpenLogs = {},
+        onOpenConfig = {},
+        onOpenManageSt = {}
     )
 }
