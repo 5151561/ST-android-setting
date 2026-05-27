@@ -25,6 +25,7 @@ class NativeHubScreensContractTest {
         val strings = File("src/main/res/values/strings.xml").readText()
         val navGraph = File("src/main/java/io/github/sanitised/st/ui/navigation/STNavGraph.kt").readText()
         val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val listScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt").readText()
 
         assertTrue(File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt").exists())
         assertTrue(File("src/main/java/io/github/sanitised/st/ui/screens/CharacterEditScreen.kt").exists())
@@ -37,6 +38,7 @@ class NativeHubScreensContractTest {
         assertTrue(mainActivity.contains("CharacterDetailScreen"))
         assertTrue(strings.contains("character_edit_title"))
         assertTrue(strings.contains("character_list_search_hint"))
+        assertFalse(listScreen.contains("character_list_subtitle"))
     }
 
     @Test
@@ -294,6 +296,10 @@ class NativeHubScreensContractTest {
 
         assertTrue(toolsHub.contains("ToolListSection"))
         assertTrue(toolsHub.contains("ToolListRow"))
+        assertTrue(toolsHub.contains("ToolsHubInfoDialog"))
+        assertTrue(toolsHub.contains("subtitle = null"))
+        assertTrue(toolsHub.contains("IconButton(onClick = onInfoClick)"))
+        assertTrue(toolsHub.contains("description = stringResource(R.string.tools_hub_world_info_body)"))
         assertFalse(toolsHub.contains("ToolBoundaryBanner"))
         assertFalse(toolsHub.contains("ToolGroupSection"))
         assertFalse(toolsHub.contains("ToolStatusChip"))
@@ -302,14 +308,19 @@ class NativeHubScreensContractTest {
         assertFalse(toolsHub.contains("tools_hub_list_detail"))
         assertFalse(toolsHub.contains("statusLabel"))
         assertFalse(toolsHub.contains("ToolTile("))
+        assertFalse(toolsHub.contains("body = stringResource(R.string.tools_hub_world_info_body)"))
+        assertFalse(toolsHub.contains("body: String,\n    onClick: () -> Unit"))
+        assertTrue(toolsHub.contains("private fun ToolListRow(\n    icon: ImageVector,\n    title: String,\n    onClick: () -> Unit"))
 
         assertTrue(screens.contains("WorldInfoViewMode.LIST"))
         assertTrue(screens.contains("WorldInfoViewMode.DETAIL"))
         assertTrue(screens.contains("ConnectionViewMode.LIST"))
         assertTrue(screens.contains("ConnectionViewMode.DETAIL"))
-        assertTrue(screens.contains("M3StateBanner"))
-        assertTrue(screens.contains("M3HeroSurface"))
         assertTrue(screens.contains("M3SectionSurface"))
+        assertFalse(screens.contains("M3StateBanner"))
+        assertFalse(screens.contains("M3HeroSurface"))
+        assertFalse(screens.contains("m3_list_responsibility"))
+        assertFalse(screens.contains("list_responsibility"))
     }
 
     @Test

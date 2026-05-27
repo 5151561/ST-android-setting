@@ -103,12 +103,6 @@ private enum class ConnectionDetailMode {
     ENDPOINT
 }
 
-private enum class M3HeroTone {
-    PRIMARY,
-    TERTIARY,
-    SURFACE
-}
-
 @Composable
 fun WorldInfoScreen(
     status: NodeStatus,
@@ -260,19 +254,6 @@ fun WorldInfoScreen(
         if (!serverRunning) return@M3ManagerScaffold
         when (viewMode) {
             WorldInfoViewMode.LIST -> {
-                M3StateBanner(
-                    title = stringResource(R.string.m3_state_list_world_info),
-                    body = stringResource(R.string.m3_state_list_world_info_body)
-                )
-                M3HeroSurface(
-                    title = stringResource(R.string.m3_world_info_list_hero_title),
-                    body = stringResource(R.string.m3_world_info_list_hero_body, worlds.size),
-                    labels = listOf(
-                        stringResource(R.string.tools_hub_list_detail),
-                        stringResource(R.string.m3_source_fidelity)
-                    ),
-                    tone = M3HeroTone.TERTIARY
-                )
                 M3SearchField(search = search, onSearchChanged = { search = it })
                 OutlinedButton(onClick = { newWorldDialog = true }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Add, contentDescription = null)
@@ -285,30 +266,10 @@ fun WorldInfoScreen(
                     loading = loading,
                     onSelect = { loadBook(it.id) }
                 )
-                M3SectionSurface(
-                    title = stringResource(R.string.m3_list_responsibility),
-                    body = stringResource(R.string.m3_world_info_list_responsibility)
-                )
             }
 
             WorldInfoViewMode.DETAIL -> {
                 val current = book
-                M3StateBanner(
-                    title = stringResource(R.string.m3_state_detail_world_info),
-                    body = stringResource(R.string.m3_state_detail_world_info_body)
-                )
-                M3HeroSurface(
-                    title = current?.name ?: stringResource(R.string.m3_world_info_title),
-                    body = stringResource(
-                        R.string.m3_world_info_detail_hero_body,
-                        current?.entries?.size ?: 0
-                    ),
-                    labels = listOf(
-                        stringResource(R.string.m3_detail_form_only),
-                        stringResource(R.string.m3_source_fidelity)
-                    ),
-                    tone = M3HeroTone.TERTIARY
-                )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = { viewMode = WorldInfoViewMode.LIST }, modifier = Modifier.weight(1f)) {
                         Text(stringResource(R.string.back))
@@ -489,18 +450,6 @@ fun PersonaScreen(
         if (!serverRunning) return@M3ManagerScaffold
         when (viewMode) {
             PersonaViewMode.LIST -> {
-                M3StateBanner(
-                    title = stringResource(R.string.m3_state_list_persona),
-                    body = stringResource(R.string.m3_state_list_persona_body)
-                )
-                M3HeroSurface(
-                    title = stringResource(R.string.m3_persona_list_hero_title),
-                    body = stringResource(R.string.m3_persona_list_hero_body, personas.size),
-                    labels = listOf(
-                        stringResource(R.string.tools_hub_list_detail),
-                        stringResource(R.string.m3_persona_default)
-                    )
-                )
                 M3SearchField(search = search, onSearchChanged = { search = it })
                 OutlinedButton(
                     onClick = {
@@ -547,25 +496,9 @@ fun PersonaScreen(
                         }
                     }
                 )
-                M3SectionSurface(
-                    title = stringResource(R.string.m3_list_responsibility),
-                    body = stringResource(R.string.m3_persona_list_responsibility)
-                )
             }
 
             PersonaViewMode.DETAIL -> {
-                M3StateBanner(
-                    title = stringResource(R.string.m3_state_detail_persona),
-                    body = stringResource(R.string.m3_state_detail_persona_body)
-                )
-                M3HeroSurface(
-                    title = name.ifBlank { stringResource(R.string.m3_persona_title) },
-                    body = selectedAvatar ?: stringResource(R.string.m3_persona_missing_avatar),
-                    labels = listOf(
-                        if (makeDefault) stringResource(R.string.m3_enabled) else stringResource(R.string.m3_detail_form_only),
-                        stringResource(R.string.m3_persona_upload)
-                    )
-                )
                 PersonaDetailEditor(
                     avatar = selectedAvatar,
                     name = name,
@@ -711,21 +644,6 @@ fun PresetLiteScreen(
         if (!serverRunning) return@M3ManagerScaffold
         when (viewMode) {
             PresetViewMode.LIST -> {
-                M3StateBanner(
-                    title = stringResource(R.string.m3_state_list_presets),
-                    body = stringResource(R.string.m3_state_list_presets_body)
-                )
-                M3HeroSurface(
-                    title = stringResource(R.string.m3_presets_list_hero_title),
-                    body = stringResource(
-                        R.string.m3_presets_list_hero_body,
-                        library.categories.sumOf { it.presets.size }
-                    ),
-                    labels = listOf(
-                        stringResource(R.string.tools_hub_list_detail),
-                        stringResource(R.string.m3_source_fidelity)
-                    )
-                )
                 PresetCategoryChips(
                     categories = library.categories,
                     selectedApiId = selectedApiId,
@@ -753,31 +671,10 @@ fun PresetLiteScreen(
                         }
                     }
                 )
-                M3SectionSurface(
-                    title = stringResource(R.string.m3_list_responsibility),
-                    body = stringResource(R.string.m3_presets_list_responsibility)
-                )
             }
 
             PresetViewMode.DETAIL -> {
                 val apiId = selectedApiId
-                val apiLabel = apiId.orEmpty().ifBlank { stringResource(R.string.unknown_short) }
-                M3StateBanner(
-                    title = stringResource(R.string.m3_state_detail_presets),
-                    body = stringResource(R.string.m3_state_detail_presets_body)
-                )
-                M3HeroSurface(
-                    title = presetName.ifBlank { stringResource(R.string.m3_presets_title) },
-                    body = stringResource(R.string.m3_presets_detail_hero_body, apiLabel),
-                    labels = listOf(
-                        if (library.categories.flatMap { it.presets }.any { it.apiId == apiId && it.name == selectedName && it.selected }) {
-                            stringResource(R.string.m3_enabled)
-                        } else {
-                            stringResource(R.string.m3_detail_form_only)
-                        },
-                        stringResource(R.string.m3_source_fidelity)
-                    )
-                )
                 PresetDetailEditor(
                     apiId = apiId,
                     presetName = presetName,
@@ -938,18 +835,6 @@ fun ConnectionProfilesScreen(
         when (viewMode) {
             ConnectionViewMode.LIST -> {
                 val selected = secrets.firstOrNull { it.key == selectedKey }
-                M3StateBanner(
-                    title = stringResource(R.string.m3_state_list_connections),
-                    body = stringResource(R.string.m3_state_list_connections_body)
-                )
-                M3HeroSurface(
-                    title = selected?.label ?: stringResource(R.string.m3_connections_title),
-                    body = stringResource(R.string.m3_connections_list_hero_body, selected?.entries?.size ?: 0, connections.size),
-                    labels = listOf(
-                        stringResource(R.string.tools_hub_sensitive),
-                        stringResource(R.string.m3_connections_masked)
-                    )
-                )
                 SecretProviderChips(
                     providers = secrets,
                     selectedKey = selectedKey,
@@ -992,43 +877,11 @@ fun ConnectionProfilesScreen(
                         Text(stringResource(R.string.m3_connections_save_endpoint))
                     }
                 }
-                M3SectionSurface(
-                    title = stringResource(R.string.m3_list_responsibility),
-                    body = stringResource(R.string.m3_connections_list_responsibility)
-                )
             }
 
             ConnectionViewMode.DETAIL -> {
                 val selected = secrets.firstOrNull { it.key == selectedKey }
                 val selectedEntry = selected?.entries?.firstOrNull { it.id == selectedSecretEntryId }
-                M3StateBanner(
-                    title = if (detailMode == ConnectionDetailMode.KEY) {
-                        stringResource(R.string.m3_state_detail_connection_key)
-                    } else {
-                        stringResource(R.string.m3_state_detail_connection_endpoint)
-                    },
-                    body = stringResource(R.string.m3_state_detail_connections_body)
-                )
-                M3HeroSurface(
-                    title = if (detailMode == ConnectionDetailMode.KEY) {
-                        secretLabel.ifBlank { selected?.label ?: stringResource(R.string.m3_connections_title) }
-                    } else {
-                        endpointLabel.ifBlank { stringResource(R.string.m3_connections_endpoint_label) }
-                    },
-                    body = if (detailMode == ConnectionDetailMode.KEY) {
-                        selectedEntry?.value ?: stringResource(R.string.m3_connections_masked)
-                    } else {
-                        endpointUrl.ifBlank { stringResource(R.string.m3_connections_endpoint_url) }
-                    },
-                    labels = listOf(
-                        stringResource(R.string.m3_detail_form_only),
-                        if (detailMode == ConnectionDetailMode.KEY) {
-                            stringResource(R.string.m3_connections_masked)
-                        } else {
-                            stringResource(R.string.tools_hub_guarded)
-                        }
-                    )
-                )
                 if (detailMode == ConnectionDetailMode.KEY) {
                     M3SectionSurface(title = selected?.label ?: stringResource(R.string.m3_connections_title)) {
                         OutlinedTextField(
@@ -1273,19 +1126,6 @@ fun ChatBackupsScreen(
         modifier = modifier
     ) {
         if (!serverRunning) return@M3ManagerScaffold
-        M3StateBanner(
-            title = stringResource(R.string.m3_state_chat_backups),
-            body = stringResource(R.string.m3_state_chat_backups_body)
-        )
-        M3HeroSurface(
-            title = stringResource(R.string.m3_chat_backups_hero_title),
-            body = stringResource(R.string.m3_chat_backups_hero_body, backups.size),
-            labels = listOf(
-                stringResource(R.string.m3_chat_backups_export),
-                stringResource(R.string.m3_chat_backups_delete_selected)
-            ),
-            tone = M3HeroTone.TERTIARY
-        )
         STSectionCard(borderColor = MaterialTheme.colorScheme.outlineVariant, contentSpacing = 8.dp) {
             if (backups.isEmpty()) {
                 Text(
@@ -1344,90 +1184,6 @@ fun ChatBackupsScreen(
 }
 
 @Composable
-private fun M3StateBanner(
-    title: String,
-    body: String,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        shape = MaterialTheme.shapes.large,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun M3HeroSurface(
-    title: String,
-    body: String,
-    labels: List<String>,
-    modifier: Modifier = Modifier,
-    tone: M3HeroTone = M3HeroTone.PRIMARY
-) {
-    val colors = MaterialTheme.colorScheme
-    val (container, content) = when (tone) {
-        M3HeroTone.PRIMARY -> colors.primaryContainer to colors.onPrimaryContainer
-        M3HeroTone.TERTIARY -> colors.tertiaryContainer to colors.onTertiaryContainer
-        M3HeroTone.SURFACE -> colors.surfaceContainerHigh to colors.onSurface
-    }
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = container,
-        contentColor = content,
-        shape = MaterialTheme.shapes.extraLarge,
-        border = BorderStroke(1.dp, colors.outlineVariant)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodySmall,
-                color = content.copy(alpha = 0.78f),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-            ) {
-                labels.take(3).forEach { label ->
-                    M3StatusChip(label = label, tone = tone)
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun M3SectionSurface(
     title: String? = null,
     body: String? = null,
@@ -1461,26 +1217,6 @@ private fun M3SectionSurface(
             }
             content()
         }
-    }
-}
-
-@Composable
-private fun M3StatusChip(label: String, tone: M3HeroTone = M3HeroTone.SURFACE) {
-    val colors = MaterialTheme.colorScheme
-    val (container, content) = when (tone) {
-        M3HeroTone.PRIMARY -> colors.surfaceContainerLowest to colors.onSurfaceVariant
-        M3HeroTone.TERTIARY -> colors.surfaceContainerLowest to colors.onSurfaceVariant
-        M3HeroTone.SURFACE -> colors.secondaryContainer to colors.onSecondaryContainer
-    }
-    Surface(shape = CircleShape, color = container, contentColor = content) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 

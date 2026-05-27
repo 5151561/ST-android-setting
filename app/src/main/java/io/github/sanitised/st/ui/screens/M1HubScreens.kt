@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,17 +30,24 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -148,40 +156,43 @@ fun ToolsHubScreen(
     onOpenChatBackups: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showToolsInfoDialog by remember { mutableStateOf(false) }
+
+    if (showToolsInfoDialog) {
+        ToolsHubInfoDialog(onDismiss = { showToolsInfoDialog = false })
+    }
+
     HubScaffold(
         title = stringResource(R.string.tools_hub_title),
-        subtitle = stringResource(R.string.tools_hub_subtitle),
+        subtitle = null,
+        infoContentDescription = stringResource(R.string.tools_hub_info),
+        onInfoClick = { showToolsInfoDialog = true },
         modifier = modifier
     ) {
         ToolListSection {
             ToolListRow(
                 icon = Icons.Filled.Description,
                 title = stringResource(R.string.m3_world_info_title),
-                body = stringResource(R.string.tools_hub_world_info_body),
                 onClick = onOpenWorldInfo
             )
             ToolListRow(
                 icon = Icons.Filled.Person,
                 title = stringResource(R.string.m3_persona_title),
-                body = stringResource(R.string.tools_hub_persona_body),
                 onClick = onOpenPersona
             )
             ToolListRow(
                 icon = Icons.Filled.Description,
                 title = stringResource(R.string.m3_presets_title),
-                body = stringResource(R.string.tools_hub_presets_body),
                 onClick = onOpenPresets
             )
             ToolListRow(
                 icon = Icons.Filled.Info,
                 title = stringResource(R.string.m3_connections_title),
-                body = stringResource(R.string.tools_hub_connections_body),
                 onClick = onOpenConnections
             )
             ToolListRow(
                 icon = Icons.Filled.History,
                 title = stringResource(R.string.m3_chat_backups_title),
-                body = stringResource(R.string.tools_hub_chat_backups_body),
                 onClick = onOpenChatBackups
             )
         }
@@ -190,22 +201,98 @@ fun ToolsHubScreen(
             ToolListRow(
                 icon = Icons.Filled.Description,
                 title = stringResource(R.string.config_button_title),
-                body = stringResource(R.string.tools_hub_config_body),
                 onClick = onOpenConfig
             )
             ToolListRow(
                 icon = Icons.Filled.History,
                 title = stringResource(R.string.logs_title),
-                body = stringResource(R.string.tools_hub_logs_body),
                 onClick = onOpenLogs
             )
             ToolListRow(
                 icon = Icons.Filled.FolderOpen,
                 title = stringResource(R.string.manage_st_title),
-                body = stringResource(R.string.tools_hub_manage_body),
                 onClick = onOpenManageSt
             )
         }
+    }
+}
+
+@Composable
+private fun ToolsHubInfoDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.tools_hub_info)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.tools_hub_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                ToolInfoLine(
+                    title = stringResource(R.string.m3_world_info_title),
+                    description = stringResource(R.string.tools_hub_world_info_body)
+                )
+                ToolInfoLine(
+                    title = stringResource(R.string.m3_persona_title),
+                    description = stringResource(R.string.tools_hub_persona_body)
+                )
+                ToolInfoLine(
+                    title = stringResource(R.string.m3_presets_title),
+                    description = stringResource(R.string.tools_hub_presets_body)
+                )
+                ToolInfoLine(
+                    title = stringResource(R.string.m3_connections_title),
+                    description = stringResource(R.string.tools_hub_connections_body)
+                )
+                ToolInfoLine(
+                    title = stringResource(R.string.m3_chat_backups_title),
+                    description = stringResource(R.string.tools_hub_chat_backups_body)
+                )
+                ToolInfoLine(
+                    title = stringResource(R.string.config_button_title),
+                    description = stringResource(R.string.tools_hub_config_body)
+                )
+                ToolInfoLine(
+                    title = stringResource(R.string.logs_title),
+                    description = stringResource(R.string.tools_hub_logs_body)
+                )
+                ToolInfoLine(
+                    title = stringResource(R.string.manage_st_title),
+                    description = stringResource(R.string.tools_hub_manage_body)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.tools_hub_info_dismiss))
+            }
+        }
+    )
+}
+
+@Composable
+private fun ToolInfoLine(
+    title: String,
+    description: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -342,8 +429,10 @@ fun DashboardLibrarySections(
 @Composable
 private fun HubScaffold(
     title: String,
-    subtitle: String,
+    subtitle: String?,
     modifier: Modifier = Modifier,
+    infoContentDescription: String? = null,
+    onInfoClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
@@ -371,21 +460,27 @@ private fun HubScaffold(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    if (!subtitle.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-                Icon(
-                    imageVector = Icons.Filled.Info,
-                    contentDescription = null,
-                    tint = colors.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
+                if (onInfoClick != null) {
+                    IconButton(onClick = onInfoClick) {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = infoContentDescription,
+                            tint = colors.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
             }
             content()
         }
@@ -467,7 +562,6 @@ private fun ToolListSection(
 private fun ToolListRow(
     icon: ImageVector,
     title: String,
-    body: String,
     onClick: () -> Unit
 ) {
     Row(
@@ -485,13 +579,6 @@ private fun ToolListRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }

@@ -826,13 +826,6 @@ private fun CharacterListTopBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = stringResource(R.string.character_list_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
         }
         IconButton(onClick = onSearchClick, enabled = serverRunning) {
             Icon(
