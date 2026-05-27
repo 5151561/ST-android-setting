@@ -97,12 +97,8 @@ import io.github.sanitised.st.ui.prototype.PrototypeMemoryScreen
 import io.github.sanitised.st.ui.prototype.PrototypePersonaScreen
 import io.github.sanitised.st.ui.prototype.PrototypeStCoreScreen
 import io.github.sanitised.st.ui.prototype.PrototypeWorldInfoScreen
-import io.github.sanitised.st.ui.screens.CharacterDetailScreen
-import io.github.sanitised.st.ui.screens.CharacterEditScreen
-import io.github.sanitised.st.ui.screens.CharacterListScreen
 import io.github.sanitised.st.ui.screens.ChatBackupsScreen
 import io.github.sanitised.st.ui.screens.ConnectionProfilesScreen
-import io.github.sanitised.st.ui.screens.ToolsHubScreen
 import io.github.sanitised.st.ui.screens.PersonaScreen
 import io.github.sanitised.st.ui.screens.PresetLiteScreen
 import io.github.sanitised.st.ui.screens.WorldInfoScreen
@@ -293,7 +289,6 @@ class MainActivity : ComponentActivity() {
                 STRoutes.CHARACTER_DETAIL,
                 STRoutes.CHARACTER_EDIT -> STRoutes.CHARACTERS
                 STRoutes.WORLD_INFO -> STRoutes.WORLD_INFO
-                STRoutes.TOOLS,
                 STRoutes.PERSONA,
                 STRoutes.PRESETS,
                 STRoutes.CONNECTIONS,
@@ -662,28 +657,20 @@ class MainActivity : ComponentActivity() {
                                 route = STRoutes.CHARACTER_EDIT,
                                 arguments = listOf(navArgument("avatar") { type = NavType.StringType })
                             ) { backStackEntry ->
-                                CharacterEditScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) },
-                                    onStartService = { startNode() },
-                                    onBack = { navController.popBackStack() },
-                                    onSaved = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.TOOLS) {
-                                ToolsHubScreen(
-                                    onOpenConfig = { navController.navigate(STRoutes.CONFIG) },
-                                    onOpenLogs = { navController.navigate(STRoutes.LOGS) },
-                                    onOpenManageSt = { navController.navigate(STRoutes.MANAGE_ST) },
-                                    onOpenWorldInfo = { navController.navigate(STRoutes.WORLD_INFO) },
-                                    onOpenPersona = { navController.navigate(STRoutes.PERSONA) },
-                                    onOpenPresets = { navController.navigate(STRoutes.PRESETS) },
-                                    onOpenConnections = { navController.navigate(STRoutes.CONNECTIONS) },
-                                    onOpenChatBackups = { navController.navigate(STRoutes.CHAT_BACKUPS) }
-                                )
+                                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
+                                if (avatar != null) {
+                                    PrototypeCharacterProfileScreen(
+                                        status = statusState.value,
+                                        baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                        avatar = avatar,
+                                        onStartService = { startNode() },
+                                        onBack = { navController.popBackStack() },
+                                        onOpenChat = { chatFile ->
+                                            openCharacterChatFromCharacterManagement(avatar, chatFile)
+                                        },
+                                        onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                    )
+                                }
                             }
 
                             composable(STRoutes.WORLD_INFO) {

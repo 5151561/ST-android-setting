@@ -45,11 +45,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import io.github.sanitised.st.api.CharacterSummary
+import io.github.sanitised.st.api.ChatSummary
+import io.github.sanitised.st.data.LocalTavernLibraryReader
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -1867,3 +1875,28 @@ private fun String.csvItems(): List<String> =
 
 private fun String.avatarInitial(): String =
     trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+
+data class LocalTavernLibrarySnapshot(
+    val characters: List<CharacterSummary> = emptyList(),
+    val recentChats: List<ChatSummary> = emptyList()
+)
+
+@Composable
+fun rememberLocalTavernLibrarySnapshot(
+    dataRoot: File,
+    refreshKey: Any?
+): State<LocalTavernLibrarySnapshot> {
+    return produceState(
+        initialValue = LocalTavernLibrarySnapshot(),
+        dataRoot,
+        refreshKey
+    ) {
+        value = withContext(Dispatchers.IO) {
+            val reader = LocalTavernLibraryReader(dataRoot)
+            LocalTavernLibrarySnapshot(
+                characters = reader.listCharacters(),
+                recentChats = reader.listRecentChats()
+            )
+        }
+    }
+}
