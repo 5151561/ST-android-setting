@@ -24,6 +24,14 @@ object STRoutes {
     const val LICENSE = "settings/legal/{assetPath}"
     const val MANAGE_ST = "st-core"
 
+    const val SECRETS = "settings/secrets"
+    const val EXTENSIONS = "settings/extensions"
+    const val AUTHOR_NOTE = "settings/author-note"
+    const val QUICK_REPLIES = "settings/quick-replies"
+    const val APPEARANCE = "settings/appearance"
+    const val PROVIDER_DETAIL = "api-connections/detail/{providerId}"
+
     fun characterDetail(avatar: String): String = "characters/detail/${Uri.encode(avatar)}"
     fun characterEdit(avatar: String): String = "characters/edit/${Uri.encode(avatar)}"
+    fun providerDetail(providerId: String): String = "api-connections/detail/${Uri.encode(providerId)}"
 }

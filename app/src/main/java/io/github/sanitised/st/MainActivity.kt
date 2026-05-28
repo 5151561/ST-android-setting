@@ -87,6 +87,7 @@ import io.github.sanitised.st.ui.prototype.PrototypeAvatar
 import io.github.sanitised.st.ui.prototype.PrototypeStatusDot
 import io.github.sanitised.st.ui.prototype.PrototypeAISettingsScreen
 import io.github.sanitised.st.ui.prototype.PrototypeApiConnectionScreen
+import io.github.sanitised.st.ui.prototype.PrototypeProviderDetailScreen
 import io.github.sanitised.st.ui.prototype.PrototypeCharacterCreateScreen
 import io.github.sanitised.st.ui.prototype.PrototypeCharacterLibraryScreen
 import io.github.sanitised.st.ui.prototype.PrototypeCharacterProfileScreen
@@ -98,6 +99,11 @@ import io.github.sanitised.st.ui.prototype.PrototypeMemoryScreen
 import io.github.sanitised.st.ui.prototype.PrototypePersonaScreen
 import io.github.sanitised.st.ui.prototype.PrototypeStCoreScreen
 import io.github.sanitised.st.ui.prototype.PrototypeWorldInfoScreen
+import io.github.sanitised.st.ui.prototype.PrototypeSecretsScreen
+import io.github.sanitised.st.ui.prototype.PrototypeExtensionsScreen
+import io.github.sanitised.st.ui.prototype.PrototypeAuthorNoteCFGScreen
+import io.github.sanitised.st.ui.prototype.PrototypeQuickReplyScreen
+import io.github.sanitised.st.ui.prototype.PrototypeAppearanceScreen
 import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STDialogButtonStyle
@@ -131,11 +137,11 @@ private val drawerNavItems = listOf(
     DrawerNavItem(STRoutes.PERSONA, "扮演者", Icons.Filled.Face, badgeText = "4"),
     DrawerNavItem(STRoutes.WORLD_INFO, "世界书", Icons.Filled.Book, badgeText = "4"),
     DrawerNavItem(STRoutes.CHAT_BACKUPS, "记忆与回顾", Icons.Filled.CloudSync),
-    DrawerNavItem(STRoutes.PRESETS, "作者注 & CFG", Icons.Filled.History),
+    DrawerNavItem(STRoutes.AUTHOR_NOTE, "作者注 & CFG", Icons.Filled.History),
     DrawerNavItem(STRoutes.PRESETS, "AI 采样设置", Icons.Filled.Tune, isPrimaryGroup = false),
     DrawerNavItem(STRoutes.CONNECTIONS, "API 连接", Icons.Filled.SettingsEthernet, supportingText = "3 个已连接", isPrimaryGroup = false),
-    DrawerNavItem(STRoutes.PRESETS, "扩展", Icons.Filled.Extension, supportingText = "6 个", isPrimaryGroup = false),
-    DrawerNavItem(STRoutes.SETTINGS, "主题外观", Icons.Filled.Palette, isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.EXTENSIONS, "扩展", Icons.Filled.Extension, supportingText = "6 个", isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.APPEARANCE, "主题外观", Icons.Filled.Palette, isPrimaryGroup = false),
     DrawerNavItem(STRoutes.MANAGE_ST, "ST 内核", Icons.Filled.Memory, supportingText = "运行中", isPrimaryGroup = false),
     DrawerNavItem(STRoutes.SETTINGS, "设置", Icons.Filled.Settings, isPrimaryGroup = false),
     DrawerNavItem(STRoutes.LEGAL, "帮助 & 文档", Icons.Filled.Help, isPrimaryGroup = false),
@@ -295,6 +301,11 @@ class MainActivity : ComponentActivity() {
                 STRoutes.LEGAL,
                 STRoutes.LICENSE,
                 STRoutes.MANAGE_ST -> STRoutes.SETTINGS
+                STRoutes.SECRETS,
+                STRoutes.EXTENSIONS,
+                STRoutes.AUTHOR_NOTE,
+                STRoutes.QUICK_REPLIES,
+                STRoutes.APPEARANCE -> STRoutes.SETTINGS
                 else -> currentRoute
             }
             val appPaths = remember { AppPaths(this@MainActivity) }
@@ -332,9 +343,24 @@ class MainActivity : ComponentActivity() {
             val notificationGrantedState = remember { mutableStateOf(isNotificationPermissionGranted()) }
             val notificationAutoPromptAttempted = rememberSaveable { mutableStateOf(false) }
             val batteryUnrestrictedState = remember { mutableStateOf(isBatteryUnrestricted()) }
-            val lifecycleOwner = LocalLifecycleOwner.current
             val scope = rememberCoroutineScope()
+            val lifecycleOwner = LocalLifecycleOwner.current
             val snackbarHostState = remember { SnackbarHostState() }
+            
+            var connectedCount by remember { mutableStateOf(3) }
+            val running = statusState.value.state == NodeState.RUNNING
+            LaunchedEffect(running, statusState.value.port) {
+                if (running) {
+                    runCatching {
+                        val client = io.github.sanitised.st.api.TavernCoreClient(
+                            io.github.sanitised.st.SillyTavernUrl.localWebUrl(statusState.value.port)
+                        )
+                        val secretsList = client.listSecrets()
+                        connectedCount = secretsList.count { it.entries.isNotEmpty() }.coerceAtLeast(1)
+                    }
+                }
+            }
+
             val listener = remember {
                 object : NodeStatusListener {
                     override fun onStatus(status: NodeStatus) {
@@ -529,10 +555,20 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val dynamicDrawerItems = remember(drawerNavItems, connectedCount) {
+                drawerNavItems.map { item ->
+                    if (item.route == STRoutes.CONNECTIONS) {
+                        item.copy(supportingText = "${connectedCount} 个已连接")
+                    } else {
+                        item
+                    }
+                }
+            }
+
             STAppTheme(useDarkTheme = useDarkTheme, colorSource = themeColorSource) {
                 STNavigationScaffold(
                     items = bottomNavItems,
-                    drawerItems = drawerNavItems,
+                    drawerItems = dynamicDrawerItems,
                     currentRoute = bottomBarSelectedRoute,
                     onNavigate = navigateMainTab,
                     snackbarHost = {
@@ -708,6 +744,25 @@ class MainActivity : ComponentActivity() {
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
+                                    onOpenSecrets = { navController.navigate(STRoutes.SECRETS) },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
+                                    onOpenProviderDetail = { providerId ->
+                                        navController.navigate(STRoutes.providerDetail(providerId))
+                                    }
+                                )
+                            }
+
+                            composable(
+                                route = STRoutes.PROVIDER_DETAIL,
+                                arguments = listOf(navArgument("providerId") { type = NavType.StringType })
+                            ) { backStackEntry ->
+                                val providerId = backStackEntry.arguments?.getString("providerId")?.let { Uri.decode(it) } ?: "anthropic"
+                                BackHandler { navController.popBackStack() }
+                                PrototypeProviderDetailScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    providerId = providerId,
+                                    onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
@@ -755,6 +810,52 @@ class MainActivity : ComponentActivity() {
                                     onOpenLogs = { navController.navigate(STRoutes.LOGS) },
                                     onOpenConfig = { navController.navigate(STRoutes.CONFIG) },
                                     onOpenManageSt = { navController.navigate(STRoutes.MANAGE_ST) },
+                                    onOpenSecrets = { navController.navigate(STRoutes.SECRETS) },
+                                    onOpenExtensions = { navController.navigate(STRoutes.EXTENSIONS) },
+                                    onOpenAppearance = { navController.navigate(STRoutes.APPEARANCE) },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.SECRETS) {
+                                BackHandler { navController.popBackStack() }
+                                PrototypeSecretsScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.EXTENSIONS) {
+                                BackHandler { navController.popBackStack() }
+                                PrototypeExtensionsScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenQuickReplies = { navController.navigate(STRoutes.QUICK_REPLIES) },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.AUTHOR_NOTE) {
+                                BackHandler { navController.popBackStack() }
+                                PrototypeAuthorNoteCFGScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.QUICK_REPLIES) {
+                                BackHandler { navController.popBackStack() }
+                                PrototypeQuickReplyScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(STRoutes.APPEARANCE) {
+                                BackHandler { navController.popBackStack() }
+                                PrototypeAppearanceScreen(
+                                    onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }

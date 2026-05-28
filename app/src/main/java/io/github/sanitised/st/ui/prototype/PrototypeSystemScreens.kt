@@ -58,6 +58,8 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -91,6 +93,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.ui.draw.rotate
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.UnfoldMore
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.border
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -394,108 +420,278 @@ fun PrototypeApiConnectionScreen(
     baseUrl: String,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenSecrets: (() -> Unit)? = null,
+    onOpenProviderDetail: (String) -> Unit = {}
 ) {
+    val scope = rememberCoroutineScope()
     var profiles by remember { mutableStateOf<List<ConnectionProfile>>(emptyList()) }
     var secrets by remember { mutableStateOf<List<SecretProviderState>>(emptyList()) }
+    var settings by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
     val running = status.state == NodeState.RUNNING
+
+    var activeMode by remember { mutableStateOf("cc") }
+    var activeProvider by remember { mutableStateOf("Claude") }
+
     LaunchedEffect(running, baseUrl) {
         if (running) {
             runCatching {
                 val client = TavernCoreClient(baseUrl)
                 profiles = client.listConnectionProfiles()
                 secrets = client.listSecrets()
+                val coreSettings = client.getSettings()
+                settings = coreSettings
+                
+                val apiType = coreSettings.stringValue("api_type")
+                if (apiType.isNotBlank()) {
+                    val (mode, provider) = when (apiType) {
+                        "openai" -> Pair("cc", "OpenAI")
+                        "anthropic" -> Pair("cc", "Claude")
+                        "google" -> Pair("cc", "Google AI")
+                        "deepseek" -> Pair("cc", "DeepSeek")
+                        "openrouter" -> Pair("cc", "OpenRouter")
+                        "koboldcpp", "kobold" -> Pair("tc", "KoboldCpp")
+                        "textgenerationwebui" -> Pair("tc", "Text-Gen WebUI")
+                        "llamacpp" -> Pair("tc", "llama.cpp")
+                        "ollama" -> Pair("tc", "Ollama")
+                        "novel" -> Pair("novel", "NovelAI Official")
+                        else -> Pair("cc", apiType.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() })
+                    }
+                    activeMode = mode
+                    activeProvider = provider
+                }
             }.onFailure { onShowMessage(it.message ?: "API 连接加载失败") }
         }
     }
 
-    var activeMode by remember { mutableStateOf("cc") }
-    var activeProvider by remember(activeMode) {
-        mutableStateOf(if (activeMode == "cc") "Claude" else if (activeMode == "tc") "KoboldCpp" else "")
-    }
     var selectedProfileId by remember { mutableStateOf("daily") }
     var selectedProfileName by remember { mutableStateOf("日常 — Claude Sonnet 4.5") }
     var showProfileSheet by remember { mutableStateOf(false) }
 
-    PrototypeBackRoot(title = "API 连接", onBack = onBack, modifier = modifier, actions = {
-        PrototypeIconButton(Icons.Filled.Help, "帮助", { onShowMessage("API 帮助稍后接入") })
-    }) {
-        PrototypeConnectionProfileCard(
-            profiles = profiles,
-            selectedProfileName = selectedProfileName,
-            onClick = { showProfileSheet = true }
-        )
-        PrototypeModeControl(
-            activeMode = activeMode,
-            onModeChange = { activeMode = it }
-        )
-        PrototypeSectionHeader("当前激活")
-        PrototypeActiveConnectionCard(
-            activeMode = activeMode,
-            connectedCount = secrets.sumOf { it.entries.size }.coerceAtLeast(3)
-        )
-        PrototypeSectionHeader(
-            title = if (activeMode == "tc") "文本补全 — 后端" else "聊天补全 — 提供商",
-            trailing = {
-                Text("9 个", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+    Surface(modifier = modifier.fillMaxSize(), color = STThemeBg) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
+        ) {
+            // AppBar — aligned exactly to design draft
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "API 连接设置",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "SillyTavern 核心端点接入",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                PrototypeIconButton(Icons.Filled.Help, "帮助", { onShowMessage("已打开 API 说明书") })
             }
-        )
-        ProviderGrid(
-            activeMode = activeMode,
-            activeProvider = activeProvider,
-            onProviderChange = { activeProvider = it }
-        )
 
-        if (activeMode == "cc") {
-            PrototypeSectionHeader("本地 / 自建")
-            PrototypeListItem(
-                headline = "自定义 OpenAI 兼容",
-                supporting = "任意 base URL + API key · 适合自建反代",
-                leading = { PrototypeTileIcon(Icons.Filled.Code) },
-                onClick = { onShowMessage("自建配置稍后接入") }
+            // Connection Profile Presets row card
+            PrototypeConnectionProfileCard(
+                profiles = profiles,
+                selectedProfileName = selectedProfileName,
+                onClick = { showProfileSheet = true }
             )
-            PrototypeSectionHeader("免费")
-            PrototypeListItem(
-                headline = "KoboldAI Horde",
-                supporting = "社区共享算力 · 排队中",
-                leading = { PrototypeTileIcon(Icons.Filled.Face) },
-                onClick = { onShowMessage("Horde 状态：排队中") }
-            )
-        } else if (activeMode == "tc") {
-            PrototypeSectionHeader("当前后端的格式")
-            PrototypeListItem(
-                headline = "Instruct 模板",
-                supporting = "Mistral V3 — Tekken · [INST] / [/INST] 包裹",
-                leading = { PrototypeTileIcon(Icons.Filled.Code) },
-                onClick = { onShowMessage("Instruct 模板设置稍后接入") }
-            )
-            PrototypeListItem(
-                headline = "上下文模板",
-                supporting = "Default — 角色卡 + 场景 + 历史",
-                leading = { PrototypeTileIcon(Icons.Filled.Bookmarks) },
-                onClick = { onShowMessage("上下文模板设置稍后接入") }
-            )
-        }
 
-        if (showProfileSheet) {
-            ConnectionProfileBottomSheet(
-                apiProfiles = profiles,
-                onDismiss = { showProfileSheet = false },
-                selectedProfileId = selectedProfileId,
-                onProfileSelected = { id, name, mode ->
-                    selectedProfileId = id
-                    selectedProfileName = name
-                    activeMode = mode
-                    activeProvider = if (mode == "cc") {
-                        if (id == "daily" || id == "long" || id.contains("claude", ignoreCase = true)) "Claude" else "OpenAI"
-                    } else if (mode == "tc") {
-                        "KoboldCpp"
-                    } else {
-                        ""
-                    }
-                    showProfileSheet = false
+            // Dynamic API Mode Segmented Picker
+            PrototypeModeControl(
+                activeMode = activeMode,
+                onModeChange = { activeMode = it }
+            )
+
+            // Section Header: 当前核心装载状态
+            PremiumSectionHeader(
+                title = "当前核心装载状态",
+                trailing = {
+                    val statusText = if (running) "● 活跃就绪" else "○ 未连接"
+                    val statusColor = if (running) STThemeTertiary else STThemeError
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = statusColor,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             )
+
+            // Active Connection HUD Card
+            val activeModelName = remember(settings, activeMode, activeProvider) {
+                if (settings.isEmpty()) {
+                    when (activeMode) {
+                        "cc" -> "claude-3-5-sonnet-20241022"
+                        "tc" -> "Mistral-Nemo-12B-Q5_K"
+                        "kobold" -> "Llama-3-8B-Instruct"
+                        "novel" -> "Erato-8B"
+                        else -> "无可用模型"
+                    }
+                } else {
+                    settings.stringValue("openai_model").takeIf { it.isNotBlank() }
+                        ?: settings.stringValue("model").takeIf { it.isNotBlank() }
+                        ?: (settings["textgenerationwebui_settings"] as? Map<*, *>)?.stringValue("preset").takeIf { it?.isNotBlank() == true }
+                        ?: "default-model"
+                }
+            }
+
+            val activeProviderSecretKey = remember(activeProvider) {
+                when (activeProvider) {
+                    "OpenAI" -> "openai"
+                    "Claude", "Claude (Anthropic)" -> "anthropic"
+                    "Google AI" -> "google"
+                    "DeepSeek" -> "deepseek"
+                    "OpenRouter" -> "openrouter"
+                    "KoboldCpp" -> "koboldcpp"
+                    "NovelAI Official" -> "novel"
+                    else -> activeProvider.lowercase().replace(" ", "")
+                }
+            }
+            val activeProviderConnected = remember(secrets, activeProviderSecretKey) {
+                secrets.find { it.key.equals(activeProviderSecretKey, ignoreCase = true) }?.entries?.isNotEmpty() == true
+            }
+
+            PrototypeActiveConnectionCard(
+                activeMode = activeMode,
+                activeProvider = activeProvider,
+                connectedCount = secrets.count { it.entries.isNotEmpty() }.coerceAtLeast(1),
+                activeModel = activeModelName,
+                connectionTested = running && activeProviderConnected,
+                onConfigure = {
+                    val providerId = when (activeProvider) {
+                        "OpenAI", "openai" -> "openai"
+                        "Claude", "Claude (Anthropic)", "anthropic" -> "anthropic"
+                        "Google AI", "google" -> "google"
+                        "DeepSeek", "deepseek" -> "deepseek"
+                        "OpenRouter", "openrouter" -> "openrouter"
+                        "KoboldCpp", "koboldcpp" -> "koboldcpp"
+                        "llama.cpp", "llamacpp" -> "llamacpp"
+                        "Ollama", "ollama" -> "ollama"
+                        "NovelAI Official", "novelai", "NovelAI Erato" -> "novelai"
+                        else -> activeProvider.lowercase().replace(" ", "")
+                    }
+                    onOpenProviderDetail(providerId)
+                }
+            )
+
+            // Section Header: 选择 API 提供商
+            val providersCount = if (activeMode == "tc") 9 else if (activeMode == "cc") 9 else if (activeMode == "kobold") 2 else 1
+            PremiumSectionHeader(
+                title = if (activeMode == "tc") "文本补全 — 后端" else "聊天补全 — 提供商",
+                trailing = {
+                    Text(
+                        text = "$providersCount 个可用",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = STThemePrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            )
+
+            // Provider grid
+            ProviderGrid(
+                activeMode = activeMode,
+                activeProvider = activeProvider,
+                secrets = secrets,
+                onProviderChange = { name ->
+                    activeProvider = name
+                    if (running) {
+                        scope.launch {
+                            runCatching {
+                                val client = TavernCoreClient(baseUrl)
+                                val updated = settings.toMutableMap()
+                                val newApiType = when (name) {
+                                    "OpenAI" -> "openai"
+                                    "Claude" -> "anthropic"
+                                    "Google AI" -> "google"
+                                    "DeepSeek" -> "deepseek"
+                                    "OpenRouter" -> "openrouter"
+                                    "KoboldCpp" -> "koboldcpp"
+                                    "Text-Gen WebUI" -> "textgenerationwebui"
+                                    "llama.cpp" -> "llamacpp"
+                                    "Ollama" -> "ollama"
+                                    "NovelAI Official" -> "novel"
+                                    else -> name.lowercase()
+                                }
+                                updated["api_type"] = newApiType
+                                client.saveSettings(updated)
+                                settings = updated
+                                onShowMessage("已切换 API 提供商为 $name")
+                            }.onFailure {
+                                onShowMessage("切换失败：${it.message}")
+                            }
+                        }
+                    }
+                }
+            )
+
+            // Additional Static Options based on mode
+            if (activeMode == "cc") {
+                PremiumSectionHeader(title = "本地与社区反代")
+                PrototypeListItem(
+                    headline = "自定义 OpenAI 兼容反代 (Reverse Proxy)",
+                    supporting = "可自定义 API 根地址，完美适配自建 OneAPI",
+                    leading = { PrototypeTileIcon(Icons.Filled.Code) },
+                    onClick = { onShowMessage("自建配置稍后接入，可通过配置详细后端进行调整") }
+                )
+                PrototypeListItem(
+                    headline = "KoboldAI Horde 共享池",
+                    supporting = "使用社区免费志愿贡献者的 GPU 算力",
+                    leading = { PrototypeTileIcon(Icons.Filled.Face) },
+                    onClick = { onShowMessage("Horde 状态：排队中") }
+                )
+            } else if (activeMode == "tc") {
+                PremiumSectionHeader(title = "当前后端的指令模版契约")
+                PrototypeListItem(
+                    headline = "自动匹配 Instruct 模板",
+                    supporting = "Mistral-Nemo 使用 [INST] 与 [/INST] 包围",
+                    leading = { PrototypeTileIcon(Icons.Filled.Code) },
+                    onClick = { onShowMessage("指令模板设置请在 AI 采样页中进行") }
+                )
+                PrototypeListItem(
+                    headline = "上下文拼接模板 (Context Templates)",
+                    supporting = "Default — 先行角色设定，后贴入场景描述",
+                    leading = { PrototypeTileIcon(Icons.Filled.Bookmarks) },
+                    onClick = { onShowMessage("上下文模板设置请在 AI 采样页中进行") }
+                )
+            }
+
+            if (showProfileSheet) {
+                ConnectionProfileBottomSheet(
+                    apiProfiles = profiles,
+                    onDismiss = { showProfileSheet = false },
+                    selectedProfileId = selectedProfileId,
+                    onProfileSelected = { id, name, mode ->
+                        selectedProfileId = id
+                        selectedProfileName = name
+                        activeMode = mode
+                        activeProvider = if (mode == "cc") {
+                            if (id == "daily" || id == "long" || id.contains("claude", ignoreCase = true)) "Claude" else "OpenAI"
+                        } else if (mode == "tc") {
+                            "KoboldCpp"
+                        } else if (mode == "kobold") {
+                            "KoboldAI Classic"
+                        } else {
+                            "NovelAI Official"
+                        }
+                        showProfileSheet = false
+                        onShowMessage("已切换连接预设：$name")
+                    }
+                )
+            }
         }
     }
 }
@@ -524,6 +720,9 @@ fun PrototypeMeScreen(
     onOpenLogs: () -> Unit,
     onOpenConfig: () -> Unit,
     onOpenManageSt: () -> Unit,
+    onOpenSecrets: () -> Unit,
+    onOpenExtensions: () -> Unit,
+    onOpenAppearance: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -570,24 +769,21 @@ fun PrototypeMeScreen(
                 leading = { PrototypeTileIcon(Icons.Filled.Palette) },
                 trailing = { PrototypeMiniSwatch() },
                 divider = true,
-                onClick = {
-                    val next = if (colorSource == ThemeColorSource.BRAND) ThemeColorSource.DYNAMIC else ThemeColorSource.BRAND
-                    onColorSourceChanged(next)
-                }
+                onClick = onOpenAppearance
             )
             PrototypeListItem(
                 headline = "字号",
                 supporting = "15 sp · 中",
                 leading = { PrototypeTileIcon(Icons.Filled.TextFields) },
                 divider = true,
-                onClick = { onShowMessage("字号设置稍后接入") }
+                onClick = onOpenAppearance
             )
             PrototypeListItem(
                 headline = "聊天背景",
                 supporting = "夜雨咖啡馆",
                 leading = { PrototypeTileIcon(Icons.Filled.Image) },
                 divider = true,
-                onClick = { onShowMessage("聊天背景稍后接入") }
+                onClick = onOpenAppearance
             )
             PrototypeSwitchRow("消息冒泡风格", "关闭则使用全宽文档样式", messageBubbleStyle, { messageBubbleStyle = it })
         }
@@ -624,10 +820,34 @@ fun PrototypeMeScreen(
                 onClick = { onShowMessage("数据导出稍后接入") }
             )
         }
+        // ── 服务与安全 ──
+        PrototypeSectionHeader("服务与安全")
+        PrototypeSettingsGroup {
+            PrototypeListItem(
+                headline = "API 连接设置",
+                supporting = "SillyTavern 核心端点接入与预设管理",
+                leading = { PrototypeTileIcon(Icons.Filled.Cable) },
+                divider = true,
+                onClick = onOpenConnections
+            )
+            PrototypeListItem(
+                headline = "API 密钥管理",
+                supporting = "管理所有 AI 供应商 API 凭证",
+                leading = { PrototypeTileIcon(Icons.Filled.VpnKey) },
+                divider = true,
+                onClick = onOpenSecrets
+            )
+            PrototypeListItem(
+                headline = "扩展管理",
+                supporting = "配置 TTS、SD 等 6 个扩展",
+                leading = { PrototypeTileIcon(Icons.Filled.Extension) },
+                onClick = onOpenExtensions
+            )
+        }
+
         // ── 实验性 ──
         PrototypeSectionHeader("实验性")
         PrototypeSettingsGroup {
-            PrototypeSwitchRow("启用扩展", "6 个已安装", enableExtensions, { enableExtensions = it })
             PrototypeSwitchRow("开发者模式", "显示 token 计数与请求 JSON", developerMode, { developerMode = it })
         }
         // ── 关于 ──
@@ -643,43 +863,7 @@ fun PrototypeMeScreen(
     }
 }
 
-@Composable
-fun PrototypeMemoryScreen(
-    status: NodeStatus,
-    baseUrl: String,
-    onBack: () -> Unit,
-    onShowMessage: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var backups by remember { mutableStateOf<List<ChatBackupSummary>>(emptyList()) }
-    val running = status.state == NodeState.RUNNING
-    LaunchedEffect(running, baseUrl) {
-        if (running) {
-            runCatching { backups = TavernCoreClient(baseUrl).listChatBackups() }
-                .onFailure { onShowMessage(it.message ?: "备份列表加载失败") }
-        }
-    }
-    PrototypeBackRoot(title = "记忆与回顾", onBack = onBack, modifier = modifier) {
-        PrototypeSectionHeader("聊天备份")
-        if (!running) {
-            PrototypeSystemInfoCard("本地服务未启动", "启动 SillyTavern 服务后可加载和管理聊天历史备份。")
-        } else if (backups.isEmpty()) {
-            PrototypeSystemInfoCard("暂无聊天备份", "可在与角色聊天中进行手动备份或启用自动备份。")
-        } else {
-            PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
-                backups.forEachIndexed { index, item ->
-                    PrototypeListItem(
-                        headline = item.fileName,
-                        supporting = "${item.messageCount} 消息 · ${item.fileSize} · ${item.lastMessage}",
-                        leading = { PrototypeTileIcon(Icons.Filled.CloudSync) },
-                        divider = index != backups.lastIndex,
-                        onClick = { onShowMessage("备份详情稍后接入") }
-                    )
-                }
-            }
-        }
-    }
-}
+
 
 @Composable
 fun PrototypeStCoreScreen(
@@ -1195,22 +1379,44 @@ private fun PrototypeConnectionProfileCard(
     selectedProfileName: String,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+    PremiumCard(
+        onClick = onClick,
+        borderColor = Color(0x0DFFFFFF)
     ) {
-        PrototypeTileIcon(Icons.Filled.Bookmarks, tint = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text("连接预设", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(selectedProfileName, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Surface(
+                modifier = Modifier.size(36.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Bookmarks, null, modifier = Modifier.size(20.dp))
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("当前连接预设 (Presets)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                Text(selectedProfileName, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0x0AFFFFFF),
+                modifier = Modifier.padding(horizontal = 4.dp)
+            ) {
+                Text(
+                    text = "${profiles.size.coerceAtLeast(5)} 项",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = STThemePrimary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
+            Icon(Icons.Filled.UnfoldMore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        PrototypeBadge("${profiles.size.coerceAtLeast(4)} 个", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
-        Spacer(Modifier.width(4.dp))
-        Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -1225,52 +1431,56 @@ private fun PrototypeModeControl(
         "kobold" to "Kobold",
         "novel" to "NovelAI"
     )
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Text(
-            text = "API 模式",
+            text = "API 运行模式 (Mode)",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.padding(bottom = 8.dp),
+            letterSpacing = 0.5.sp
         )
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0x08FFFFFF), RoundedCornerShape(14.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             modes.forEach { (modeId, label) ->
                 val sel = modeId == activeMode
-                Surface(
-                    onClick = { onModeChange(modeId) },
-                    modifier = Modifier.weight(1f),
-                    shape = MaterialTheme.shapes.medium,
-                    color = if (sel) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLowest,
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (sel) MaterialTheme.colorScheme.primary else Color.Transparent
-                    )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (sel) STThemePrimary else Color.Transparent)
+                        .clickable { onModeChange(modeId) }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = label,
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 10.dp),
+                        color = if (sel) Color(0xFF4A2700) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 1,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        fontSize = 11.sp
                     )
                 }
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
         val desc = when (activeMode) {
-            "tc" -> "当前：Text Completion · 适合本地推理 / 微调模型。会启用 Instruct 模板和原始 prompt 拼接。"
-            "cc" -> "当前：Chat Completion · 适合云端商用模型。按 messages 数组发送，不需要 Instruct 模板。"
-            "kobold" -> "当前：KoboldAI Classic · 适合老版本 Horde / United 等经典格式。"
-            "novel" -> "当前：NovelAI · 适合 Kayra / Erato 等小说写作专用大模型。"
+            "cc" -> "💡 Chat Completion：适合云端闭源模型。支持 message 结构化输入，内置自动思考过滤。"
+            "tc" -> "💡 Text Completion：适合本地部署推理。支持原始 Token 级别 Instruct 拼接控制。"
+            "kobold" -> "💡 KoboldAI Classic：旧版兼容，连接至 Horde 或 Kobold 本地端点。"
+            "novel" -> "💡 NovelAI：专为轻小说续写设计，专享 Kayra/Erato 独特采样体系。"
             else -> ""
         }
         Text(
             text = desc,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 16.sp
         )
     }
 }
@@ -1278,45 +1488,29 @@ private fun PrototypeModeControl(
 @Composable
 private fun PrototypeActiveConnectionCard(
     activeMode: String,
-    connectedCount: Int
+    activeProvider: String,
+    connectedCount: Int,
+    activeModel: String,
+    connectionTested: Boolean,
+    onConfigure: () -> Unit
 ) {
     val title = when (activeMode) {
-        "cc" -> "Claude (Anthropic)"
-        "tc" -> "KoboldCpp · 本地"
+        "cc" -> "$activeProvider (聊天补全)"
+        "tc" -> "$activeProvider (文本补全)"
         "kobold" -> "KoboldAI Horde · 社区"
-        "novel" -> "NovelAI Erato"
+        "novel" -> "NovelAI Official"
         else -> "未选择"
     }
-    val subtitle = when (activeMode) {
-        "cc" -> "claude-sonnet-4.5 · 200k"
-        "tc" -> "Mistral-Nemo-Instruct-2407.Q5_K_M · 32k"
-        "kobold" -> "Horde Community Models"
-        "novel" -> "Erato · 8k 上下文"
-        else -> ""
-    }
+    val subtitle = activeModel
     val avatarLabel = when (activeMode) {
-        "cc" -> "C"
-        "tc" -> "K"
+        "cc" -> activeProvider.take(1).uppercase()
+        "tc" -> activeProvider.take(1).uppercase()
         "kobold" -> "H"
         "novel" -> "N"
         else -> "?"
     }
-    val avatarGradient = when (activeMode) {
-        "cc" -> listOf(0xFF1A1A1A, 0xFF4A2700)
-        "tc" -> listOf(0xFF102A1F, 0xFF004A27)
-        "kobold" -> listOf(0xFF2A102A, 0xFF4A004A)
-        "novel" -> listOf(0xFF2A2A10, 0xFF4A4A00)
-        else -> listOf(0xFF1A1A1A, 0xFF4A2700)
-    }
-    val status = when (activeMode) {
-        "kobold" -> "排队中"
-        else -> "就绪"
-    }
-    val statusColor = when (activeMode) {
-        "kobold" -> MaterialTheme.colorScheme.outline
-        else -> MaterialTheme.colorScheme.tertiary
-    }
-    val latency = when (activeMode) {
+    
+    val latencyText = when (activeMode) {
         "cc" -> "约 0.8s"
         "tc" -> "12 tok/s"
         "kobold" -> "约 8s"
@@ -1324,31 +1518,94 @@ private fun PrototypeActiveConnectionCard(
         else -> "—"
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+    PremiumCard(
+        borderColor = if (connectionTested) Color(0x407FCE8E) else Color(0x0DFFFFFF)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            PrototypeAvatar(avatarLabel, size = 40.dp, square = true, gradient = avatarGradient)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = if (connectionTested) MaterialTheme.colorScheme.primaryContainer else Color(0x0DFFFFFF),
+                contentColor = if (connectionTested) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = avatarLabel,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = FontFamily.SansSerif
+                    )
+                }
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = title, 
+                    style = MaterialTheme.typography.titleMedium, 
+                    fontWeight = FontWeight.Bold, 
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle, 
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), 
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            PrototypeStatusDot(statusColor)
-            Spacer(Modifier.width(6.dp))
-            Text(status, style = MaterialTheme.typography.labelSmall, color = statusColor)
+            PrototypeIconButton(Icons.Filled.Settings, "配置详细后端", onConfigure)
         }
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+        HorizontalDivider(color = Color(0x0DFFFFFF))
+        Spacer(modifier = Modifier.height(10.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            PrototypeStat("状态", status, ok = status == "就绪")
-            PrototypeStat(if (activeMode == "cc") "密钥" else "上下文", if (activeMode == "cc") "$connectedCount 个" else if (activeMode == "tc") "32k" else if (activeMode == "novel") "8k" else "社区共享")
-            PrototypeStat("延迟", latency)
+            PrototypeStat(
+                label = "连接状态", 
+                value = if (connectionTested) "成功连通" else "离线/未验证", 
+                tone = if (connectionTested) "ok" else "error"
+            )
+            PrototypeStat(
+                label = if (activeMode == "tc") "模型窗口" else "计费消耗", 
+                value = if (activeMode == "tc") "32k tokens" else "$connectedCount 个已设"
+            )
+            PrototypeStat(
+                label = "运行速度/延迟", 
+                value = if (connectionTested) latencyText else "—"
+            )
         }
+    }
+}
+
+@Composable
+private fun RowScope.PrototypeStat(label: String, value: String, tone: String? = null) {
+    Column(modifier = Modifier.weight(1f)) {
+        Text(
+            text = label, 
+            style = MaterialTheme.typography.labelSmall, 
+            color = MaterialTheme.colorScheme.onSurfaceVariant, 
+            fontSize = 10.sp
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = when (tone) {
+                "ok" -> STThemeTertiary
+                "error" -> STThemeError
+                else -> MaterialTheme.colorScheme.onSurface
+            },
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 2.dp)
+        )
     }
 }
 
@@ -1359,52 +1616,86 @@ private fun ProviderGrid(
     onProviderChange: (String) -> Unit
 ) {
     val ccProviders = listOf(
-        "OpenAI" to "O", "Claude" to "C", "Google AI" to "G",
-        "Mistral" to "M", "OpenRouter" to "⌥", "DeepSeek" to "D",
-        "xAI Grok" to "X", "Cohere" to "C", "Perplexity" to "P"
+        Triple("OpenAI", "O", true), 
+        Triple("Claude", "C", true), 
+        Triple("Google AI", "G", false),
+        Triple("Mistral", "M", false), 
+        Triple("OpenRouter", "R", false), 
+        Triple("DeepSeek", "D", true),
+        Triple("xAI Grok", "X", false), 
+        Triple("Cohere", "C", false), 
+        Triple("Perplexity", "P", false)
     )
     val tcProviders = listOf(
-        "KoboldCpp" to "K", "Text-Gen WebUI" to "T", "TabbyAPI" to "τ",
-        "Aphrodite" to "φ", "Mancer" to "M", "Featherless" to "F",
-        "Horde (文本)" to "H", "llama.cpp" to "L", "Ollama" to "O"
+        Triple("KoboldCpp", "K", true), 
+        Triple("Text-Gen WebUI", "T", false), 
+        Triple("TabbyAPI", "τ", false),
+        Triple("Aphrodite", "φ", false), 
+        Triple("Mancer", "M", false), 
+        Triple("Featherless", "F", false),
+        Triple("Horde (文本)", "H", false), 
+        Triple("llama.cpp", "L", false), 
+        Triple("Ollama", "🦙", false)
     )
     val providers = if (activeMode == "tc") tcProviders else ccProviders
 
-    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    ) {
         providers.chunked(3).forEach { row ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(bottom = 8.dp)
             ) {
-                row.forEach { (name, icon) ->
+                row.forEach { (name, icon, connected) ->
                     val active = name == activeProvider
                     Surface(
                         onClick = { onProviderChange(name) },
                         modifier = Modifier.weight(1f),
                         shape = MaterialTheme.shapes.large,
-                        color = if (active) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                        color = if (active) STThemePrimary.copy(alpha = 0.08f) else Color(0x05FFFFFF),
                         border = androidx.compose.foundation.BorderStroke(
-                            2.dp,
-                            if (active) MaterialTheme.colorScheme.primary else Color.Transparent
+                            1.dp,
+                            if (active) STThemePrimary.copy(alpha = 0.35f) else Color(0x0AFFFFFF)
                         )
                     ) {
                         Column(
                             modifier = Modifier.padding(vertical = 14.dp, horizontal = 8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            PrototypeAvatar(icon, size = 36.dp, square = true)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (active) STThemePrimary else Color(0x08FFFFFF),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = icon,
+                                        color = if (active) Color(0xFF18130E) else STThemePrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontSize = 16.sp
+                                    )
+                                }
+                            }
                             Text(
                                 text = name,
                                 style = MaterialTheme.typography.labelLarge,
-                                color = if (active) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 8.dp)
+                                modifier = Modifier.padding(top = 8.dp),
+                                fontSize = 11.sp
                             )
                             Text(
-                                text = if (active || name == "OpenAI" || name == "llama.cpp" || name == "KoboldCpp") "已连接" else "未连接",
+                                text = if (connected) "已配口令" else "空闲",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (active) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (connected) STThemeTertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 9.sp,
+                                modifier = Modifier.padding(top = 2.dp)
                             )
                         }
                     }
@@ -1422,7 +1713,7 @@ private fun ConnectionProfileBottomSheet(
     selectedProfileId: String,
     onProfileSelected: (String, String, String) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val displayProfiles = remember(apiProfiles) {
         if (apiProfiles.isNotEmpty()) {
             apiProfiles.map { profile ->
@@ -1444,78 +1735,106 @@ private fun ConnectionProfileBottomSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Text("切换连接预设", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-            Text("每个预设保存 API 模式 + 模型 + 采样器组合。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) {
+                Icon(Icons.Filled.Bookmarks, null, tint = STThemePrimary, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("切换 API 连接预设", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                    Text("一键重载模式、端点、模型与采样器组合", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, "关闭")
+                }
+            }
+            HorizontalDivider(color = Color(0x0DFFFFFF))
+            Spacer(modifier = Modifier.height(8.dp))
             
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false)
+            ) {
                 displayProfiles.forEach { (id, name, mode) ->
                     val active = id == selectedProfileId
                     Surface(
-                        onClick = {
-                            onProfileSelected(id, name, mode)
-                        },
+                        onClick = { onProfileSelected(id, name, mode) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.large,
-                        color = if (active) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent
+                        color = if (active) Color(0x08FFFFFF) else Color.Transparent
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Surface(
-                                shape = MaterialTheme.shapes.medium,
-                                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (active) STThemePrimary else Color(0x0DFFFFFF),
+                                contentColor = if (active) Color(0xFF4A2700) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
                                         text = mode.uppercase(),
-                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        fontSize = 11.sp
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                                val sub = when (mode) {
-                                    "cc" -> "Chat Completion · Anthropic · 200k"
-                                    "tc" -> "Text Completion · KoboldCpp · 32k"
-                                    "kobold" -> "KoboldAI Horde · 排队约 8 秒"
-                                    "novel" -> "NovelAI · 8k 上下文"
-                                    else -> ""
-                                }
-                                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = if (active) STThemePrimary else MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Endpoint details for $mode profile",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
                             }
                             if (active) {
-                                Icon(
-                                    imageVector = Icons.Filled.CheckCircle,
-                                    contentDescription = "已选择",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp)
-                                )
+                                Icon(Icons.Filled.CheckCircle, null, tint = STThemePrimary)
                             }
                         }
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(onClick = { /* 新建预设 */ }, modifier = Modifier.weight(1f)) {
+            HorizontalDivider(color = Color(0x0DFFFFFF))
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { /* New preset action */ },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(16.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x1EFFFFFF))
+                ) {
                     Icon(Icons.Filled.Add, null)
                     Spacer(Modifier.width(6.dp))
-                    Text("新建预设")
+                    Text("新建预设", color = MaterialTheme.colorScheme.onSurface)
                 }
-                TextButton(onClick = { /* 导入/导出 */ }, modifier = Modifier.weight(1f)) {
+                Button(
+                    onClick = { /* Export preset action */ },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x0AFFFFFF), contentColor = MaterialTheme.colorScheme.onSurface)
+                ) {
                     Icon(Icons.Filled.Download, null)
                     Spacer(Modifier.width(6.dp))
-                    Text("导入 / 导出")
+                    Text("导出预设")
                 }
             }
         }
@@ -1636,5 +1955,448 @@ private fun PrototypeMiniSwatch() {
                     )
             )
         }
+    }
+}
+
+@Composable
+fun PrototypeGlassTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    placeholder: String = "",
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (isFocused) STThemePrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .background(
+                    color = Color(0x05FFFFFF),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (isFocused) STThemePrimary else Color(0x0DFFFFFF),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                )
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    if (value.isEmpty() && placeholder.isNotEmpty()) {
+                        Text(
+                            text = placeholder,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        singleLine = true,
+                        visualTransformation = visualTransformation,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontFamily = if (visualTransformation != VisualTransformation.None) FontFamily.Monospace else FontFamily.Default
+                        ),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(STThemePrimary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { isFocused = it.isFocused }
+                    )
+                }
+                if (trailingIcon != null) {
+                    Spacer(Modifier.width(8.dp))
+                    trailingIcon()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PrototypeProviderDetailScreen(
+    status: NodeStatus,
+    baseUrl: String,
+    providerId: String,
+    onBack: () -> Unit,
+    onShowMessage: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scope = rememberCoroutineScope()
+    var settings by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
+    
+    var customUrl by remember { mutableStateOf("") }
+    var proxy by remember { mutableStateOf("") }
+    var apiKey by remember { mutableStateOf("") }
+    var initialApiKey by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+    
+    var modelsList by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedModel by remember { mutableStateOf("") }
+    var isLoadingModels by remember { mutableStateOf(false) }
+    
+    var temp by remember { mutableStateOf(1.0f) }
+    var contextSize by remember { mutableStateOf(4096f) }
+    
+    val running = status.state == NodeState.RUNNING
+    
+    LaunchedEffect(running, baseUrl, providerId) {
+        if (running) {
+            runCatching {
+                val client = TavernCoreClient(baseUrl)
+                val coreSettings = client.getSettings()
+                settings = coreSettings
+                
+                customUrl = coreSettings.stringValue("api_url_$providerId").takeIf { it.isNotBlank() }
+                    ?: (if (providerId == "openai") coreSettings.stringValue("api_url") else "")
+                
+                proxy = coreSettings.stringValue("proxy_$providerId")
+                
+                val modelKey = when (providerId) {
+                    "koboldcpp", "kobold" -> "model"
+                    else -> "openai_model"
+                }
+                selectedModel = coreSettings.stringValue(modelKey)
+                
+                temp = coreSettings.floatValue("temp", 1.0f)
+                contextSize = coreSettings.intValue("context_width", 4096).toFloat()
+                
+                val secretsList = client.listSecrets()
+                val state = secretsList.find { it.key.equals(providerId, ignoreCase = true) }
+                val firstEntry = state?.entries?.firstOrNull()
+                apiKey = firstEntry?.value ?: ""
+                initialApiKey = apiKey
+                
+                isLoadingModels = true
+                modelsList = client.fetchModels(providerId)
+                isLoadingModels = false
+            }.onFailure {
+                onShowMessage("加载配置失败：${it.message}")
+            }
+        }
+    }
+    
+    val displayName = remember(providerId) {
+        when (providerId.lowercase()) {
+            "anthropic" -> "Anthropic"
+            "openai" -> "OpenAI"
+            "google" -> "Google AI"
+            "deepseek" -> "DeepSeek"
+            "openrouter" -> "OpenRouter"
+            "koboldcpp" -> "KoboldCpp"
+            "novelai" -> "NovelAI"
+            else -> providerId.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+        }
+    }
+    
+    PrototypeBackRoot(
+        title = "$displayName 配置",
+        onBack = onBack,
+        modifier = modifier,
+        actions = {
+            PrototypeIconButton(
+                icon = Icons.Filled.Save,
+                contentDescription = "保存配置",
+                onClick = {
+                    scope.launch {
+                        runCatching {
+                            val client = TavernCoreClient(baseUrl)
+                            val updatedSettings = settings.toMutableMap()
+                            
+                            updatedSettings["api_url_$providerId"] = customUrl
+                            if (providerId == "openai") {
+                                updatedSettings["api_url"] = customUrl
+                            }
+                            updatedSettings["proxy_$providerId"] = proxy
+                            
+                            val modelKey = when (providerId) {
+                                "koboldcpp", "kobold" -> "model"
+                                else -> "openai_model"
+                            }
+                            updatedSettings[modelKey] = selectedModel
+                            
+                            updatedSettings["temp"] = temp
+                            updatedSettings["openai_temp"] = temp
+                            updatedSettings["context_width"] = contextSize.toInt()
+                            updatedSettings["openai_max_context"] = contextSize.toInt()
+                            
+                            client.saveSettings(updatedSettings)
+                            
+                            if (apiKey != initialApiKey) {
+                                client.writeSecret(providerId, apiKey, "默认密钥")
+                            }
+                            
+                            onShowMessage("配置已成功保存！")
+                            onBack()
+                        }.onFailure {
+                            onShowMessage("保存失败：${it.message}")
+                        }
+                    }
+                }
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "连接状态",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(if (running) STThemeTertiary else STThemeError, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (running) "服务活跃就绪" else "服务未启动",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (running) STThemeTertiary else STThemeError
+                        )
+                    }
+                }
+            }
+            
+            HorizontalDivider(color = Color(0x0DFFFFFF), modifier = Modifier.padding(vertical = 8.dp))
+            
+            PremiumSectionHeader(title = "端点设置")
+            
+            PrototypeGlassTextField(
+                value = customUrl,
+                onValueChange = { customUrl = it },
+                label = "自定义 Base URL",
+                placeholder = "https://api.openai.com/v1"
+            )
+            
+            PrototypeGlassTextField(
+                value = proxy,
+                onValueChange = { proxy = it },
+                label = "HTTP / SOCKS5 代理地址",
+                placeholder = "127.0.0.1:7890"
+            )
+            
+            PrototypeGlassTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                label = "API 密钥 (API Key)",
+                placeholder = "sk-...",
+                visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                        Icon(
+                            imageVector = if (isPasswordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (isPasswordVisible) "隐藏密码" else "显示密码",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            )
+            
+            HorizontalDivider(color = Color(0x0DFFFFFF), modifier = Modifier.padding(vertical = 12.dp))
+            
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "可用模型列表",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                
+                val angle = remember { androidx.compose.animation.core.Animatable(0f) }
+                val isRefreshing = remember { mutableStateOf(false) }
+                IconButton(
+                    onClick = {
+                        if (!isRefreshing.value && running) {
+                            scope.launch {
+                                isRefreshing.value = true
+                                angle.animateTo(
+                                    targetValue = angle.value + 360f,
+                                    animationSpec = tween(800, easing = LinearEasing)
+                                )
+                                runCatching {
+                                    val client = TavernCoreClient(baseUrl)
+                                    modelsList = client.fetchModels(providerId)
+                                    onShowMessage("模型列表已成功刷新！")
+                                }.onFailure {
+                                    onShowMessage("模型刷新失败：${it.message}")
+                                }
+                                isRefreshing.value = false
+                            }
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = "刷新模型列表",
+                        tint = STThemePrimary,
+                        modifier = Modifier.rotate(angle.value)
+                    )
+                }
+            }
+            
+            if (modelsList.isEmpty()) {
+                Text(
+                    text = "暂无可用模型，请点击刷新获取",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            } else {
+                PrototypeListSurface(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    modelsList.forEachIndexed { index, model ->
+                        val isSelected = model == selectedModel
+                        PrototypeListItem(
+                            headline = model,
+                            supporting = if (isSelected) "当前选中" else null,
+                            leading = {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = "已选中",
+                                        tint = STThemePrimary
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.size(24.dp))
+                                }
+                            },
+                            divider = index != modelsList.lastIndex,
+                            onClick = { selectedModel = model }
+                        )
+                    }
+                }
+            }
+            
+            HorizontalDivider(color = Color(0x0DFFFFFF), modifier = Modifier.padding(vertical = 12.dp))
+            
+            PremiumSectionHeader(title = "模型并发与参数重载")
+            
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "推理温度 (Temperature)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.2f", temp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = STThemePrimary
+                    )
+                }
+                Slider(
+                    value = temp,
+                    onValueChange = { temp = it },
+                    valueRange = 0.0f..2.0f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = STThemePrimary,
+                        activeTrackColor = STThemePrimary,
+                        inactiveTrackColor = Color(0x0DFFFFFF)
+                    ),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "最大上下文窗口 (Context Window)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "${contextSize.toInt()} tokens",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = STThemePrimary
+                    )
+                }
+                Slider(
+                    value = contextSize,
+                    onValueChange = { contextSize = it },
+                    valueRange = 2048f..200000f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = STThemePrimary,
+                        activeTrackColor = STThemePrimary,
+                        inactiveTrackColor = Color(0x0DFFFFFF)
+                    ),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun Map<*, *>?.stringValue(key: String): String {
+    return (this?.get(key) as? String).orEmpty()
+}
+
+private fun Map<*, *>?.floatValue(key: String, default: Float): Float {
+    return when (val value = this?.get(key)) {
+        is Number -> value.toFloat()
+        is String -> value.toFloatOrNull() ?: default
+        else -> default
+    }
+}
+
+private fun Map<*, *>?.intValue(key: String, default: Int): Int {
+    return when (val value = this?.get(key)) {
+        is Number -> value.toInt()
+        is String -> value.toIntOrNull() ?: default
+        else -> default
     }
 }

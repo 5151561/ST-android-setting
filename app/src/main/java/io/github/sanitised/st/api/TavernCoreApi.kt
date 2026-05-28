@@ -271,6 +271,9 @@ interface TavernCoreApi {
     suspend fun rotateSecret(key: String, id: String)
     suspend fun renameSecret(key: String, id: String, label: String)
     suspend fun deleteSecret(key: String, id: String? = null)
+    suspend fun getSettings(): Map<String, Any?>
+    suspend fun saveSettings(settings: Map<String, Any?>)
+    suspend fun fetchModels(providerId: String): List<String>
     suspend fun getPresetLibrary(): PresetLibrary
     suspend fun savePreset(apiId: String, name: String, presetJson: String)
     suspend fun selectPreset(apiId: String, name: String)
@@ -570,7 +573,7 @@ class TavernCoreClient(
                 powerUser["default_persona"] = request.avatar
             }
             merged["power_user"] = powerUser
-            saveSettings(merged)
+            saveSettingsInternal(merged)
         }
     }
 
@@ -614,7 +617,7 @@ class TavernCoreClient(
             powerUser["personas"] = personas
             powerUser["persona_descriptions"] = descriptions
             merged["power_user"] = powerUser
-            saveSettings(merged)
+            saveSettingsInternal(merged)
         }
     }
 
@@ -683,6 +686,52 @@ class TavernCoreClient(
                 path = "api/secrets/delete",
                 json = jsonObject("key" to key, "id" to id)
             )
+        }
+    }
+
+    override suspend fun getSettings(): Map<String, Any?> {
+        return withContext(Dispatchers.IO) {
+            fetchSettings().settings
+        }
+    }
+
+    override suspend fun saveSettings(settings: Map<String, Any?>) {
+        withContext(Dispatchers.IO) {
+            saveSettingsInternal(settings)
+        }
+    }
+
+    override suspend fun fetchModels(providerId: String): List<String> {
+        return withContext(Dispatchers.IO) {
+            val endpoint = when (providerId) {
+                "openrouter" -> "api/openrouter/models"
+                "koboldcpp", "kobold" -> "api/backends/text-completions/models"
+                else -> "api/backends/chat-completions/models"
+            }
+            runCatching {
+                val body = postJson(endpoint, "{}")
+                val parsed = yaml.load<Any?>(body)
+                val list = when (parsed) {
+                    is List<*> -> parsed
+                    is Map<*, *> -> parsed["data"] as? List<*> ?: emptyList<Any?>()
+                    else -> emptyList<Any?>()
+                }
+                list.mapNotNull { item ->
+                    val map = item as? Map<*, *> ?: return@mapNotNull null
+                    val id = map.stringValue("id").takeIf { it.isNotBlank() } ?: map.stringValue("name").takeIf { it.isNotBlank() }
+                    id
+                }.distinct().sorted()
+            }.getOrElse {
+                when (providerId) {
+                    "anthropic" -> listOf("claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229")
+                    "openai" -> listOf("gpt-4o", "gpt-4o-mini", "o1-mini")
+                    "google" -> listOf("gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp")
+                    "deepseek" -> listOf("deepseek-chat", "deepseek-coder")
+                    "openrouter" -> listOf("meta-llama/llama-3.1-405b", "mistralai/mistral-large")
+                    "koboldcpp", "kobold" -> listOf("Mistral-Nemo-12B-Q5_K", "Llama-3-8B-Instruct")
+                    else -> emptyList()
+                }
+            }
         }
     }
 
@@ -778,7 +827,7 @@ class TavernCoreClient(
                 }
                 else -> return@withContext
             }
-            saveSettings(merged)
+            saveSettingsInternal(merged)
         }
     }
 
@@ -839,7 +888,7 @@ class TavernCoreClient(
             }
             powerUser["servers"] = servers
             merged["power_user"] = powerUser
-            saveSettings(merged)
+            saveSettingsInternal(merged)
         }
     }
 
@@ -1223,7 +1272,7 @@ class TavernCoreClient(
         return SettingsPayload(response = response, settings = settings)
     }
 
-    private fun saveSettings(settings: Map<String, Any?>) {
+    private fun saveSettingsInternal(settings: Map<String, Any?>) {
         postJson(
             path = "api/settings/save",
             json = jsonValue(settings)
