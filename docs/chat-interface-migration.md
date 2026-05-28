@@ -816,6 +816,7 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
 6. **角色库直达聊天重新接通**：当前界面已迁到 `PrototypeCharacterLibraryScreen` / `PrototypeCharacterProfileScreen`，角色卡和详情页都会进入同一条 `WebViewTarget.CharacterChat` ready 后重放链路。
 7. **JS adapter 打开角色/聊天改为 await**：`chat.openCharacter` 会等待 `selectCharacterById()` 和 `openCharacterChat()` 完成后再发 snapshot/result；同时监听 `CHAT_LOADED` 事件并在 send/stop/reload 后主动刷新 snapshot。
 8. **真机反馈后的可见性修复**：最近聊天在 API 暂未实现时回落到本地聊天历史；打开聊天不再保留 demo 分支；Chat 页面切目标时隐藏旧消息并显示正在打开的目标/错误；输入法弹出时输入栏使用 IME inset 抬起，消息列表随键盘出现滚到底部。
+9. **生成状态误判修复**：不再用 `ctx.streamingProcessor` 或 `#mes_stop` 可见性判断是否生成中，改为读取 ST 自己维护的 `body[data-generating]`；如果 ST 处于 `no_connection`，原生发送/继续/重写会显示“还没有连接模型 API”，不会把原生 UI 卡在生成中。
 
 ### v0.4a 修订（代码审查后修复）
 

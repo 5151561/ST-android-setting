@@ -69,15 +69,21 @@
       identifiersMatch(target, character.name);
   }
 
-  function isRuntimeGenerating(ctx) {
-    var stopButton = document.getElementById('mes_stop');
-    var stopVisible = false;
-    if (stopButton) {
-      var stopStyle = getComputedStyle(stopButton);
-      stopVisible = stopStyle.display !== 'none' && stopStyle.visibility !== 'hidden';
+  function getGenerationContext(cmdId) {
+    var ctx = getContext();
+    if (!ctx) {
+      postError(cmdId, 'Runtime not ready');
+      return null;
     }
-    var streaming = !!(ctx && ctx.streamingProcessor && ctx.streamingProcessor.isFinished === false);
-    return streaming || stopVisible;
+    if (ctx.onlineStatus === 'no_connection') {
+      postError(cmdId, 'SillyTavern 还没有连接模型 API');
+      return null;
+    }
+    return ctx;
+  }
+
+  function isRuntimeGenerating() {
+    return !!(document.body && document.body.dataset && document.body.dataset.generating === 'true');
   }
 
   function serializeMessage(msg, index) {
@@ -109,7 +115,7 @@
       avatarUrl: character ? (character.avatar || '') : '',
       characterName: character ? (character.name || '') : '',
       chatFile: character ? (character.chat || '') : '',
-      isGenerating: isRuntimeGenerating(ctx),
+      isGenerating: isRuntimeGenerating(),
       messages: chat.map(function (msg, i) { return serializeMessage(msg, i); }).filter(Boolean),
       metadata: { integrity: chatMetadata.integrity || '' }
     };
@@ -124,6 +130,31 @@
   // --- Event source listeners ---
   var eventsBound = false;
   var appReady = false;
+  var lastGenerationState = false;
+  var generationWatchTimer = null;
+
+  function syncGenerationState() {
+    var generating = isRuntimeGenerating();
+    if (generating !== lastGenerationState) {
+      lastGenerationState = generating;
+      postEvent(generating ? 'generation.started' : 'generation.ended', {});
+    }
+    return generating;
+  }
+
+  function watchGenerationState(durationMs) {
+    if (generationWatchTimer) clearInterval(generationWatchTimer);
+    var startedAt = Date.now();
+    var sawGenerating = syncGenerationState();
+    generationWatchTimer = setInterval(function () {
+      var generating = syncGenerationState();
+      if (generating) sawGenerating = true;
+      if (Date.now() - startedAt > (durationMs || 30000) || (sawGenerating && !generating)) {
+        clearInterval(generationWatchTimer);
+        generationWatchTimer = null;
+      }
+    }, 250);
+  }
 
   function tryBindEvents() {
     if (eventsBound) return true;
@@ -144,15 +175,18 @@
     });
 
     es.on(ev.GENERATION_STARTED, function () {
-      postEvent('generation.started', {});
+      watchGenerationState();
+      throttledSnapshot();
     });
 
     es.on(ev.GENERATION_ENDED, function () {
+      lastGenerationState = false;
       postEvent('generation.ended', {});
       throttledSnapshot();
     });
 
     es.on(ev.GENERATION_STOPPED, function () {
+      lastGenerationState = false;
       postEvent('generation.stopped', {});
       throttledSnapshot();
     });
@@ -329,7 +363,8 @@
   function handleSend(payload, cmdId) {
     var text = payload.text || '';
     if (!text.trim()) { postError(cmdId, 'Empty message'); return; }
-    if (isRuntimeGenerating(getContext())) { postError(cmdId, 'Generation is already running'); return; }
+    if (isRuntimeGenerating()) { postError(cmdId, 'Generation is already running'); return; }
+    if (!getGenerationContext(cmdId)) return;
 
     var textarea = document.getElementById('send_textarea');
     var sendBtn = document.getElementById('send_but');
@@ -339,6 +374,7 @@
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
     setTimeout(function () {
       sendBtn.click();
+      watchGenerationState();
       postResult(cmdId, {});
       setTimeout(postSnapshot, 300);
     }, 50);
@@ -362,8 +398,9 @@
   }
 
   function handleRegenerate(cmdId) {
-    var ctx = getContext();
+    var ctx = getGenerationContext(cmdId);
     if (ctx && typeof ctx.generate === 'function') {
+      watchGenerationState();
       Promise.resolve(ctx.generate('regenerate')).then(function () {
         postSnapshot();
         postResult(cmdId, {});
@@ -376,8 +413,9 @@
   }
 
   function handleContinue(cmdId) {
-    var ctx = getContext();
+    var ctx = getGenerationContext(cmdId);
     if (ctx && typeof ctx.generate === 'function') {
+      watchGenerationState();
       Promise.resolve(ctx.generate('continue')).then(function () {
         postSnapshot();
         postResult(cmdId, {});

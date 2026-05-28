@@ -162,7 +162,11 @@ fun NativeChatScreen(
                 }
             }
 
-            ChatQuickStrip(runtimeReady = readyForTarget)
+            ChatQuickStrip(
+                runtimeReady = readyForTarget,
+                onContinue = { bridge.continueGeneration() },
+                onRegenerate = { bridge.regenerate() }
+            )
 
             ChatInputBar(
                 isGenerating = store.isGenerating,
@@ -480,7 +484,23 @@ private fun AssistantMessageControls(
 }
 
 @Composable
-private fun ChatQuickStrip(runtimeReady: Boolean) {
+private fun ChatQuickStrip(
+    runtimeReady: Boolean,
+    onContinue: () -> Unit,
+    onRegenerate: () -> Unit
+) {
+    data class QuickAction(
+        val icon: androidx.compose.ui.graphics.vector.ImageVector,
+        val text: String,
+        val enabled: Boolean,
+        val onClick: () -> Unit
+    )
+    val actions = listOf(
+        QuickAction(Icons.AutoMirrored.Filled.ArrowForward, "继续", runtimeReady, onContinue),
+        QuickAction(Icons.Filled.Refresh, "重写上条", runtimeReady, onRegenerate),
+        QuickAction(Icons.Filled.RecordVoiceOver, "代笔我的消息", false) {},
+        QuickAction(Icons.Filled.EditNote, "剧情推进", false) {}
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -488,18 +508,13 @@ private fun ChatQuickStrip(runtimeReady: Boolean) {
             .padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        listOf(
-            Icons.AutoMirrored.Filled.ArrowForward to "继续",
-            Icons.Filled.Refresh to "重写上条",
-            Icons.Filled.RecordVoiceOver to "代笔我的消息",
-            Icons.Filled.EditNote to "剧情推进"
-        ).forEach { item ->
+        actions.forEach { item ->
             PrototypeAssistPill(
-                text = item.second,
-                icon = item.first,
-                onClick = {},
+                text = item.text,
+                icon = item.icon,
+                onClick = item.onClick,
                 modifier = Modifier,
-                enabled = runtimeReady
+                enabled = item.enabled
             )
         }
     }
