@@ -197,7 +197,9 @@ fun NativeChatScreen(
 
 private fun targetMatchesStore(target: WebViewTarget, store: ChatStore): Boolean {
     return when (target) {
-        WebViewTarget.CHAT -> true
+        WebViewTarget.CHAT -> store.chatFile.isNotBlank() ||
+            store.characterName.isNotBlank() ||
+            store.messages.isNotEmpty()
         is WebViewTarget.CharacterChat -> {
             val characterMatches = listOf(store.avatarUrl, store.characterName)
                 .any { identifiersMatch(target.avatar, it) }

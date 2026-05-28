@@ -93,6 +93,16 @@ fun PrototypeGroupChatScreen(
     var allowSelfResponses by remember { mutableStateOf(false) }
     var mentionOnly by remember { mutableStateOf(false) }
 
+    fun setAutoSelectNext(checked: Boolean) {
+        autoSelectNext = checked
+        if (checked) mentionOnly = false
+    }
+
+    fun setMentionOnly(checked: Boolean) {
+        mentionOnly = checked
+        if (checked) autoSelectNext = false
+    }
+
     fun refreshGroups() {
         if (!serverRunning) {
             groups = emptyList()
@@ -177,12 +187,9 @@ fun PrototypeGroupChatScreen(
             allowSelfResponses = allowSelfResponses,
             mentionOnly = mentionOnly,
             onGroupNameChange = { groupName = it },
-            onAutoSelectNextChange = { autoSelectNext = it },
+            onAutoSelectNextChange = ::setAutoSelectNext,
             onAllowSelfResponsesChange = { allowSelfResponses = it },
-            onMentionOnlyChange = {
-                mentionOnly = it
-                if (it) autoSelectNext = false
-            },
+            onMentionOnlyChange = ::setMentionOnly,
             onBack = { isCreating = false },
             onAddMember = { showAddDialog = true },
             onRemoveMember = { char -> selectedChars = selectedChars.filterNot { it.id == char.id } },
@@ -219,7 +226,7 @@ fun PrototypeGroupChatScreen(
                             )
                         )
                     }.onSuccess { created ->
-                        groups = (groups + created).sortedByDescending { it.lastUpdated }
+                        groups = listOf(created) + groups.filterNot { it.id == created.id }
                         groupName = ""
                         selectedChars = emptyList()
                         autoSelectNext = true
@@ -418,12 +425,9 @@ private fun GroupCreateView(
             PrototypeSectionHeader("群聊行为")
             GroupChatToggleRow(
                 label = "自动选择下一位发言者",
-                sub = "模型根据上下文选择",
+                sub = "关闭后按成员顺序手动推进",
                 checked = autoSelectNext,
-                onCheckedChange = {
-                    onAutoSelectNextChange(it)
-                    if (it) onMentionOnlyChange(false)
-                }
+                onCheckedChange = onAutoSelectNextChange
             )
             GroupChatToggleRow(
                 label = "允许角色互相回应",
@@ -433,7 +437,7 @@ private fun GroupCreateView(
             )
             GroupChatToggleRow(
                 label = "@提及才发言",
-                sub = null,
+                sub = "只在被点名时参与发言",
                 checked = mentionOnly,
                 onCheckedChange = onMentionOnlyChange
             )

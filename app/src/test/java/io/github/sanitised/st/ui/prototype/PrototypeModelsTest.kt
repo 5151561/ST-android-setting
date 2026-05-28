@@ -61,6 +61,19 @@ class PrototypeModelsTest {
     }
 
     @Test
+    fun characterTagFiltersPreferFrequentUserFacingTags() {
+        val filters = prototypeCharacterTagFilters(
+            listOf(
+                CharacterSummary(id = "a.png", name = "A", tags = listOf("v2", "科幻", "日常")),
+                CharacterSummary(id = "b.png", name = "B", tags = listOf("not_dead", "科幻", "奇幻")),
+                CharacterSummary(id = "c.png", name = "C", tags = listOf("日常", "科幻", "内部:debug", "  "))
+            )
+        )
+
+        assertEquals(listOf("科幻", "日常", "奇幻"), filters)
+    }
+
+    @Test
     fun drawerStateReflectsNodeStatus() {
         val state = PrototypeDrawerState.from(
             status = NodeStatus(NodeState.RUNNING, "Running", port = 8000),

@@ -20,8 +20,6 @@ data class PrototypeChatItem(
     val time: String,
     val initial: String,
     val favorite: Boolean,
-    val unread: Int = 0,
-    val streaming: Boolean = false,
     val kind: PrototypeChatKind = PrototypeChatKind.DIRECT
 )
 
@@ -80,9 +78,40 @@ fun ChatSummary.toPrototypeChatItem(index: Int): PrototypeChatItem {
         time = lastUpdated.toPrototypeTime(),
         initial = characterName.initial(),
         favorite = isPinned,
-        unread = 0,
         kind = PrototypeChatKind.DIRECT
     )
+}
+
+fun prototypeCharacterTagFilters(
+    characters: List<CharacterSummary>,
+    limit: Int = 4
+): List<String> {
+    data class TagCount(val label: String, val count: Int, val firstIndex: Int)
+
+    val counts = linkedMapOf<String, TagCount>()
+    var index = 0
+    characters.flatMap { it.tags }
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .filter { it.isVisiblePrototypeTagFilter() }
+        .forEach { tag ->
+            val key = tag.lowercase()
+            val current = counts[key]
+            counts[key] = if (current == null) {
+                TagCount(label = tag, count = 1, firstIndex = index)
+            } else {
+                current.copy(count = current.count + 1)
+            }
+            index++
+        }
+
+    return counts.values
+        .sortedWith(
+            compareByDescending<TagCount> { it.count }
+                .thenBy { it.firstIndex }
+        )
+        .map { it.label }
+        .take(limit)
 }
 
 fun CharacterSummary.toPrototypeCharacterCard(index: Int): PrototypeCharacterCard {
@@ -138,6 +167,14 @@ private fun String.readableName(): String =
 private fun String.linePreview(): String =
     lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
 
+private fun String.isVisiblePrototypeTagFilter(): Boolean {
+    val normalized = lowercase()
+    if (normalized in hiddenPrototypeTagFilters) return false
+    if (normalized.matches(Regex("v\\d+"))) return false
+    if (normalized.startsWith("内部:") || normalized.startsWith("internal:")) return false
+    return true
+}
+
 private fun Long.toPrototypeTime(): String {
     if (this <= 0L) {
         return "未知时间"
@@ -156,3 +193,12 @@ private fun Long.toPrototypeTime(): String {
 }
 
 private fun Int.floorMod(other: Int): Int = ((this % other) + other) % other
+
+private val hiddenPrototypeTagFilters = setOf(
+    "not_dead",
+    "dead",
+    "scenario",
+    "character",
+    "assistant",
+    "user"
+)

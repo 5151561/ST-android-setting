@@ -226,44 +226,14 @@ private fun PrototypeChatListItem(
                     )
                 }
                 Spacer(modifier = Modifier.height(2.dp))
-                // Second row: [● 进行中] Preview <--> Unread badge
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (item.streaming) {
-                            Text(
-                                text = "● 进行中 · ",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                color = MaterialTheme.colorScheme.tertiary,
-                                maxLines = 1
-                            )
-                        }
-                        Text(
-                            text = item.preview,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    if (item.unread > 0) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        PrototypeBadge(
-                            label = item.unread.toString(),
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                }
+                Text(
+                    text = item.preview,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }

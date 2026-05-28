@@ -41,7 +41,6 @@ import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -113,7 +112,6 @@ fun PrototypeCharacterLibraryScreen(
     val serverRunning = status.state == NodeState.RUNNING
     var selectedFilter by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
-    var searchDialogOpen by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var characters by remember { mutableStateOf<List<CharacterSummary>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -162,12 +160,7 @@ fun PrototypeCharacterLibraryScreen(
     }
 
     val tagFilters = remember(characters) {
-        characters
-            .flatMap { it.tags }
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinctBy { it.lowercase() }
-            .take(4)
+        prototypeCharacterTagFilters(characters)
     }
     val filterChips = remember(characters, tagFilters) {
         listOf("全部", "收藏", "最近") + tagFilters
@@ -198,30 +191,6 @@ fun PrototypeCharacterLibraryScreen(
                 queryMatched && filterMatched
             }
             .map { (_, card) -> card }
-    }
-
-    if (searchDialogOpen) {
-        AlertDialog(
-            onDismissRequest = { searchDialogOpen = false },
-            title = { Text("搜索角色") },
-            text = {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { searchDialogOpen = false }) { Text("完成") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    searchQuery = ""
-                    searchDialogOpen = false
-                }) { Text("清空") }
-            }
-        )
     }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -255,8 +224,9 @@ fun PrototypeCharacterLibraryScreen(
                     }
                 )
                 PrototypeSearchBar(
-                    text = searchQuery.ifBlank { "搜索 ${cards.size} 个角色…" },
-                    onClick = { searchDialogOpen = true },
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = "搜索 ${cards.size} 个角色…",
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
                 PrototypeChipRow(
@@ -266,9 +236,9 @@ fun PrototypeCharacterLibraryScreen(
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 8.dp)
                 )
                 when {
-                    !serverRunning -> PrototypeOfflineBlock(onStartService = onStartService)
                     loading -> PrototypeInfoBlock("正在加载角色库…", "请稍候，正在从本地 SillyTavern 读取角色。")
                     error != null -> PrototypeInfoBlock("角色加载失败", error.orEmpty())
+                    !serverRunning && characters.isEmpty() -> PrototypeOfflineBlock(onStartService = onStartService)
                     else -> LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
                         modifier = Modifier.fillMaxSize(),
