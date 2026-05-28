@@ -46,9 +46,17 @@ internal class UpdateManager(
         private const val APP_PREFS_NAME = "updates"
         private const val PREF_AUTO_CHECK = "auto_check"
         private const val PREF_AUTO_OPEN_BROWSER = "auto_open_browser"
+        private const val PREF_AUTO_START_SERVICE = "auto_start_service"
         private const val PREF_THEME_MODE = "theme_mode"
         private const val PREF_THEME_COLOR_SOURCE = "theme_color_source"
         private const val PREF_CHANNEL = "channel"
+        private const val PREF_BUBBLE_STYLE = "bubble_style"
+        private const val PREF_VIBRATION_FEEDBACK = "vibration_feedback"
+        private const val PREF_SECOND_CONFIRMATION = "second_confirmation"
+        private const val PREF_SWIPE_DRAWER = "swipe_drawer"
+        private const val PREF_DEVELOPER_MODE = "developer_mode"
+        private const val PREF_FONT_SIZE = "font_size"
+        private const val PREF_REDUCE_MOTION = "reduce_motion"
         private const val PREF_FIRST_LAUNCH_MS = "first_launch_ms"
         private const val PREF_AUTO_OPTIN_PROMPT_SHOWN = "auto_optin_prompt_shown"
         private const val PREF_LAST_AUTO_CHECK_MS = "last_auto_check_ms"
@@ -72,6 +80,9 @@ internal class UpdateManager(
     val autoOpenBrowserWhenReady = mutableStateOf(
         appPrefs.getBoolean(PREF_AUTO_OPEN_BROWSER, true)
     )
+    val autoStartService = mutableStateOf(
+        appPrefs.getBoolean(PREF_AUTO_START_SERVICE, true)
+    )
     val themeMode = mutableStateOf(
         resolveInitialThemeMode()
     )
@@ -89,6 +100,27 @@ internal class UpdateManager(
     )
     private val updateDismissedUntilMs = mutableStateOf(
         appPrefs.getLong(PREF_UPDATE_DISMISSED_UNTIL_MS, 0L)
+    )
+    val bubbleStyle = mutableStateOf(
+        appPrefs.getBoolean(PREF_BUBBLE_STYLE, true)
+    )
+    val vibrationFeedback = mutableStateOf(
+        appPrefs.getBoolean(PREF_VIBRATION_FEEDBACK, false)
+    )
+    val secondConfirmation = mutableStateOf(
+        appPrefs.getBoolean(PREF_SECOND_CONFIRMATION, true)
+    )
+    val swipeDrawer = mutableStateOf(
+        appPrefs.getBoolean(PREF_SWIPE_DRAWER, true)
+    )
+    val developerMode = mutableStateOf(
+        appPrefs.getBoolean(PREF_DEVELOPER_MODE, false)
+    )
+    val fontSize = mutableStateOf(
+        appPrefs.getFloat(PREF_FONT_SIZE, 14f)
+    )
+    val reduceMotion = mutableStateOf(
+        appPrefs.getBoolean(PREF_REDUCE_MOTION, false)
     )
     val isCheckingForUpdates = mutableStateOf(false)
     private val availableUpdate = mutableStateOf<GithubReleaseInfo?>(null)
@@ -113,6 +145,46 @@ internal class UpdateManager(
     fun setAutoOpenBrowserWhenReady(enabled: Boolean) {
         autoOpenBrowserWhenReady.value = enabled
         appPrefs.edit().putBoolean(PREF_AUTO_OPEN_BROWSER, enabled).apply()
+    }
+
+    fun setAutoStartService(enabled: Boolean) {
+        autoStartService.value = enabled
+        appPrefs.edit().putBoolean(PREF_AUTO_START_SERVICE, enabled).apply()
+    }
+
+    fun setBubbleStyle(enabled: Boolean) {
+        bubbleStyle.value = enabled
+        appPrefs.edit().putBoolean(PREF_BUBBLE_STYLE, enabled).apply()
+    }
+
+    fun setVibrationFeedback(enabled: Boolean) {
+        vibrationFeedback.value = enabled
+        appPrefs.edit().putBoolean(PREF_VIBRATION_FEEDBACK, enabled).apply()
+    }
+
+    fun setSecondConfirmation(enabled: Boolean) {
+        secondConfirmation.value = enabled
+        appPrefs.edit().putBoolean(PREF_SECOND_CONFIRMATION, enabled).apply()
+    }
+
+    fun setSwipeDrawer(enabled: Boolean) {
+        swipeDrawer.value = enabled
+        appPrefs.edit().putBoolean(PREF_SWIPE_DRAWER, enabled).apply()
+    }
+
+    fun setDeveloperMode(enabled: Boolean) {
+        developerMode.value = enabled
+        appPrefs.edit().putBoolean(PREF_DEVELOPER_MODE, enabled).apply()
+    }
+
+    fun setFontSize(size: Float) {
+        fontSize.value = size
+        appPrefs.edit().putFloat(PREF_FONT_SIZE, size).apply()
+    }
+
+    fun setReduceMotion(enabled: Boolean) {
+        reduceMotion.value = enabled
+        appPrefs.edit().putBoolean(PREF_REDUCE_MOTION, enabled).apply()
     }
 
     fun setThemeMode(mode: ThemeMode) {

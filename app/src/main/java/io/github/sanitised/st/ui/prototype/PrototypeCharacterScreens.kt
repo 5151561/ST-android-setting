@@ -363,7 +363,7 @@ fun PrototypeCharacterProfileScreen(
                 PrototypeIconButton(
                     icon = Icons.Filled.MoreVert,
                     contentDescription = "更多",
-                    onClick = { onShowMessage("更多角色操作稍后接入") }
+                    onClick = { onShowMessage("更多角色操作功能开发中") }
                 )
             }
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -403,10 +403,10 @@ fun PrototypeCharacterProfileScreen(
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
-                    IconButton(onClick = { onShowMessage("复制角色稍后接入") }) {
+                    IconButton(onClick = { onShowMessage("复制角色功能开发中") }) {
                         Icon(Icons.Filled.ContentCopy, contentDescription = "复制")
                     }
-                    IconButton(onClick = { onShowMessage("分享角色稍后接入") }) {
+                    IconButton(onClick = { onShowMessage("分享角色功能开发中") }) {
                         Icon(Icons.Filled.Share, contentDescription = "分享")
                     }
                 }

@@ -100,12 +100,12 @@ fun PrototypeChatListScreen(
                                 PrototypeIconButton(
                                     icon = Icons.Filled.Search,
                                     contentDescription = "搜索会话",
-                                    onClick = { onShowMessage("搜索会话稍后接入") }
+                                    onClick = { onShowMessage("搜索会话功能开发中") }
                                 )
                                 PrototypeIconButton(
                                     icon = Icons.Filled.FilterList,
                                     contentDescription = "过滤会话",
-                                    onClick = { onShowMessage("过滤会话稍后接入") }
+                                    onClick = { onShowMessage("过滤会话功能开发中") }
                                 )
                             }
                         )

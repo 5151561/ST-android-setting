@@ -721,17 +721,7 @@ class TavernCoreClient(
                     val id = map.stringValue("id").takeIf { it.isNotBlank() } ?: map.stringValue("name").takeIf { it.isNotBlank() }
                     id
                 }.distinct().sorted()
-            }.getOrElse {
-                when (providerId) {
-                    "anthropic" -> listOf("claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229")
-                    "openai" -> listOf("gpt-4o", "gpt-4o-mini", "o1-mini")
-                    "google" -> listOf("gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp")
-                    "deepseek" -> listOf("deepseek-chat", "deepseek-coder")
-                    "openrouter" -> listOf("meta-llama/llama-3.1-405b", "mistralai/mistral-large")
-                    "koboldcpp", "kobold" -> listOf("Mistral-Nemo-12B-Q5_K", "Llama-3-8B-Instruct")
-                    else -> emptyList()
-                }
-            }
+            }.getOrElse { emptyList() }
         }
     }
 

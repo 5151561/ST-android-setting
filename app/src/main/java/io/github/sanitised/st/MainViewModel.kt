@@ -70,8 +70,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val settingsSnapshotsLoading = mutableStateOf(false)
     val settingsSnapshotMessage = mutableStateOf("")
 
+    val bubbleStyle: MutableState<Boolean> = updateManager.bubbleStyle
+    val vibrationFeedback: MutableState<Boolean> = updateManager.vibrationFeedback
+    val secondConfirmation: MutableState<Boolean> = updateManager.secondConfirmation
+    val swipeDrawer: MutableState<Boolean> = updateManager.swipeDrawer
+    val developerMode: MutableState<Boolean> = updateManager.developerMode
+    val fontSize: MutableState<Float> = updateManager.fontSize
+    val reduceMotion: MutableState<Boolean> = updateManager.reduceMotion
     val autoCheckForUpdates: MutableState<Boolean> = updateManager.autoCheckForUpdates
     val autoOpenBrowserWhenReady: MutableState<Boolean> = updateManager.autoOpenBrowserWhenReady
+    val autoStartService: MutableState<Boolean> = updateManager.autoStartService
     val themeMode: MutableState<ThemeMode> = updateManager.themeMode
     val themeColorSource: MutableState<ThemeColorSource> = updateManager.themeColorSource
     val updateChannel: MutableState<UpdateChannel> = updateManager.updateChannel
@@ -257,12 +265,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         customInstallManager.removeUserData()
     }
 
+    fun setBubbleStyle(enabled: Boolean) {
+        updateManager.setBubbleStyle(enabled)
+    }
+
+    fun setVibrationFeedback(enabled: Boolean) {
+        updateManager.setVibrationFeedback(enabled)
+    }
+
+    fun setSecondConfirmation(enabled: Boolean) {
+        updateManager.setSecondConfirmation(enabled)
+    }
+
+    fun setSwipeDrawer(enabled: Boolean) {
+        updateManager.setSwipeDrawer(enabled)
+    }
+
+    fun setDeveloperMode(enabled: Boolean) {
+        updateManager.setDeveloperMode(enabled)
+    }
+
+    fun setFontSize(size: Float) {
+        updateManager.setFontSize(size)
+    }
+
+    fun setReduceMotion(enabled: Boolean) {
+        updateManager.setReduceMotion(enabled)
+    }
+
     fun setAutoCheckForUpdates(enabled: Boolean) {
         updateManager.setAutoCheckForUpdates(enabled)
     }
 
     fun setAutoOpenBrowserWhenReady(enabled: Boolean) {
         updateManager.setAutoOpenBrowserWhenReady(enabled)
+    }
+
+    fun setAutoStartService(enabled: Boolean) {
+        updateManager.setAutoStartService(enabled)
     }
 
     fun setThemeMode(mode: ThemeMode) {

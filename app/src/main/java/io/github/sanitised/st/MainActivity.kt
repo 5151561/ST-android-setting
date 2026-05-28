@@ -804,6 +804,16 @@ class MainActivity : ComponentActivity() {
                                     onChannelChanged = { channel -> viewModel.setUpdateChannel(channel) },
                                     onCheckNow = { viewModel.checkForUpdates("manual") },
                                     isChecking = viewModel.isCheckingForUpdates.value,
+                                    bubbleStyle = viewModel.bubbleStyle.value,
+                                    onBubbleStyleChanged = { enabled -> viewModel.setBubbleStyle(enabled) },
+                                    vibrationFeedback = viewModel.vibrationFeedback.value,
+                                    onVibrationFeedbackChanged = { enabled -> viewModel.setVibrationFeedback(enabled) },
+                                    secondConfirmation = viewModel.secondConfirmation.value,
+                                    onSecondConfirmationChanged = { enabled -> viewModel.setSecondConfirmation(enabled) },
+                                    swipeDrawer = viewModel.swipeDrawer.value,
+                                    onSwipeDrawerChanged = { enabled -> viewModel.setSwipeDrawer(enabled) },
+                                    developerMode = viewModel.developerMode.value,
+                                    onDeveloperModeChanged = { enabled -> viewModel.setDeveloperMode(enabled) },
                                     onOpenWorldInfo = { navController.navigate(STRoutes.WORLD_INFO) },
                                     onOpenPersona = { navController.navigate(STRoutes.PERSONA) },
                                     onOpenPresets = { navController.navigate(STRoutes.PRESETS) },
@@ -815,6 +825,7 @@ class MainActivity : ComponentActivity() {
                                     onOpenSecrets = { navController.navigate(STRoutes.SECRETS) },
                                     onOpenExtensions = { navController.navigate(STRoutes.EXTENSIONS) },
                                     onOpenAppearance = { navController.navigate(STRoutes.APPEARANCE) },
+                                    appVersion = versionLabel,
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
@@ -857,6 +868,10 @@ class MainActivity : ComponentActivity() {
                             composable(STRoutes.APPEARANCE) {
                                 BackHandler { navController.popBackStack() }
                                 PrototypeAppearanceScreen(
+                                    fontSize = viewModel.fontSize.value,
+                                    onFontSizeChanged = { size -> viewModel.setFontSize(size) },
+                                    reduceMotion = viewModel.reduceMotion.value,
+                                    onReduceMotionChanged = { enabled -> viewModel.setReduceMotion(enabled) },
                                     onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
@@ -955,6 +970,10 @@ class MainActivity : ComponentActivity() {
                                     customOperationCancelable = viewModel.customOperationCard.value.cancelable,
                                     customOperationAnchor = viewModel.customOperationCardAnchor.value,
                                     onCancelCustomOperation = { viewModel.cancelCustomSourceDownload() },
+                                    autoStartService = viewModel.autoStartService.value,
+                                    onAutoStartServiceChanged = { enabled -> viewModel.setAutoStartService(enabled) },
+                                    autoOpenBrowser = viewModel.autoOpenBrowserWhenReady.value,
+                                    onAutoOpenBrowserChanged = { enabled -> viewModel.setAutoOpenBrowserWhenReady(enabled) },
                                     onLoadCustomZip = {
                                         customZipLauncher.launch(
                                             arrayOf(

@@ -172,8 +172,8 @@ fun PrototypeWorldInfoScreen(
                 PrototypeIconButton(Icons.Filled.Menu, "打开抽屉", openDrawer)
             },
             actions = {
-                PrototypeIconButton(Icons.Filled.FileDownload, "导入", { onShowMessage("世界书导入稍后接入") })
-                PrototypeIconButton(Icons.Filled.Add, "新增", { onShowMessage("新增世界书条目稍后接入") })
+                PrototypeIconButton(Icons.Filled.FileDownload, "导入", { onShowMessage("世界书导入功能开发中") })
+                PrototypeIconButton(Icons.Filled.Add, "新增", { onShowMessage("新增世界书条目功能开发中") })
             }
         )
         if (!running) {
@@ -205,7 +205,7 @@ fun PrototypeWorldInfoScreen(
                         },
                         trailing = { Switch(checked = true, onCheckedChange = null) },
                         divider = index != books.lastIndex,
-                        onClick = { onShowMessage("世界书详情稍后接入") }
+                        onClick = { onShowMessage("世界书详情功能开发中") }
                     )
                 }
             }
@@ -273,8 +273,8 @@ fun PrototypePersonaScreen(
                         PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                     },
                     actions = {
-                        PrototypeIconButton(Icons.Filled.AutoFixHigh, "AI 生成", { onShowMessage("AI 生成扮演者稍后接入") })
-                        PrototypeIconButton(Icons.Filled.Add, "新建", { onShowMessage("新建扮演者稍后接入") })
+                        PrototypeIconButton(Icons.Filled.AutoFixHigh, "AI 生成", { onShowMessage("AI 生成扮演者功能开发中") })
+                        PrototypeIconButton(Icons.Filled.Add, "新建", { onShowMessage("新建扮演者功能开发中") })
                     },
                     titleBottomPadding = 4.dp
                 )
@@ -331,7 +331,7 @@ fun PrototypePersonaScreen(
             }
 
             ExtendedFloatingActionButton(
-                onClick = { onShowMessage("新建扮演者稍后接入") },
+                onClick = { onShowMessage("新建扮演者功能开发中") },
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
                 text = { Text("新建") },
                 modifier = Modifier
@@ -356,6 +356,29 @@ fun PrototypeAISettingsScreen(
     val scope = rememberCoroutineScope()
     var presetLibrary by remember { mutableStateOf<io.github.sanitised.st.api.PresetLibrary?>(null) }
     val running = status.state == NodeState.RUNNING
+    var settings by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
+
+    var temp by remember { mutableFloatStateOf(1.0f) }
+    var topP by remember { mutableFloatStateOf(1.0f) }
+    var topK by remember { mutableFloatStateOf(0f) }
+    var minP by remember { mutableFloatStateOf(0f) }
+    var freqPenalty by remember { mutableFloatStateOf(0f) }
+    var presPenalty by remember { mutableFloatStateOf(0f) }
+    var streamingEnabled by remember { mutableStateOf(true) }
+
+    fun loadFromSettings(s: Map<String, Any?>) {
+        val oai = (s["oai_settings"] as? Map<*, *>)?.entries?.associate { (k, v) -> k.toString() to v } ?: emptyMap()
+        temp = oai.floatValue("temp", 1.0f)
+        topP = oai.floatValue("top_p_openai", 1.0f)
+        topK = oai.floatValue("top_k_openai", 0f).coerceIn(0f, 1f)
+        minP = oai.floatValue("min_p_openai", 0f)
+        freqPenalty = oai.floatValue("frequency_penalty_openai", 0f)
+        presPenalty = oai.floatValue("presence_penalty_openai", 0f)
+        streamingEnabled = when (val v = oai["stream_openai"]) {
+            is Boolean -> v
+            else -> true
+        }
+    }
 
     fun loadPresets() {
         if (running) {
@@ -372,11 +395,55 @@ fun PrototypeAISettingsScreen(
 
     LaunchedEffect(running, baseUrl) {
         loadPresets()
+        if (running) {
+            runCatching {
+                val s = TavernCoreClient(baseUrl).getSettings()
+                settings = s
+                loadFromSettings(s)
+            }.onFailure { onShowMessage(it.message ?: "加载设置失败") }
+        }
     }
 
     PrototypeBackRoot(title = "AI 设置", onBack = onBack, modifier = modifier, actions = {
-        PrototypeIconButton(Icons.Filled.RestartAlt, "重置", { onShowMessage("已恢复默认预设") })
-        PrototypeIconButton(Icons.Filled.Save, "保存", { onShowMessage("采样参数已保存") })
+        PrototypeIconButton(Icons.Filled.RestartAlt, "重置", {
+            if (running) {
+                scope.launch {
+                    runCatching {
+                        val s = TavernCoreClient(baseUrl).getSettings()
+                        settings = s
+                        loadFromSettings(s)
+                        onShowMessage("已从服务器重新加载设置")
+                    }.onFailure { onShowMessage("重置失败：${it.message}") }
+                }
+            } else {
+                onShowMessage("服务未运行，无法重置")
+            }
+        })
+        PrototypeIconButton(Icons.Filled.Save, "保存", {
+            if (running) {
+                scope.launch {
+                    runCatching {
+                        val updated = settings.toMutableMap()
+                        val oai = ((updated["oai_settings"] as? Map<*, *>)
+                            ?.entries?.associate { (k, v) -> k.toString() to v }
+                            ?: emptyMap()).toMutableMap()
+                        oai["temp"] = temp
+                        oai["top_p_openai"] = topP
+                        oai["top_k_openai"] = topK
+                        oai["min_p_openai"] = minP
+                        oai["frequency_penalty_openai"] = freqPenalty
+                        oai["presence_penalty_openai"] = presPenalty
+                        oai["stream_openai"] = streamingEnabled
+                        updated["oai_settings"] = oai
+                        TavernCoreClient(baseUrl).saveSettings(updated)
+                        settings = updated
+                        onShowMessage("采样参数已保存至后端")
+                    }.onFailure { onShowMessage("保存失败：${it.message}") }
+                }
+            } else {
+                onShowMessage("服务未运行，无法保存")
+            }
+        })
     }) {
         PrototypePresetCard(
             presetLibrary = presetLibrary,
@@ -386,6 +453,11 @@ fun PrototypeAISettingsScreen(
                         TavernCoreClient(baseUrl).selectPreset(apiId, name)
                         onShowMessage("已切换预设：$name")
                         loadPresets()
+                        runCatching {
+                            val s = TavernCoreClient(baseUrl).getSettings()
+                            settings = s
+                            loadFromSettings(s)
+                        }
                     } catch (e: Exception) {
                         onShowMessage(e.message ?: "切换预设失败")
                     }
@@ -395,18 +467,26 @@ fun PrototypeAISettingsScreen(
         PrototypeSectionHeader("提示模板", trailing = {
             Text("仅文本补全", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         })
-        PrototypeTemplateRow(Icons.Filled.Code, "Instruct 模板", "ChatML", "开 · 角色名 / 系统提示遵循模型格式", toggle = true)
-        PrototypeTemplateRow(Icons.Filled.Bookmarks, "上下文模板", "Default", "角色描述 + 场景 + 历史的组织方式")
-        PrototypeTemplateRow(Icons.Filled.Tune, "系统提示", "角色扮演 v3", "开 · 注入到对话最前", toggle = true, checked = true)
+        val instructName = presetLibrary?.categories?.firstOrNull { it.apiId == "instruct" }
+            ?.presets?.firstOrNull { it.selected }?.name ?: "—"
+        val contextName = presetLibrary?.categories?.firstOrNull { it.apiId == "context" }
+            ?.presets?.firstOrNull { it.selected }?.name ?: "—"
+        val syspromptName = presetLibrary?.categories?.firstOrNull { it.apiId == "sysprompt" }
+            ?.presets?.firstOrNull { it.selected }?.name ?: "—"
+        PrototypeTemplateRow(Icons.Filled.Code, "Instruct 模板", instructName, "角色名 / 系统提示遵循模型格式", toggle = true)
+        PrototypeTemplateRow(Icons.Filled.Bookmarks, "上下文模板", contextName, "角色描述 + 场景 + 历史的组织方式")
+        PrototypeTemplateRow(Icons.Filled.Tune, "系统提示", syspromptName, "注入到对话最前", toggle = true, checked = true)
         PrototypeTemplateRow(Icons.Filled.StickyNote2, "作者注 / 深度笔记", "未设置", "按需注入到指定深度")
-        PrototypeSliderSection("核心采样", listOf("温度 Temperature" to 1.05f, "Top P" to 0.92f, "Top K" to 0.20f, "Min P" to 0.05f))
-        PrototypeSliderSection("重复抑制", listOf("频率惩罚" to 0.50f, "存在惩罚" to 0.30f, "重复惩罚范围" to 0.25f))
-        PrototypeSectionHeader("响应控制", trailing = {
-            Text("展开", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        })
-        PrototypeSliderSection("响应参数", listOf("最大新 Token 数" to 0.25f, "上下文窗口" to 0.16f))
+        PrototypeSectionHeader("核心采样")
+        PrototypeStatefulSlider("温度 Temperature", temp, 0f..2f) { temp = it }
+        PrototypeStatefulSlider("Top P", topP, 0f..1f) { topP = it }
+        PrototypeStatefulSlider("Top K", topK, 0f..1f) { topK = it }
+        PrototypeStatefulSlider("Min P", minP, 0f..1f) { minP = it }
+        PrototypeSectionHeader("重复抑制")
+        PrototypeStatefulSlider("频率惩罚", freqPenalty, -2f..2f) { freqPenalty = it }
+        PrototypeStatefulSlider("存在惩罚", presPenalty, -2f..2f) { presPenalty = it }
         PrototypeSectionHeader("高级 — 极少改动")
-        PrototypeSwitchRow("启用流式输出", "边生成边显示", true)
+        PrototypeSwitchRow("启用流式输出", "边生成边显示", streamingEnabled) { streamingEnabled = it }
         PrototypeSwitchRow("禁止思考链泄露", "过滤掉 <think> 标签内容", true)
         PrototypeSwitchRow("DRY (动态重复抑制)", "抗循环更激进的算法", false)
         PrototypeSwitchRow("温度最后采样", "先 Top-P 再温度", false)
@@ -454,9 +534,17 @@ fun PrototypeApiConnectionScreen(
         }
     }
 
-    var selectedProfileId by remember { mutableStateOf("daily") }
+    var selectedProfileId by remember { mutableStateOf<String?>(null) }
     var selectedProfileName by remember { mutableStateOf("当前 SillyTavern 设置") }
     var showProfileSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(profiles) {
+        if (profiles.isNotEmpty() && selectedProfileId == null) {
+            val first = profiles.first()
+            selectedProfileId = first.label
+            selectedProfileName = first.label
+        }
+    }
     val connectionState = remember(settings, secrets, running, activeMode, activeProviderId) {
         buildApiConnectionUiState(
             settings = settings,
@@ -513,7 +601,24 @@ fun PrototypeApiConnectionScreen(
                 activeMode = activeMode,
                 onModeChange = { mode ->
                     activeMode = mode
-                    activeProviderId = apiConnectionProvidersForMode(mode).firstOrNull()?.id
+                    val firstProvider = apiConnectionProvidersForMode(mode).firstOrNull()
+                    activeProviderId = firstProvider?.id
+                    if (running && firstProvider != null) {
+                        scope.launch {
+                            runCatching {
+                                val client = TavernCoreClient(baseUrl)
+                                val updated = settingsWithSelectedApiProvider(
+                                    settings = settings,
+                                    provider = firstProvider
+                                )
+                                client.saveSettings(updated)
+                                settings = updated
+                                onShowMessage("已切换至 ${firstProvider.label}")
+                            }.onFailure {
+                                onShowMessage("模式切换失败：${it.message}")
+                            }
+                        }
+                    }
                 }
             )
 
@@ -592,19 +697,19 @@ fun PrototypeApiConnectionScreen(
                     headline = "自定义 OpenAI 兼容反代 (Reverse Proxy)",
                     supporting = "可自定义 API 根地址，完美适配自建 OneAPI",
                     leading = { PrototypeTileIcon(Icons.Filled.Code) },
-                    onClick = { onShowMessage("自建配置稍后接入，可通过配置详细后端进行调整") }
+                    onClick = { onShowMessage("自建配置功能开发中，可通过配置详细后端进行调整") }
                 )
                 PrototypeListItem(
                     headline = "KoboldAI Horde 共享池",
                     supporting = "使用社区免费志愿贡献者的 GPU 算力",
                     leading = { PrototypeTileIcon(Icons.Filled.Face) },
-                    onClick = { onShowMessage("Horde 状态：排队中") }
+                    onClick = { onShowMessage("Horde 配置功能开发中") }
                 )
             } else if (activeMode == "tc") {
                 PremiumSectionHeader(title = "当前后端的指令模版契约")
                 PrototypeListItem(
                     headline = "自动匹配 Instruct 模板",
-                    supporting = "Mistral-Nemo 使用 [INST] 与 [/INST] 包围",
+                    supporting = "根据后端模型自动选择指令格式",
                     leading = { PrototypeTileIcon(Icons.Filled.Code) },
                     onClick = { onShowMessage("指令模板设置请在 AI 采样页中进行") }
                 )
@@ -621,13 +726,27 @@ fun PrototypeApiConnectionScreen(
                     apiProfiles = profiles,
                     onDismiss = { showProfileSheet = false },
                     selectedProfileId = selectedProfileId,
-                    onProfileSelected = { id, name, mode ->
+                    onProfileSelected = { id, name ->
                         selectedProfileId = id
                         selectedProfileName = name
-                        activeMode = mode
-                        activeProviderId = apiConnectionProvidersForMode(mode).firstOrNull()?.id
                         showProfileSheet = false
-                        onShowMessage("已切换连接预设：$name")
+                        if (running) {
+                            val profile = profiles.firstOrNull { it.label == id }
+                            if (profile != null) {
+                                scope.launch {
+                                    runCatching {
+                                        TavernCoreClient(baseUrl).saveConnectionProfile(profile.copy(
+                                            lastConnection = System.currentTimeMillis()
+                                        ))
+                                        onShowMessage("已选择服务器：$name")
+                                    }.onFailure {
+                                        onShowMessage("切换失败：${it.message}")
+                                    }
+                                }
+                            }
+                        } else {
+                            onShowMessage("已选择服务器：$name")
+                        }
                     }
                 )
             }
@@ -651,6 +770,16 @@ fun PrototypeMeScreen(
     onChannelChanged: (UpdateChannel) -> Unit,
     onCheckNow: () -> Unit,
     isChecking: Boolean,
+    bubbleStyle: Boolean,
+    onBubbleStyleChanged: (Boolean) -> Unit,
+    vibrationFeedback: Boolean,
+    onVibrationFeedbackChanged: (Boolean) -> Unit,
+    secondConfirmation: Boolean,
+    onSecondConfirmationChanged: (Boolean) -> Unit,
+    swipeDrawer: Boolean,
+    onSwipeDrawerChanged: (Boolean) -> Unit,
+    developerMode: Boolean,
+    onDeveloperModeChanged: (Boolean) -> Unit,
     onOpenWorldInfo: () -> Unit,
     onOpenPersona: () -> Unit,
     onOpenPresets: () -> Unit,
@@ -662,28 +791,23 @@ fun PrototypeMeScreen(
     onOpenSecrets: () -> Unit,
     onOpenExtensions: () -> Unit,
     onOpenAppearance: () -> Unit,
+    appVersion: String = "",
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val openDrawer = LocalSTOpenDrawer.current
-    var messageBubbleStyle by remember { mutableStateOf(true) }
-    var vibrationFeedback by remember { mutableStateOf(false) }
-    var secondConfirmation by remember { mutableStateOf(true) }
-    var swipeDrawer by remember { mutableStateOf(true) }
-    var enableExtensions by remember { mutableStateOf(true) }
-    var developerMode by remember { mutableStateOf(false) }
 
     PrototypeRoot(modifier = modifier) {
         PrototypeTopHeader(
             title = "我的",
             leading = { PrototypeIconButton(Icons.Filled.Menu, "打开抽屉", openDrawer) },
-            actions = { PrototypeIconButton(Icons.Filled.Search, "搜索设置", { onShowMessage("搜索设置稍后接入") }) }
+            actions = { PrototypeIconButton(Icons.Filled.Search, "搜索设置", { onShowMessage("搜索设置功能开发中") }) }
         )
         // User card with chevron - direct and simple borderless style
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onShowMessage("用户资料稍后接入") }
+                .clickable { onShowMessage("用户资料功能开发中") }
                 .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -691,7 +815,7 @@ fun PrototypeMeScreen(
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text("我（默认）", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-                Text("已使用 SillyTavern · 142 天 · 2.4M token", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("默认用户配置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(
                 imageVector = Icons.Filled.ChevronRight,
@@ -704,7 +828,11 @@ fun PrototypeMeScreen(
         PrototypeSettingsGroup {
             PrototypeListItem(
                 headline = "主题",
-                supporting = "暖琥珀 · ${themeMode.storageValue}",
+                supporting = when (themeMode) {
+                    ThemeMode.LIGHT -> "浅色模式"
+                    ThemeMode.DARK -> "深色模式"
+                    ThemeMode.AUTO -> "跟随系统"
+                },
                 leading = { PrototypeTileIcon(Icons.Filled.Palette) },
                 trailing = { PrototypeMiniSwatch() },
                 divider = true,
@@ -712,51 +840,50 @@ fun PrototypeMeScreen(
             )
             PrototypeListItem(
                 headline = "字号",
-                supporting = "15 sp · 中",
+                supporting = "点击调整",
                 leading = { PrototypeTileIcon(Icons.Filled.TextFields) },
                 divider = true,
                 onClick = onOpenAppearance
             )
             PrototypeListItem(
                 headline = "聊天背景",
-                supporting = "夜雨咖啡馆",
+                supporting = "点击设置",
                 leading = { PrototypeTileIcon(Icons.Filled.Image) },
                 divider = true,
                 onClick = onOpenAppearance
             )
-            PrototypeSwitchRow("消息冒泡风格", "关闭则使用全宽文档样式", messageBubbleStyle, { messageBubbleStyle = it })
+            PrototypeSwitchRow("消息冒泡风格", "关闭则使用全宽文档样式", bubbleStyle, onBubbleStyleChanged)
         }
         // ── 行为 ──
         PrototypeSectionHeader("行为")
         PrototypeSettingsGroup {
-            PrototypeSwitchRow("流式生成时震动反馈", "逐字到达时轻微震动", vibrationFeedback, { vibrationFeedback = it })
-            PrototypeSwitchRow("敏感操作二次确认", "删除消息、清空对话等", secondConfirmation, { secondConfirmation = it })
+            PrototypeSwitchRow("流式生成时震动反馈", "逐字到达时轻微震动", vibrationFeedback, onVibrationFeedbackChanged)
+            PrototypeSwitchRow("敏感操作二次确认", "删除消息、清空对话等", secondConfirmation, onSecondConfirmationChanged)
             PrototypeSwitchRow("启动时自动连接 API", null, autoOpenBrowserEnabled, onAutoOpenBrowserChanged)
-            PrototypeSwitchRow("滑动呼出抽屉", "从左边缘横扫", swipeDrawer, { swipeDrawer = it })
+            PrototypeSwitchRow("滑动呼出抽屉", "从左边缘横扫", swipeDrawer, onSwipeDrawerChanged)
         }
         // ── 数据 ──
         PrototypeSectionHeader("数据")
         PrototypeSettingsGroup {
             PrototypeListItem(
                 headline = "自动备份",
-                supporting = "每周 · 上次：3 天前",
+                supporting = "点击配置",
                 leading = { PrototypeTileIcon(Icons.Filled.Backup) },
-                trailing = { Switch(checked = true, onCheckedChange = null) },
                 divider = true,
-                onClick = { onShowMessage("备份设置稍后接入") }
+                onClick = { onShowMessage("备份设置功能开发中") }
             )
             PrototypeListItem(
                 headline = "同步",
                 supporting = "未开启",
                 leading = { PrototypeTileIcon(Icons.Filled.CloudSync) },
                 divider = true,
-                onClick = { onShowMessage("同步设置稍后接入") }
+                onClick = { onShowMessage("同步设置功能开发中") }
             )
             PrototypeListItem(
                 headline = "导出全部数据",
                 supporting = ".charx + .json 包",
                 leading = { PrototypeTileIcon(Icons.Filled.FolderZip) },
-                onClick = { onShowMessage("数据导出稍后接入") }
+                onClick = { onShowMessage("数据导出功能开发中") }
             )
         }
         // ── 服务与安全 ──
@@ -778,7 +905,7 @@ fun PrototypeMeScreen(
             )
             PrototypeListItem(
                 headline = "扩展管理",
-                supporting = "配置 TTS、SD 等 6 个扩展",
+                supporting = "管理 SillyTavern 扩展插件",
                 leading = { PrototypeTileIcon(Icons.Filled.Extension) },
                 onClick = onOpenExtensions
             )
@@ -787,14 +914,14 @@ fun PrototypeMeScreen(
         // ── 实验性 ──
         PrototypeSectionHeader("实验性")
         PrototypeSettingsGroup {
-            PrototypeSwitchRow("开发者模式", "显示 token 计数与请求 JSON", developerMode, { developerMode = it })
+            PrototypeSwitchRow("开发者模式", "显示 token 计数与请求 JSON", developerMode, onDeveloperModeChanged)
         }
         // ── 关于 ──
         PrototypeSectionHeader("关于")
         PrototypeSettingsGroup {
             PrototypeListItem(
                 headline = "SillyTavern Mobile",
-                supporting = "1.13.0 · 第三方移动客户端",
+                supporting = "${appVersion.ifBlank { "—" }} · 第三方移动客户端",
                 leading = { PrototypeTileIcon(Icons.Filled.Info) },
                 onClick = { onShowMessage("版本信息") }
             )
@@ -840,12 +967,16 @@ fun PrototypeStCoreScreen(
     onResetToDefault: () -> Unit,
     onRemoveUserData: () -> Unit,
     onCancelCustomOperation: () -> Unit,
+    autoStartService: Boolean,
+    onAutoStartServiceChanged: (Boolean) -> Unit,
+    autoOpenBrowser: Boolean,
+    onAutoOpenBrowserChanged: (Boolean) -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val running = status.state == NodeState.RUNNING
     val starting = status.state == NodeState.STARTING
-    
+
     // Live Uptime calculation
     var uptimeSec by remember(running) { mutableStateOf(0) }
     LaunchedEffect(running) {
@@ -867,12 +998,10 @@ fun PrototypeStCoreScreen(
         "—"
     }
 
-    var autoStartService by remember { mutableStateOf(true) }
-    var autoOpenBrowser by remember { mutableStateOf(true) }
     var allowBackgroundRun by remember { mutableStateOf(true) }
 
     PrototypeBackRoot(title = "ST 核心", onBack = onBack, modifier = modifier, actions = {
-        PrototypeIconButton(Icons.Filled.MoreVert, "更多", { onShowMessage("更多内核操作稍后接入") })
+        PrototypeIconButton(Icons.Filled.MoreVert, "更多", { onShowMessage("更多内核操作功能开发中") })
     }) {
         PrototypeStStatusHero(status, stLabel, nodeLabel, onStartService, onStopService, onOpenBrowser)
         
@@ -891,7 +1020,7 @@ fun PrototypeStCoreScreen(
                     ) {
                         Text("进程 PID", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            text = if (running) "${status.pid ?: 21487}" else "—",
+                            text = if (running) "${status.pid ?: "—"}" else "—",
                             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -995,16 +1124,16 @@ fun PrototypeStCoreScreen(
             PrototypeListItem(
                 headline = "启动 App 时自动唤起服务",
                 supporting = "进入主屏后立即拉起 Node 进程",
-                trailing = { Switch(checked = autoStartService, onCheckedChange = { autoStartService = it }) },
+                trailing = { Switch(checked = autoStartService, onCheckedChange = onAutoStartServiceChanged) },
                 divider = true,
-                onClick = { autoStartService = !autoStartService }
+                onClick = { onAutoStartServiceChanged(!autoStartService) }
             )
             PrototypeListItem(
                 headline = "服务就绪后自动打开浏览器",
                 supporting = "对 :8000 进行 TCP 探测后跳转",
-                trailing = { Switch(checked = autoOpenBrowser, onCheckedChange = { autoOpenBrowser = it }) },
+                trailing = { Switch(checked = autoOpenBrowser, onCheckedChange = onAutoOpenBrowserChanged) },
                 divider = true,
-                onClick = { autoOpenBrowser = !autoOpenBrowser }
+                onClick = { onAutoOpenBrowserChanged(!autoOpenBrowser) }
             )
             PrototypeListItem(
                 headline = "允许后台持续运行",
@@ -1292,6 +1421,26 @@ private fun PrototypeSliderSection(title: String, values: List<Pair<String, Floa
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PrototypeStatefulSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
+    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = String.format(Locale.US, "%.2f", value),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        Slider(value = value.coerceIn(range.start, range.endInclusive), onValueChange = onValueChange, valueRange = range, modifier = Modifier.fillMaxWidth())
     }
 }
 
@@ -1619,16 +1768,10 @@ private fun ProviderGrid(
 private fun ConnectionProfileBottomSheet(
     apiProfiles: List<ConnectionProfile>,
     onDismiss: () -> Unit,
-    selectedProfileId: String,
-    onProfileSelected: (String, String, String) -> Unit
+    selectedProfileId: String?,
+    onProfileSelected: (String, String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val displayProfiles = remember(apiProfiles) {
-        apiProfiles.map { profile ->
-            val mode = if (profile.url.contains("kobold", ignoreCase = true) || profile.url.contains("127.0.0.1", ignoreCase = true)) "tc" else "cc"
-            Triple(profile.label, profile.label, mode)
-        }
-    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -1647,8 +1790,8 @@ private fun ConnectionProfileBottomSheet(
                 Icon(Icons.Filled.Bookmarks, null, tint = STThemePrimary, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("切换 API 连接预设", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
-                    Text("一键重载模式、端点、模型与采样器组合", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("切换连接服务器", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                    Text("选择已保存的 SillyTavern 服务端点", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Filled.Close, "关闭")
@@ -1656,18 +1799,18 @@ private fun ConnectionProfileBottomSheet(
             }
             HorizontalDivider(color = Color(0x0DFFFFFF))
             Spacer(modifier = Modifier.height(8.dp))
-            
-            if (displayProfiles.isEmpty()) {
-                PrototypeSystemInfoCard("暂无连接预设", "当前会直接使用 SillyTavern 的真实 API 设置。")
+
+            if (apiProfiles.isEmpty()) {
+                PrototypeSystemInfoCard("暂无保存的服务器", "当前使用本地 SillyTavern 服务。")
             } else {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false)
                 ) {
-                    displayProfiles.forEach { (id, name, mode) ->
-                        val active = id == selectedProfileId
+                    apiProfiles.forEach { profile ->
+                        val active = profile.label == selectedProfileId
                         Surface(
-                            onClick = { onProfileSelected(id, name, mode) },
+                            onClick = { onProfileSelected(profile.label, profile.label) },
                             modifier = Modifier.fillMaxWidth(),
                             shape = MaterialTheme.shapes.large,
                             color = if (active) Color(0x08FFFFFF) else Color.Transparent
@@ -1683,26 +1826,24 @@ private fun ConnectionProfileBottomSheet(
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = mode.uppercase(),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp
-                                        )
+                                        Icon(Icons.Filled.Cable, null, modifier = Modifier.size(18.dp))
                                     }
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(
-                                        text = name,
+                                        text = profile.label.ifBlank { profile.url },
                                         style = MaterialTheme.typography.titleSmall,
                                         color = if (active) STThemePrimary else MaterialTheme.colorScheme.onSurface,
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "Endpoint details for $mode profile",
-                                        style = MaterialTheme.typography.bodySmall,
+                                        text = profile.url,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.padding(top = 2.dp)
                                     )
                                 }
@@ -1945,7 +2086,6 @@ fun PrototypeProviderDetailScreen(
     var settings by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
     
     var customUrl by remember { mutableStateOf("") }
-    var proxy by remember { mutableStateOf("") }
     var apiKey by remember { mutableStateOf("") }
     var initialApiKey by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
@@ -1972,15 +2112,29 @@ fun PrototypeProviderDetailScreen(
                 val coreSettings = client.getSettings()
                 settings = coreSettings
                 
-                customUrl = coreSettings.stringValue("api_url_$providerId").takeIf { it.isNotBlank() }
-                    ?: (if (providerId == "openai") coreSettings.stringValue("api_url") else "")
-                
-                proxy = coreSettings.stringValue("proxy_$providerId")
-                
+                val group = providerDefinition.modelSettingsGroup
+                val groupMap = if (!group.isNullOrBlank()) {
+                    (coreSettings[group] as? Map<*, *>)?.entries?.associate { (k, v) -> k.toString() to v } ?: emptyMap()
+                } else emptyMap()
+
+                customUrl = when (providerDefinition.mode) {
+                    "cc" -> (groupMap["reverse_proxy"] as? String).orEmpty()
+                    "tc" -> coreSettings.stringValue("api_server")
+                    else -> ""
+                }
+
                 selectedModel = modelForProvider(coreSettings, providerDefinition)
-                
-                temp = coreSettings.floatValue("temp", 1.0f)
-                contextSize = coreSettings.intValue("context_width", 4096).toFloat()
+
+                temp = when (providerDefinition.mode) {
+                    "cc" -> groupMap.floatValue("temp", 1.0f)
+                    "tc" -> groupMap.floatValue("temp", 1.0f)
+                    else -> coreSettings.floatValue("temp", 1.0f)
+                }
+                contextSize = when (providerDefinition.mode) {
+                    "cc" -> groupMap.intValue("openai_max_context", 4096).toFloat()
+                    "tc" -> groupMap.intValue("max_context", 4096).toFloat()
+                    else -> 4096f
+                }
                 
                 val secretsList = client.listSecrets()
                 providerState = buildApiConnectionUiState(
@@ -2031,28 +2185,40 @@ fun PrototypeProviderDetailScreen(
                                 provider = providerDefinition
                             ).toMutableMap()
 
-                            updatedSettings["api_url_$providerId"] = customUrl
-                            if (providerId == "openai") {
-                                updatedSettings["api_url"] = customUrl
-                            }
-                            updatedSettings["proxy_$providerId"] = proxy
-
                             val modelGroup = providerDefinition.modelSettingsGroup
                             val modelKey = providerDefinition.modelKey
-                            if (!modelGroup.isNullOrBlank() && !modelKey.isNullOrBlank()) {
-                                val groupSettings = (updatedSettings[modelGroup] as? Map<*, *>)
+                            val groupSettings = if (!modelGroup.isNullOrBlank()) {
+                                (updatedSettings[modelGroup] as? Map<*, *>)
                                     ?.entries
                                     ?.associate { (key, value) -> key.toString() to value }
                                     ?.toMutableMap()
                                     ?: mutableMapOf()
+                            } else null
+
+                            if (groupSettings != null && !modelKey.isNullOrBlank()) {
                                 groupSettings[modelKey] = selectedModel
-                                updatedSettings[modelGroup] = groupSettings
                             }
 
-                            updatedSettings["temp"] = temp
-                            updatedSettings["openai_temp"] = temp
-                            updatedSettings["context_width"] = contextSize.toInt()
-                            updatedSettings["openai_max_context"] = contextSize.toInt()
+                            when (providerDefinition.mode) {
+                                "cc" -> {
+                                    if (groupSettings != null) {
+                                        if (customUrl.isNotBlank()) groupSettings["reverse_proxy"] = customUrl
+                                        groupSettings["temp"] = temp
+                                        groupSettings["openai_max_context"] = contextSize.toInt()
+                                    }
+                                }
+                                "tc" -> {
+                                    if (customUrl.isNotBlank()) updatedSettings["api_server"] = customUrl
+                                    if (groupSettings != null) {
+                                        groupSettings["temp"] = temp
+                                        groupSettings["max_context"] = contextSize.toInt()
+                                    }
+                                }
+                            }
+
+                            if (groupSettings != null && !modelGroup.isNullOrBlank()) {
+                                updatedSettings[modelGroup] = groupSettings
+                            }
 
                             client.saveSettings(updatedSettings)
 
@@ -2121,15 +2287,8 @@ fun PrototypeProviderDetailScreen(
             PrototypeGlassTextField(
                 value = customUrl,
                 onValueChange = { customUrl = it },
-                label = "自定义 Base URL",
-                placeholder = "https://api.openai.com/v1"
-            )
-            
-            PrototypeGlassTextField(
-                value = proxy,
-                onValueChange = { proxy = it },
-                label = "HTTP / SOCKS5 代理地址",
-                placeholder = "127.0.0.1:7890"
+                label = if (providerDefinition.mode == "cc") "反向代理 URL (Reverse Proxy)" else "后端服务器地址",
+                placeholder = if (providerDefinition.mode == "cc") "https://api.openai.com/v1" else "http://127.0.0.1:5000"
             )
             
             PrototypeGlassTextField(

@@ -121,6 +121,37 @@ fun PremiumSectionHeader(
 }
 
 @Composable
+fun PrototypePreviewBanner(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = STThemePrimary.copy(alpha = 0.12f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, STThemePrimary.copy(alpha = 0.3f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Science,
+                contentDescription = null,
+                tint = STThemePrimary,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = "原型预览 — 此页面数据为设计占位，功能尚未接入后端",
+                style = MaterialTheme.typography.bodySmall,
+                color = STThemePrimary,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
 fun AnimatedToast(
     message: String?,
     onDismiss: () -> Unit
@@ -791,10 +822,12 @@ fun PrototypeExtensionsScreen(
                 },
                 actions = {
                     PrototypeIconButton(Icons.Filled.CloudDownload, "扩展商店", { onShowMessage("打开扩展应用商店…") })
-                    PrototypeIconButton(Icons.Filled.Settings, "设置", { onShowMessage("扩展中心高级首选项稍后接入") })
+                    PrototypeIconButton(Icons.Filled.Settings, "设置", { onShowMessage("扩展中心高级首选项功能开发中") })
                 },
                 titleBottomPadding = 4.dp
             )
+
+            PrototypePreviewBanner()
 
             // Horizontal Filters
             Row(
@@ -842,7 +875,7 @@ fun PrototypeExtensionsScreen(
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = if (activeExtras) "已接入本地托管服务。延时 12ms · 接口 /api/extra 处于就绪状态。" else "Extras 离线。绘图、语音朗读、图片识别等依赖项将暂时无法使用。",
+                    text = if (activeExtras) "Extras API 已启用（原型预览，实际状态以后端为准）" else "Extras 离线。绘图、语音朗读、图片识别等依赖项将暂时无法使用。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 18.sp
@@ -1004,6 +1037,8 @@ fun PrototypeAuthorNoteCFGScreen(
                 },
                 titleBottomPadding = 4.dp
             )
+
+            PrototypePreviewBanner()
 
             // Stateful Tabs
             Row(
@@ -1372,6 +1407,8 @@ fun PrototypeQuickReplyScreen(
                     titleBottomPadding = 4.dp
                 )
 
+                PrototypePreviewBanner()
+
                 // Stateful Scope Tabs
                 Row(
                     modifier = Modifier
@@ -1726,6 +1763,8 @@ fun PrototypeMemoryScreen(
                     },
                     titleBottomPadding = 4.dp
                 )
+
+                PrototypePreviewBanner()
 
                 // Stateful Tabs (Summary, Vector search, checkpoints timeline)
                 Row(
@@ -2267,13 +2306,15 @@ data class SimulatedCheckpoint(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrototypeAppearanceScreen(
+    fontSize: Float,
+    onFontSizeChanged: (Float) -> Unit,
+    reduceMotion: Boolean,
+    onReduceMotionChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var themePreset by remember { mutableStateOf("amber") }
-    var fontSize by remember { mutableFloatStateOf(14f) }
-    var reduceMotion by remember { mutableStateOf(false) }
     var fastMode by remember { mutableStateOf(true) }
     var toastMessage by remember { mutableStateOf<String?>(null) }
 
@@ -2359,6 +2400,8 @@ fun PrototypeAppearanceScreen(
                     },
                     titleBottomPadding = 4.dp
                 )
+
+                PrototypePreviewBanner()
 
                 // Live Preview Card (Live Typography Preview)
                 PremiumCard(
@@ -2506,7 +2549,7 @@ fun PrototypeAppearanceScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Slider(
                         value = fontSize,
-                        onValueChange = { fontSize = it },
+                        onValueChange = onFontSizeChanged,
                         valueRange = 12f..20f,
                         steps = 8
                     )
@@ -2519,8 +2562,8 @@ fun PrototypeAppearanceScreen(
                 PrototypeListItem(
                     headline = "减少动效渲染 (Reduce Motion)",
                     supporting = "关闭全屏转场、抽屉划过的贝塞尔缓动",
-                    trailing = { Switch(checked = reduceMotion, onCheckedChange = { reduceMotion = it }) },
-                    onClick = { reduceMotion = !reduceMotion }
+                    trailing = { Switch(checked = reduceMotion, onCheckedChange = onReduceMotionChanged) },
+                    onClick = { onReduceMotionChanged(!reduceMotion) }
                 )
 
                 PrototypeListItem(
