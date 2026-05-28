@@ -350,6 +350,8 @@ class MainActivity : ComponentActivity() {
             }
             val librarySnapshot by rememberLocalTavernLibrarySnapshot(
                 dataRoot = appPaths.dataDir,
+                serverRunning = statusState.value.state == NodeState.RUNNING,
+                baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                 refreshKey = statusState.value.state
             )
 
@@ -693,6 +695,8 @@ class MainActivity : ComponentActivity() {
                             composable(STRoutes.PRESETS) {
                                 BackHandler { navController.popBackStack() }
                                 PrototypeAISettingsScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )

@@ -18,19 +18,41 @@ data class LocalTavernLibrarySnapshot(
 @Composable
 fun rememberLocalTavernLibrarySnapshot(
     dataRoot: File,
+    serverRunning: Boolean,
+    baseUrl: String,
     refreshKey: Any?
 ): State<LocalTavernLibrarySnapshot> {
     return produceState(
         initialValue = LocalTavernLibrarySnapshot(),
         dataRoot,
+        serverRunning,
+        baseUrl,
         refreshKey
     ) {
         value = withContext(Dispatchers.IO) {
-            val reader = LocalTavernLibraryReader(dataRoot)
-            LocalTavernLibrarySnapshot(
-                characters = reader.listCharacters(),
-                recentChats = reader.listRecentChats()
-            )
+            if (serverRunning) {
+                runCatching {
+                    val client = io.github.sanitised.st.api.TavernCoreClient(baseUrl = baseUrl)
+                    val characters = client.listCharacters()
+                    val recentChats = client.listRecentChats()
+                    LocalTavernLibrarySnapshot(
+                        characters = characters,
+                        recentChats = recentChats
+                    )
+                }.getOrElse {
+                    val reader = LocalTavernLibraryReader(dataRoot)
+                    LocalTavernLibrarySnapshot(
+                        characters = reader.listCharacters(),
+                        recentChats = reader.listRecentChats()
+                    )
+                }
+            } else {
+                val reader = LocalTavernLibraryReader(dataRoot)
+                LocalTavernLibrarySnapshot(
+                    characters = reader.listCharacters(),
+                    recentChats = reader.listRecentChats()
+                )
+            }
         }
     }
 }

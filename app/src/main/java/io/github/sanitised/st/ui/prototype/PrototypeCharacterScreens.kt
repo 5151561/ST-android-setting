@@ -139,7 +139,10 @@ fun PrototypeCharacterLibraryScreen(
 
     LaunchedEffect(serverRunning, baseUrl, refreshKey) {
         if (!serverRunning) {
-            characters = emptyList()
+            loading = true
+            val paths = io.github.sanitised.st.AppPaths(context)
+            val reader = io.github.sanitised.st.data.LocalTavernLibraryReader(paths.dataDir)
+            characters = reader.listCharacters()
             error = null
             loading = false
             return@LaunchedEffect
@@ -156,7 +159,6 @@ fun PrototypeCharacterLibraryScreen(
 
     val cards = remember(characters, searchQuery, selectedFilter) {
         characters.mapIndexed { index, item -> item.toPrototypeCharacterCard(index) }
-            .ifEmpty { prototypeFallbackCharacters() }
             .filter { card ->
                 val queryMatched = searchQuery.isBlank() ||
                     card.name.contains(searchQuery, ignoreCase = true) ||
@@ -318,8 +320,19 @@ fun PrototypeCharacterProfileScreen(
         loading = false
     }
 
-    val fallback = prototypeFallbackCharacters().firstOrNull { it.id == avatar } ?: prototypeFallbackCharacters().first()
-    val card = detail?.toPrototypeCharacterCard(0) ?: fallback.copy(id = avatar ?: fallback.id)
+    val fallback = remember(avatar) {
+        PrototypeCharacterCard(
+            id = avatar.orEmpty(),
+            name = avatar?.substringBeforeLast('.')?.replace('_', ' ')?.trim()?.ifBlank { "未知角色" } ?: "未知角色",
+            subtitle = "本地角色卡",
+            tags = emptyList(),
+            initial = avatar?.trim()?.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+            messageCount = 0,
+            favorite = false,
+            gradient = prototypeGradientFor(avatar.hashCode())
+        )
+    }
+    val card = detail?.toPrototypeCharacterCard(0) ?: fallback
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(

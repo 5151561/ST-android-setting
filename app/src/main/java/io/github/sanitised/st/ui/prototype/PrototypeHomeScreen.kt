@@ -66,7 +66,6 @@ fun PrototypeChatListScreen(
     val openDrawer = LocalSTOpenDrawer.current
     val chatItems = remember(recentChats) {
         recentChats.mapIndexed { index, chat -> chat.toPrototypeChatItem(index) }
-            .ifEmpty { prototypeFallbackChats() }
     }
     var selectedFilter by remember { mutableIntStateOf(0) }
 
@@ -149,7 +148,14 @@ fun PrototypeChatListScreen(
             }
 
             ExtendedFloatingActionButton(
-                onClick = { onOpenChat(chatItems.first()) },
+                onClick = {
+                    val firstChat = chatItems.firstOrNull()
+                    if (firstChat != null) {
+                        onOpenChat(firstChat)
+                    } else {
+                        onShowMessage("没有历史对话，请在“角色”页选择角色开始聊天")
+                    }
+                },
                 icon = { Icon(Icons.Filled.Edit, contentDescription = null) },
                 text = { Text("新对话") },
                 modifier = Modifier

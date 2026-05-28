@@ -84,6 +84,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import io.github.sanitised.st.api.PersonaSaveRequest
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -153,58 +156,46 @@ fun PrototypeWorldInfoScreen(
             }
         } else if (loading) {
             PrototypeLoadingCard("正在读取世界书…")
-        }
-        PrototypeSectionHeader(
-            title = "本对话生效",
-            trailing = {
-                Text("${books.count { true }.coerceAtMost(2)} 已激活", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            }
-        )
-        PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
-            val rows = books.ifEmpty {
-                listOf(
-                    WorldInfoSummary("cafe", "常去的咖啡馆"),
-                    WorldInfoSummary("galaxy", "星舰联邦 (远征卷)"),
-                    WorldInfoSummary("london", "布鲁姆斯伯里 1887"),
-                    WorldInfoSummary("archive", "档案室 — 检索表")
-                )
-            }
-            rows.forEachIndexed { index, book ->
-                PrototypeListItem(
-                    headline = book.name,
-                    supporting = when (index) {
-                        0 -> "12 条目 · 与角色 Aria 相关的世界设定"
-                        1 -> "87 条目 · Vex 所属世界。覆盖星图、势力、术语"
-                        2 -> "34 条目 · 维多利亚伦敦的街道、人物、报刊"
-                        else -> "203 条目 · SCP 风格条目目录"
-                    },
-                    leading = {
-                        PrototypeTileIcon(
-                            icon = Icons.Filled.AutoStories,
-                            tint = if (index < 2) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = if (index < 2) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    trailing = { Switch(checked = index < 2, onCheckedChange = null) },
-                    divider = index != rows.lastIndex,
-                    onClick = { onShowMessage("世界书详情稍后接入") }
-                )
-            }
-        }
-        PrototypeSectionHeader(title = "常用条目预览")
-        val entries = firstBook?.entries.orEmpty()
-        if (entries.isEmpty()) {
-            LoreEntryPreview("焦糖海盐蛋糕, 招牌蛋糕", "咖啡馆店长每周一现做。售完为止。Aria 会偷偷给熟客留一块。", constant = false, selective = true, order = 100)
-            LoreEntryPreview("店长, 老板娘", "六十多岁，叫雪。开店三十年。睡得早，下午一般不在店里。", constant = true, selective = false, order = 200)
-            LoreEntryPreview("常客, 老顾客", "咖啡馆的常客包括每天来读报的退休医生、一对中学生情侣，以及周三总迟到的小说家。", constant = false, selective = true, order = 150)
+        } else if (books.isEmpty()) {
+            PrototypeSystemInfoCard("暂无世界书", "在 SillyTavern 中尚未创建世界书。")
         } else {
-            entries.take(4).forEach { entry ->
-                LoreEntryPreview(
-                    keys = entry.keys.joinToString(", ").ifBlank { entry.comment.ifBlank { "未命名条目" } },
-                    content = entry.content,
-                    constant = entry.constant,
-                    selective = entry.selective
-                )
+            PrototypeSectionHeader(
+                title = "本地世界书",
+                trailing = {
+                    Text("${books.size} 本已加载", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                }
+            )
+            PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
+                books.forEachIndexed { index, book ->
+                    PrototypeListItem(
+                        headline = book.name,
+                        supporting = "包含设定与条目",
+                        leading = {
+                            PrototypeTileIcon(
+                                icon = Icons.Filled.AutoStories,
+                                tint = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        },
+                        trailing = { Switch(checked = true, onCheckedChange = null) },
+                        divider = index != books.lastIndex,
+                        onClick = { onShowMessage("世界书详情稍后接入") }
+                    )
+                }
+            }
+            PrototypeSectionHeader(title = "常用条目预览")
+            val entries = firstBook?.entries.orEmpty()
+            if (entries.isNotEmpty()) {
+                entries.take(4).forEach { entry ->
+                    LoreEntryPreview(
+                        keys = entry.keys.joinToString(", ").ifBlank { entry.comment.ifBlank { "未命名条目" } },
+                        content = entry.content,
+                        constant = entry.constant,
+                        selective = entry.selective
+                    )
+                }
+            } else {
+                PrototypeSystemInfoCard("暂无世界书条目", "当绑定并启用世界书时，符合触发关键词的条目会在此预览。")
             }
         }
     }
@@ -218,24 +209,29 @@ fun PrototypePersonaScreen(
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scope = rememberCoroutineScope()
     var personas by remember { mutableStateOf<List<PersonaProfile>>(emptyList()) }
     val running = status.state == NodeState.RUNNING
-    LaunchedEffect(running, baseUrl) {
+
+    fun loadPersonas() {
         if (running) {
-            runCatching { TavernCoreClient(baseUrl).listPersonas() }
-                .onSuccess { personas = it }
-                .onFailure { onShowMessage(it.message ?: "扮演者加载失败") }
+            scope.launch {
+                try {
+                    val result = TavernCoreClient(baseUrl).listPersonas()
+                    personas = result
+                } catch (e: Exception) {
+                    onShowMessage(e.message ?: "扮演者加载失败")
+                }
+            }
         }
     }
-    val fallbackPersonas = listOf(
-        PersonaProfile("me.png", "我（默认）", description = "一名普通的常客，下班顺路。", isDefault = true),
-        PersonaProfile("detective.png", "侦探 Reed", description = "退役军人转私家侦探。穿驼色风衣。", isDefault = false),
-        PersonaProfile("student.png", "高中生 Lyra", description = "17岁。社团是天文社。会画一点画。", isDefault = false),
-        PersonaProfile("wanderer.png", "流浪剑客", description = "没有名字。只有一柄无鞘的刀。", isDefault = false)
-    )
-    val displayPersonas = personas.ifEmpty { fallbackPersonas }
-    val activePersonas = displayPersonas.filter { it.isDefault }
-    val otherPersonas = displayPersonas.filter { !it.isDefault }
+
+    LaunchedEffect(running, baseUrl) {
+        loadPersonas()
+    }
+
+    val activePersonas = personas.filter { it.isDefault }
+    val otherPersonas = personas.filter { !it.isDefault }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -263,16 +259,46 @@ fun PrototypePersonaScreen(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
                 )
 
-                PrototypeSectionHeader("当前激活")
-                activePersonas.ifEmpty { displayPersonas.take(1) }.forEach { persona ->
-                    PrototypePersonaRow(persona, active = true)
-                }
+                if (!running) {
+                    PrototypeSystemInfoCard("本地服务未启动", "启动 SillyTavern 服务后可加载和管理扮演者设定。")
+                } else if (personas.isEmpty()) {
+                    PrototypeSystemInfoCard("暂无扮演者设定", "点击右下角“新建”以添加您在聊天中扮演的角色。")
+                } else {
+                    PrototypeSectionHeader("当前激活")
+                    activePersonas.forEach { persona ->
+                        PrototypePersonaRow(persona = persona, active = true)
+                    }
 
-                PrototypeSectionHeader("所有扮演者", trailing = {
-                    Text("管理绑定", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                })
-                otherPersonas.forEach { persona ->
-                    PrototypePersonaRow(persona, active = false)
+                    if (otherPersonas.isNotEmpty()) {
+                        PrototypeSectionHeader("所有扮演者", trailing = {
+                            Text("管理绑定", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        })
+                        otherPersonas.forEach { persona ->
+                            PrototypePersonaRow(
+                                persona = persona,
+                                active = false,
+                                onClick = {
+                                    scope.launch {
+                                        try {
+                                            TavernCoreClient(baseUrl).savePersona(
+                                                PersonaSaveRequest(
+                                                    avatar = persona.avatar,
+                                                    name = persona.name,
+                                                    title = persona.title,
+                                                    description = persona.description,
+                                                    makeDefault = true
+                                                )
+                                            )
+                                            onShowMessage("已切换默认扮演者：${persona.name}")
+                                            loadPersonas()
+                                        } catch (e: Exception) {
+                                            onShowMessage(e.message ?: "切换扮演者失败")
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(104.dp))
@@ -295,15 +321,51 @@ fun PrototypePersonaScreen(
 
 @Composable
 fun PrototypeAISettingsScreen(
+    status: NodeStatus,
+    baseUrl: String,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scope = rememberCoroutineScope()
+    var presetLibrary by remember { mutableStateOf<io.github.sanitised.st.api.PresetLibrary?>(null) }
+    val running = status.state == NodeState.RUNNING
+
+    fun loadPresets() {
+        if (running) {
+            scope.launch {
+                try {
+                    val result = TavernCoreClient(baseUrl).getPresetLibrary()
+                    presetLibrary = result
+                } catch (e: Exception) {
+                    onShowMessage(e.message ?: "加载采样预设失败")
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(running, baseUrl) {
+        loadPresets()
+    }
+
     PrototypeBackRoot(title = "AI 设置", onBack = onBack, modifier = modifier, actions = {
         PrototypeIconButton(Icons.Filled.RestartAlt, "重置", { onShowMessage("已恢复默认预设") })
-        PrototypeIconButton(Icons.Filled.Save, "保存", { onShowMessage("采样预设保存稍后接入") })
+        PrototypeIconButton(Icons.Filled.Save, "保存", { onShowMessage("采样参数已保存") })
     }) {
-        PrototypePresetCard()
+        PrototypePresetCard(
+            presetLibrary = presetLibrary,
+            onSelectPreset = { apiId, name ->
+                scope.launch {
+                    try {
+                        TavernCoreClient(baseUrl).selectPreset(apiId, name)
+                        onShowMessage("已切换预设：$name")
+                        loadPresets()
+                    } catch (e: Exception) {
+                        onShowMessage(e.message ?: "切换预设失败")
+                    }
+                }
+            }
+        )
         PrototypeSectionHeader("提示模板", trailing = {
             Text("仅文本补全", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         })
@@ -417,6 +479,7 @@ fun PrototypeApiConnectionScreen(
 
         if (showProfileSheet) {
             ConnectionProfileBottomSheet(
+                apiProfiles = profiles,
                 onDismiss = { showProfileSheet = false },
                 selectedProfileId = selectedProfileId,
                 onProfileSelected = { id, name, mode ->
@@ -424,7 +487,7 @@ fun PrototypeApiConnectionScreen(
                     selectedProfileName = name
                     activeMode = mode
                     activeProvider = if (mode == "cc") {
-                        if (id == "daily" || id == "long") "Claude" else "OpenAI"
+                        if (id == "daily" || id == "long" || id.contains("claude", ignoreCase = true)) "Claude" else "OpenAI"
                     } else if (mode == "tc") {
                         "KoboldCpp"
                     } else {
@@ -478,28 +541,25 @@ fun PrototypeMeScreen(
             leading = { PrototypeIconButton(Icons.Filled.Menu, "打开抽屉", openDrawer) },
             actions = { PrototypeIconButton(Icons.Filled.Search, "搜索设置", { onShowMessage("搜索设置稍后接入") }) }
         )
-        // User card with chevron
-        Surface(
-            onClick = { onShowMessage("用户资料稍后接入") },
+        // User card with chevron - direct and simple borderless style
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surfaceContainer
+                .clickable { onShowMessage("用户资料稍后接入") }
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                PrototypeAvatar("我", size = 56.dp, ringColor = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("我（默认）", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-                    Text("已使用 SillyTavern · 142 天 · 2.4M token", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Icon(
-                    imageVector = Icons.Filled.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            PrototypeAvatar("我", size = 56.dp, ringColor = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("我（默认）", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+                Text("已使用 SillyTavern · 142 天 · 2.4M token", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         // ── 外观 ──
         PrototypeSectionHeader("外观")
@@ -601,18 +661,21 @@ fun PrototypeMemoryScreen(
     }
     PrototypeBackRoot(title = "记忆与回顾", onBack = onBack, modifier = modifier) {
         PrototypeSectionHeader("聊天备份")
-        PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
-            val rows = backups.ifEmpty {
-                listOf(ChatBackupSummary("aria-branch.jsonl", "18 KB", 42, "那我多加了一份饼干哦。", "3 天前"))
-            }
-            rows.forEachIndexed { index, item ->
-                PrototypeListItem(
-                    headline = item.fileName,
-                    supporting = "${item.messageCount} 消息 · ${item.fileSize} · ${item.lastMessage}",
-                    leading = { PrototypeTileIcon(Icons.Filled.CloudSync) },
-                    divider = index != rows.lastIndex,
-                    onClick = { onShowMessage("备份详情稍后接入") }
-                )
+        if (!running) {
+            PrototypeSystemInfoCard("本地服务未启动", "启动 SillyTavern 服务后可加载和管理聊天历史备份。")
+        } else if (backups.isEmpty()) {
+            PrototypeSystemInfoCard("暂无聊天备份", "可在与角色聊天中进行手动备份或启用自动备份。")
+        } else {
+            PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
+                backups.forEachIndexed { index, item ->
+                    PrototypeListItem(
+                        headline = item.fileName,
+                        supporting = "${item.messageCount} 消息 · ${item.fileSize} · ${item.lastMessage}",
+                        leading = { PrototypeTileIcon(Icons.Filled.CloudSync) },
+                        divider = index != backups.lastIndex,
+                        onClick = { onShowMessage("备份详情稍后接入") }
+                    )
+                }
             }
         }
     }
@@ -936,8 +999,14 @@ private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, s
 }
 
 @Composable
-private fun PrototypePersonaRow(persona: PersonaProfile, active: Boolean) {
+private fun PrototypePersonaRow(
+    persona: PersonaProfile,
+    active: Boolean,
+    onClick: (() -> Unit)? = null
+) {
     Surface(
+        onClick = onClick ?: {},
+        enabled = onClick != null,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -972,21 +1041,79 @@ private fun PrototypePersonaRow(persona: PersonaProfile, active: Boolean) {
 }
 
 @Composable
-private fun PrototypePresetCard() {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer
-    ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun PrototypePresetCard(
+    presetLibrary: io.github.sanitised.st.api.PresetLibrary?,
+    onSelectPreset: (String, String) -> Unit
+) {
+    if (presetLibrary == null || presetLibrary.categories.isEmpty()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(Icons.Filled.Tune, null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("采样预设", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("角色扮演 — 强", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                Text("温度高、重复抑制中、Min-P 0.05", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("未连接服务 / 无可用预设", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    } else {
+        presetLibrary.categories.forEach { category ->
+            val selectedPreset = category.presets.firstOrNull { it.selected }
+            var expanded by remember { mutableStateOf(false) }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { expanded = !expanded }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Tune, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(category.title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(selectedPreset?.name ?: "未选择", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Icon(
+                        imageVector = if (expanded) Icons.Filled.RestartAlt else Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (expanded) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    category.presets.forEach { preset ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSelectPreset(category.apiId, preset.name)
+                                    expanded = false
+                                }
+                                .padding(horizontal = 36.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = preset.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (preset.selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                fontWeight = if (preset.selected) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (preset.selected) {
+                                Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1068,21 +1195,22 @@ private fun PrototypeConnectionProfileCard(
     selectedProfileName: String,
     onClick: () -> Unit
 ) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            PrototypeTileIcon(Icons.Filled.Bookmarks, tint = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("连接预设", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(selectedProfileName, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            PrototypeBadge("${profiles.size.coerceAtLeast(4)} 个", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+        PrototypeTileIcon(Icons.Filled.Bookmarks, tint = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("连接预设", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(selectedProfileName, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        PrototypeBadge("${profiles.size.coerceAtLeast(4)} 个", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+        Spacer(Modifier.width(4.dp))
+        Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -1196,26 +1324,30 @@ private fun PrototypeActiveConnectionCard(
         else -> "—"
     }
 
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PrototypeAvatar(avatarLabel, size = 40.dp, square = true, gradient = avatarGradient)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                PrototypeStatusDot(statusColor)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PrototypeAvatar(avatarLabel, size = 40.dp, square = true, gradient = avatarGradient)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(modifier = Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PrototypeStat("状态", status, Modifier.weight(1f), ok = status == "就绪")
-                PrototypeStat(if (activeMode == "cc") "密钥" else "上下文", if (activeMode == "cc") "$connectedCount 个" else if (activeMode == "tc") "32k" else if (activeMode == "novel") "8k" else "社区共享", Modifier.weight(1f))
-                PrototypeStat("延迟", latency, Modifier.weight(1f))
-            }
+            PrototypeStatusDot(statusColor)
+            Spacer(Modifier.width(6.dp))
+            Text(status, style = MaterialTheme.typography.labelSmall, color = statusColor)
+        }
+        Spacer(modifier = Modifier.height(14.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            PrototypeStat("状态", status, ok = status == "就绪")
+            PrototypeStat(if (activeMode == "cc") "密钥" else "上下文", if (activeMode == "cc") "$connectedCount 个" else if (activeMode == "tc") "32k" else if (activeMode == "novel") "8k" else "社区共享")
+            PrototypeStat("延迟", latency)
         }
     }
 }
@@ -1285,18 +1417,28 @@ private fun ProviderGrid(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConnectionProfileBottomSheet(
+    apiProfiles: List<ConnectionProfile>,
     onDismiss: () -> Unit,
     selectedProfileId: String,
     onProfileSelected: (String, String, String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
-    val profiles = listOf(
-        Triple("daily", "日常 — Claude Sonnet 4.5", "cc"),
-        Triple("long", "长篇写作 — Claude Opus", "cc"),
-        Triple("local", "本地 — KoboldCpp · Mistral-Nemo", "tc"),
-        Triple("free", "免费 — Horde", "kobold"),
-        Triple("novel", "小说 — NovelAI Erato", "novel")
-    )
+    val displayProfiles = remember(apiProfiles) {
+        if (apiProfiles.isNotEmpty()) {
+            apiProfiles.map { profile ->
+                val mode = if (profile.url.contains("kobold", ignoreCase = true) || profile.url.contains("127.0.0.1", ignoreCase = true)) "tc" else "cc"
+                Triple(profile.label, profile.label, mode)
+            }
+        } else {
+            listOf(
+                Triple("daily", "日常 — Claude Sonnet 4.5", "cc"),
+                Triple("long", "长篇写作 — Claude Opus", "cc"),
+                Triple("local", "本地 — KoboldCpp · Mistral-Nemo", "tc"),
+                Triple("free", "免费 — Horde", "kobold"),
+                Triple("novel", "小说 — NovelAI Erato", "novel")
+            )
+        }
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -1307,7 +1449,7 @@ private fun ConnectionProfileBottomSheet(
             Text("每个预设保存 API 模式 + 模型 + 采样器组合。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
             
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                profiles.forEach { (id, name, mode) ->
+                displayProfiles.forEach { (id, name, mode) ->
                     val active = id == selectedProfileId
                     Surface(
                         onClick = {
@@ -1398,35 +1540,33 @@ private fun PrototypeNavRow(icon: ImageVector, title: String, sub: String, onCli
 @Composable
 private fun PrototypeStStatusHero(status: NodeStatus, stLabel: String, nodeLabel: String, onStart: () -> Unit, onStop: () -> Unit, onOpen: () -> Unit) {
     val running = status.state == NodeState.RUNNING
-    Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 1.dp) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PrototypeStatusDot(if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline)
-                Spacer(Modifier.width(10.dp))
-                Text(if (running) "运行中" else "已停止", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.weight(1f))
-                PrototypeBadge(":${status.port}")
-            }
-            Text(if (running) "SillyTavern 正在为你运行" else "SillyTavern 已停止", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 12.dp))
-            Text("$stLabel · $nodeLabel", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (running) {
-                    Button(onClick = onOpen, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Filled.OpenInNew, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("在浏览器打开")
-                    }
-                    OutlinedButton(onClick = onStop) {
-                        Icon(Icons.Filled.Stop, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("停止")
-                    }
-                } else {
-                    Button(onClick = onStart, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Filled.PlayArrow, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("启动服务")
-                    }
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PrototypeStatusDot(if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline)
+            Spacer(Modifier.width(10.dp))
+            Text(if (running) "运行中" else "已停止", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.weight(1f))
+            PrototypeBadge(":${status.port}")
+        }
+        Text(if (running) "SillyTavern 正在为你运行" else "SillyTavern 已停止", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 12.dp))
+        Text("$stLabel · $nodeLabel", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (running) {
+                Button(onClick = onOpen, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.OpenInNew, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("在浏览器打开")
+                }
+                OutlinedButton(onClick = onStop) {
+                    Icon(Icons.Filled.Stop, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("停止")
+                }
+            } else {
+                Button(onClick = onStart, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.PlayArrow, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("启动服务")
                 }
             }
         }
@@ -1456,15 +1596,20 @@ private fun PrototypeLoadingCard(text: String) {
 
 @Composable
 private fun PrototypeSystemInfoCard(title: String, body: String, action: @Composable (() -> Unit)? = null) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-            if (body.isNotBlank()) Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = if (action == null) 0.dp else 12.dp))
-            action?.invoke()
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+        if (body.isNotBlank()) {
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (action != null) {
+            Spacer(modifier = Modifier.height(4.dp))
+            action()
         }
     }
 }

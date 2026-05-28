@@ -317,16 +317,13 @@ fun PrototypeSectionHeader(
 @Composable
 fun PrototypeListSurface(
     modifier: Modifier = Modifier,
-    color: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    color: Color = Color.Transparent,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Surface(
+    Column(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = color
-    ) {
-        Column(content = content)
-    }
+        content = content
+    )
 }
 
 @Composable
@@ -394,7 +391,7 @@ fun PrototypeListItem(
         if (divider) {
             HorizontalDivider(
                 modifier = Modifier.padding(start = if (leading == null) 16.dp else 72.dp),
-                color = MaterialTheme.colorScheme.outlineVariant
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
             )
         }
     }
