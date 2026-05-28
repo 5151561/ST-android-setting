@@ -1,8 +1,8 @@
 # SillyTavern Chat 原生界面迁移方案
 
 版本：0.4  
-日期：2026-05-26  
-状态：**P0 已实现，待真机验证**（已对照 SillyTavern 源码审查）  
+日期：2026-05-28
+状态：**P0 代码已收口，待真机验证**（已对照 SillyTavern 源码审查）
 适用范围：ST-android 下一阶段 Chat 原生化、JS Bridge、SillyTavern 运行时复用、API 对接
 
 ## 1. 背景和目标
@@ -304,8 +304,8 @@ Web 端角色入口主要在右侧角色面板：
 
 原生端建议拆成：
 
-1. `CharacterListScreen`：继续复用当前原生角色列表。
-2. `CharacterDetailScreen`：历史聊天列表可从这里进入 Chat。
+1. `PrototypeCharacterLibraryScreen`：复用当前原生角色库入口。
+2. `PrototypeCharacterProfileScreen`：历史聊天列表可从这里进入 Chat。
 3. `NativeChatScreen`：当前角色聊天。
 4. `ChatRuntimeWebViewHost`：不可作为主要视觉 UI，只负责保持 ST runtime。
 
@@ -801,21 +801,34 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
 
 ## 15. P0 实现进度
 
-日期：2026-05-26（v0.4a 修订）
-状态：**P0 代码已落地，待真机验证**
+日期：2026-05-28（v0.4b 收口）
+状态：**P0 代码已收口，待真机验证**
+
+### v0.4b 收口（空屏和 runtime 恢复修复）
+
+基于后续界面改版后的代码回查，P0 又补齐了以下稳定性问题：
+
+1. **Runtime WebView 不再 0dp 挂载**：`NativeChatScreen` 中的 runtime WebView 从 `Box(Modifier.size(0.dp))` 改为 1dp 隐藏宿主，确保 WebView 真正参与测量和窗口挂载，避免只剩背景色的空屏风险。
+2. **目标聊天改为 ready 后重放**：从角色页或最近聊天进入 Chat 时，`MainActivity` 只记录 `WebViewTarget.CharacterChat`；等 JS adapter 发出 `runtime.ready` 后，由 `NativeChatScreen` 统一通过 `ChatRuntimeBridge.openCharacter()` 打开目标角色/历史聊天，避免向旧 WebView 或未初始化 runtime 发命令。
+3. **WebView reload/dispose 会重置原生 runtime 状态**：`ChatWebViewScreen` 增加 `onRuntimeReset`、`onWebViewDisposed` 回调；页面重载、服务停止、WebView 销毁时，`ChatStore` 会回到 `NOT_READY`，输入栏随之禁用。
+4. **Bridge 命令不再静默丢失**：Kotlin 侧 dispatch 会检测 `window.STAndroidChatRuntime` 是否已挂载；未挂载时回到“正在重新连接”状态。JS 侧 `bridge.error` 也会进入 `ChatStore.runtimeError`。
+5. **消息同步去重**：`ChatStore.addMessage()` 改为按 message id upsert，避免 `message.added` 与 `chat.loaded` snapshot 交错时重复显示消息。
+6. **角色库直达聊天重新接通**：当前界面已迁到 `PrototypeCharacterLibraryScreen` / `PrototypeCharacterProfileScreen`，角色卡和详情页都会进入同一条 `WebViewTarget.CharacterChat` ready 后重放链路。
+7. **JS adapter 打开角色/聊天改为 await**：`chat.openCharacter` 会等待 `selectCharacterById()` 和 `openCharacterChat()` 完成后再发 snapshot/result；同时监听 `CHAT_LOADED` 事件并在 send/stop/reload 后主动刷新 snapshot。
+8. **真机反馈后的可见性修复**：最近聊天在 API 暂未实现时回落到本地聊天历史；打开聊天不再保留 demo 分支；Chat 页面切目标时隐藏旧消息并显示正在打开的目标/错误；输入法弹出时输入栏使用 IME inset 抬起，消息列表随键盘出现滚到底部。
 
 ### v0.4a 修订（代码审查后修复）
 
 基于代码审查反馈，修复了以下 3 个关键问题：
 
-1. **`runtime.ready` 时序修正**：不再在拿到 `eventSource` 时立即发送 `runtime.ready`。改为监听 ST 的 `APP_READY` 事件（对应 `event_types.APP_READY`），该事件在 ST 完成 `firstLoadInit`、角色加载、初始聊天渲染后才触发。同时保留一个兜底检查：如果注入时 `APP_READY` 已经触发过（角色列表非空且 chat 存在），则立即发送 ready。
+1. **`runtime.ready` 时序修正**：不再在拿到 `eventSource` 时立即发送 `runtime.ready`。改为监听 ST 的 `APP_READY` 事件（对应 `event_types.APP_READY`），该事件在 ST 完成 `firstLoadInit`、角色加载、初始聊天渲染后才触发。ST 的 `EventEmitter` 会对 `APP_READY` 进行 auto-fire，adapter 注入晚于 ready 时也会收到该事件。
 2. **函数访问路径统一为 `getContext()`**：
    - `generation.regenerate` / `generation.continue`：从 `window.Generate` 改为 `ctx.generate`（`getContext()` 上的 `generate` 属性，映射自 `Generate`）
    - `generation.stop`：优先使用 `ctx.stopGeneration`，回退到 DOM `#mes_stop`
    - `chat.openCharacter`：从 `ctx.selectCharacterById || window.selectCharacterById` 改为仅 `ctx.selectCharacterById`；`openCharacterChat` 同理
    - `chat.new`：由于 `doNewChat` 是 ES module export 但不在 `getContext()` 上，改为 DOM 点击 `#option_start_new_chat`（ST 自身的新建聊天按钮）
    - `chat.reload`：**新增实现**，调用 `ctx.reloadCurrentChat()`（返回 Promise，完成后发送 snapshot）
-3. **角色列表直接进入 Chat**：`CharacterListScreen` 新增 `onOpenChat` 回调，角色列表行的下拉菜单中新增"聊天"选项（使用已有的 `R.string.character_hub_open_chat`），点击后直接导航到 Chat 页并打开该角色。`MainActivity` 中将此回调连接到 `openCharacterChatFromCharacterManagement`。
+3. **角色列表直接进入 Chat**：角色库入口新增 `onOpenChat` 回调，点击后直接导航到 Chat 页并打开该角色。v0.4b 后对应实现位于 `PrototypeCharacterLibraryScreen` 的角色卡对话按钮，`MainActivity` 将此回调连接到 `openCharacterChatFromCharacterManagement`。
 
 Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 
@@ -842,15 +855,15 @@ Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 | `STAndroidBridge.kt` | 新增 `postChatEvent` `@JavascriptInterface` 方法和 `chatEventHandler` 参数 |
 | `WebViewNavigator.kt` | 新增 `injectChatRuntimeAdapter()` 从 assets 加载 JS adapter，`resetInjectionState()` 处理页面重载 |
 | `ChatWebViewScreen.kt` | 新增 `chatEventHandler` 和 `onWebViewReady` 参数；`onPageFinished` 中注入 adapter；页面 start/dispose 时重置注入状态 |
-| `MainActivity.kt` | Chat tab 替换为 `NativeChatScreen`；创建共享 `ChatStore` 和 `ChatRuntimeBridge`；角色详情页和角色列表进入聊天时触发 bridge `openCharacter` |
-| `CharacterListScreen.kt` | 新增 `onOpenChat` 回调参数；角色行下拉菜单新增"聊天"选项 |
+| `MainActivity.kt` | Chat tab 替换为 `NativeChatScreen`；创建共享 `ChatStore` 和 `ChatRuntimeBridge`；角色详情页和角色列表进入聊天时记录 `WebViewTarget.CharacterChat`，等待 runtime ready 后统一重放 |
+| `PrototypeCharacterScreens.kt` | `PrototypeCharacterLibraryScreen` 和 `PrototypeCharacterProfileScreen` 接入 `onOpenChat`，角色卡与详情页都能进入原生 Chat |
 
 #### P0 验收清单对照
 
 | # | 验收项 | 状态 | 说明 |
 |---|---|---|---|
 | 1 | 原生 Chat 页面能等待 Runtime WebView ready | ✅ 已实现 | JS adapter 轮询 ST `eventSource`，就绪后发送 `runtime.ready` |
-| 2 | 从角色列表或角色详情进入 Chat，能打开正确角色 | ✅ 已实现 | `openCharacterChatFromCharacterManagement` → bridge `openCharacter` + `WebViewTarget.CharacterChat` |
+| 2 | 从角色列表或角色详情进入 Chat，能打开正确角色 | ✅ 已实现 | `openCharacterChatFromCharacterManagement` 记录 `WebViewTarget.CharacterChat`；runtime ready 后由 `NativeChatScreen` 调用 bridge 打开目标角色 |
 | 3 | 指定历史聊天时，能打开对应 chat file | ✅ 已实现 | `chat.openCharacter` 命令携带 `chatFile`，JS 侧调用 `openCharacterChat(normalized)` |
 | 4 | 原生消息列表显示 ST runtime 的实际消息 | ✅ 已实现 | `chat.loaded` snapshot → `ChatStore.applySnapshot` → `MessageList` composable |
 | 5 | 空聊天能显示角色首条消息 | ✅ 已实现 | snapshot 包含 ST runtime 的 `chat[]`，首条消息由 ST 生成 |
@@ -869,16 +882,16 @@ Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 
 ### 待验证（需真机测试）
 
-1. Runtime WebView 在 `Box(Modifier.size(0.dp))` 中是否正常运行 ST 前端（WebView 不可见但 JS 仍执行）
-2. `postChatEvent` 的 `@JavascriptInterface` 在高频 streaming 场景下的性能
-3. 角色切换时 `selectCharacterById` + `openCharacterChat` 的时序是否可靠
-4. 后台切回前台时 WebView 状态是否保持
-5. 输入法弹出时消息列表的滚动行为
+1. 从最近聊天或角色卡进入 Chat 时，标题和消息必须切到对应角色/聊天；如果 JS runtime 找不到角色，Chat 页要显示明确错误而不是继续显示上一段聊天。
+2. 输入法弹出时，输入栏必须抬到键盘上方，消息列表必须保持最后一条消息可见。
+3. 生成回复时，streaming token 更新不能明显卡顿；必要时通过 WebView 日志和诊断导出判断 `postChatEvent` 是否过密。
+4. App 切后台再回来后，当前角色标题、消息列表、输入栏可用状态必须保持一致；如果 WebView 重载，需要重新进入“正在连接/正在打开”状态并恢复 snapshot。
+5. Runtime WebView 的 1dp 隐藏宿主无法直接肉眼观察，验收以 `runtime.ready` 后能打开真实目标、能发送/停止、reload 后能重新同步为准。
 
 ### 与方案的偏差和决策
 
 1. **`ChatController` 和 `ChatBridgeEventHandler` 合并**：方案第 10 节建议分开，实现时合并到 `ChatRuntimeBridge` 中，因为 P0 阶段命令和事件处理紧密耦合，拆分反而增加复杂度。P1 如果逻辑膨胀再拆分。
-2. **Runtime WebView 作为 NativeChatScreen 的子组件**：方案建议 `ChatRuntimeWebViewHost` 独立管理生命周期，实现时嵌入 `NativeChatScreen` 的不可见 `Box` 中，复用现有 `ChatWebViewScreen` 的服务启动和健康检查逻辑。
+2. **Runtime WebView 作为 NativeChatScreen 的子组件**：方案建议 `ChatRuntimeWebViewHost` 独立管理生命周期，实现时嵌入 `NativeChatScreen` 的 1dp 隐藏宿主中，复用现有 `ChatWebViewScreen` 的服务启动和健康检查逻辑。
 3. **`chat.send` 和 `chat.new` 通过 DOM 操作**：`chat.send` 直接设置 `#send_textarea.value` 并 click `#send_but`；`chat.new` 点击 `#option_start_new_chat`。两者的目标函数（`sendTextareaMessage`、`doNewChat`）是 ES module export 但不在 `getContext()` 上，DOM 操作是唯一可靠的调用路径，但依赖 ST 前端 DOM 结构不变。
 4. **其他命令统一走 `getContext()`**：`generation.stop`（`ctx.stopGeneration`）、`generation.regenerate` / `generation.continue`（`ctx.generate`）、`chat.reload`（`ctx.reloadCurrentChat`）、`chat.openCharacter`（`ctx.selectCharacterById` + `ctx.openCharacterChat`）全部通过 `SillyTavern.getContext()` 暴露的公开 API 调用，不依赖 `window` 全局变量。
 5. **Chat UI 字符串暂未国际化**：P0 使用英文硬编码字符串，后续统一添加到 `strings.xml` 和 `values-zh-rCN/strings.xml`。

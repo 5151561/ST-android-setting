@@ -14,10 +14,18 @@ class ChatRuntimeBridge(
 
     fun attach(webView: WebView) {
         this.webView = webView
+        store.markRuntimeUnavailable()
     }
 
-    fun detach() {
-        webView = null
+    fun detach(webView: WebView? = null) {
+        if (webView == null || this.webView == webView) {
+            this.webView = null
+            store.markRuntimeUnavailable()
+        }
+    }
+
+    fun markRuntimeLoading(message: String? = null) {
+        store.markRuntimeUnavailable(message)
     }
 
     fun onEvent(json: String) {
@@ -32,13 +40,11 @@ class ChatRuntimeBridge(
     private fun handleEvent(event: BridgeEvent) {
         when (event) {
             is BridgeEvent.RuntimeReady -> {
-                store.runtimeState = RuntimeState.READY
-                store.runtimeError = null
+                store.markRuntimeReady()
                 requestSnapshot()
             }
             is BridgeEvent.RuntimeError -> {
-                store.runtimeState = RuntimeState.ERROR
-                store.runtimeError = event.message
+                store.markRuntimeError(event.message)
             }
             is BridgeEvent.ChatLoaded -> {
                 store.applySnapshot(event.snapshot)
@@ -78,6 +84,7 @@ class ChatRuntimeBridge(
             }
             is BridgeEvent.CommandResult -> {}
             is BridgeEvent.CommandError -> {
+                store.recordCommandError(event.message)
                 Log.w(TAG, "Command error [${event.commandId}]: ${event.message}")
             }
         }
@@ -118,11 +125,25 @@ class ChatRuntimeBridge(
     }
 
     private fun dispatch(message: BridgeMessage) {
-        val wv = webView ?: return
-        val escaped = message.toJson().replace("\\", "\\\\").replace("'", "\\'")
-        val js = "window.STAndroidChatRuntime && window.STAndroidChatRuntime.dispatch('$escaped');"
         mainHandler.post {
-            wv.evaluateJavascript(js, null)
+            val wv = webView
+            if (wv == null) {
+                store.recordCommandError("聊天运行时还没准备好")
+                return@post
+            }
+            val js = """
+                (function() {
+                  const runtime = window.STAndroidChatRuntime;
+                  if (!runtime || typeof runtime.dispatch !== 'function') return false;
+                  runtime.dispatch(${JSONObject.quote(message.toJson())});
+                  return true;
+                })();
+            """.trimIndent()
+            wv.evaluateJavascript(js) { result ->
+                if (result != "true") {
+                    store.markRuntimeUnavailable("聊天运行时正在重新连接")
+                }
+            }
         }
     }
 

@@ -73,6 +73,8 @@ fun ChatWebViewScreen(
     onBackToHome: () -> Unit,
     chatEventHandler: ((String) -> Unit)? = null,
     onWebViewReady: ((WebView) -> Unit)? = null,
+    onWebViewDisposed: ((WebView) -> Unit)? = null,
+    onRuntimeReset: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -81,6 +83,9 @@ fun ChatWebViewScreen(
     val currentPort = rememberUpdatedState(status.port)
     val currentThemeMode = rememberUpdatedState(themeMode)
     val currentTarget = rememberUpdatedState(target)
+    val currentOnWebViewReady = rememberUpdatedState(onWebViewReady)
+    val currentOnWebViewDisposed = rememberUpdatedState(onWebViewDisposed)
+    val currentOnRuntimeReset = rememberUpdatedState(onRuntimeReset)
     val logWebView: (String) -> Unit = remember(context, diagnosticScope) {
         { message ->
             diagnosticScope.launch(Dispatchers.IO) {
@@ -169,6 +174,7 @@ fun ChatWebViewScreen(
                     super.onPageStarted(view, url, favicon)
                     pageError = null
                     WebViewNavigator.resetInjectionState()
+                    currentOnRuntimeReset.value?.invoke()
                     logWebView("webview: page-started url=$url")
                 }
 
@@ -242,6 +248,9 @@ fun ChatWebViewScreen(
     }
 
     LaunchedEffect(status.state) {
+        if (status.state != NodeState.RUNNING) {
+            currentOnRuntimeReset.value?.invoke()
+        }
         if (status.state == NodeState.STOPPED && !startRequested) {
             startRequested = true
             onStartService()
@@ -291,9 +300,10 @@ fun ChatWebViewScreen(
         }
     }
     DisposableEffect(Unit) {
-        onWebViewReady?.invoke(webView)
+        currentOnWebViewReady.value?.invoke(webView)
         onDispose {
             WebViewNavigator.resetInjectionState()
+            currentOnWebViewDisposed.value?.invoke(webView)
             webView.stopLoading()
             webView.destroy()
         }

@@ -61,6 +61,22 @@ class NativeHubScreensContractTest {
     }
 
     @Test
+    fun mainNavigationContentKeepsFullSizeDuringRouteRestore() {
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+
+        assertTrue(
+            "Main content should stay pinned to Scaffold bounds so a transient empty route cannot collapse to a blank page.",
+            Regex("""Box\(\s*modifier\s*=\s*Modifier\s*\.padding\(innerPadding\)\s*\.fillMaxSize\(\)\s*\)""")
+                .containsMatchIn(mainActivity)
+        )
+        assertTrue(
+            "NavHost should fill the content slot instead of relying on the active destination to determine its size.",
+            Regex("""NavHost\(\s*navController\s*=\s*navController,\s*startDestination\s*=\s*STRoutes\.HOME,\s*modifier\s*=\s*Modifier\.fillMaxSize\(\)""")
+                .containsMatchIn(mainActivity)
+        )
+    }
+
+    @Test
     fun m2CharacterChatEntryPreservesReturnStack() {
         val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
         val listScreen = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterListScreen.kt").readText()

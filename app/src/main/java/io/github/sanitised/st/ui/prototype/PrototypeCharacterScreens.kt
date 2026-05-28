@@ -26,10 +26,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Badge
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
@@ -42,7 +43,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Theaters
@@ -221,7 +221,7 @@ fun PrototypeCharacterLibraryScreen(
                             onClick = { importLauncher.launch(characterImportMimeTypes) }
                         )
                         PrototypeIconButton(
-                            icon = Icons.Filled.Sort,
+                            icon = Icons.AutoMirrored.Filled.Sort,
                             contentDescription = "排序",
                             onClick = { onShowMessage("按最近更新排序") }
                         )
@@ -270,7 +270,8 @@ fun PrototypeCharacterLibraryScreen(
                         items(cards, key = { it.id }) { card ->
                             PrototypeCharacterCardView(
                                 card = card,
-                                onClick = { onOpenCharacter(card.id) }
+                                onClick = { onOpenCharacter(card.id) },
+                                onOpenChat = { onOpenChat(card.id) }
                             )
                         }
                     }
@@ -375,7 +376,7 @@ fun PrototypeCharacterProfileScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(onClick = { onOpenChat(null) }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Filled.Chat, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("开始对话")
                     }
@@ -539,7 +540,8 @@ fun PrototypeCharacterCreateScreen(
 @Composable
 private fun PrototypeCharacterCardView(
     card: PrototypeCharacterCard,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onOpenChat: () -> Unit
 ) {
     Surface(
         onClick = onClick,
@@ -594,6 +596,18 @@ private fun PrototypeCharacterCardView(
                                 .size(16.dp)
                         )
                     }
+                }
+                IconButton(
+                    onClick = onOpenChat,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Chat,
+                        contentDescription = "开始对话",
+                        tint = Color.White
+                    )
                 }
                 PrototypeBadge(
                     label = "${card.messageCount} 消息",

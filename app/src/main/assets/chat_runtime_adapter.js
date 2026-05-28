@@ -46,6 +46,40 @@
     return root && typeof root.getContext === 'function' ? root.getContext() : null;
   }
 
+  function normalizeIdentifier(value) {
+    return String(value || '')
+      .split(/[\\/]/)
+      .pop()
+      .replace(/\.(png|jpe?g|webp|gif|json|jsonl|charx)$/i, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function identifiersMatch(expected, actual) {
+    var left = normalizeIdentifier(expected);
+    var right = normalizeIdentifier(actual);
+    return !!left && !!right && left === right;
+  }
+
+  function characterMatches(character, target) {
+    if (!character) return false;
+    return identifiersMatch(target, character.avatar) ||
+      identifiersMatch(target, character.avatar_url) ||
+      identifiersMatch(target, character.filename) ||
+      identifiersMatch(target, character.name);
+  }
+
+  function isRuntimeGenerating(ctx) {
+    var stopButton = document.getElementById('mes_stop');
+    var stopVisible = false;
+    if (stopButton) {
+      var stopStyle = getComputedStyle(stopButton);
+      stopVisible = stopStyle.display !== 'none' && stopStyle.visibility !== 'hidden';
+    }
+    var streaming = !!(ctx && ctx.streamingProcessor && ctx.streamingProcessor.isFinished === false);
+    return streaming || stopVisible;
+  }
+
   function serializeMessage(msg, index) {
     if (!msg) return null;
     return {
@@ -75,10 +109,16 @@
       avatarUrl: character ? (character.avatar || '') : '',
       characterName: character ? (character.name || '') : '',
       chatFile: character ? (character.chat || '') : '',
-      isGenerating: !!(window.is_send_press),
+      isGenerating: isRuntimeGenerating(ctx),
       messages: chat.map(function (msg, i) { return serializeMessage(msg, i); }).filter(Boolean),
       metadata: { integrity: chatMetadata.integrity || '' }
     };
+  }
+
+  function postSnapshot() {
+    var snap = buildSnapshot();
+    if (snap) postEvent('chat.loaded', snap);
+    return snap;
   }
 
   // --- Event source listeners ---
@@ -121,6 +161,12 @@
       postEvent('chat.changed', {});
       throttledSnapshot();
     });
+
+    if (ev.CHAT_LOADED) {
+      es.on(ev.CHAT_LOADED, function () {
+        throttledSnapshot();
+      });
+    }
 
     es.on(ev.MESSAGE_SENT, function (index) {
       var c = getContext();
@@ -176,8 +222,7 @@
     if (snapshotTimer) return;
     snapshotTimer = setTimeout(function () {
       snapshotTimer = null;
-      var snap = buildSnapshot();
-      if (snap) postEvent('chat.loaded', snap);
+      postSnapshot();
     }, 200);
   }
 
@@ -242,44 +287,49 @@
     }
   };
 
-  function handleOpenCharacter(payload, cmdId) {
-    var ctx = getContext();
-    if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+  async function handleOpenCharacter(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
 
-    var avatarUrl = payload.avatarUrl || '';
-    var chatFile = payload.chatFile || null;
-    var characters = ctx.characters || [];
+      var avatarUrl = payload.avatarUrl || '';
+      var chatFile = payload.chatFile || null;
+      var characters = ctx.characters || [];
 
-    var charIndex = characters.findIndex(function (c) {
-      if (!c) return false;
-      return c.avatar === avatarUrl || c.avatar_url === avatarUrl ||
-        c.filename === avatarUrl || c.name === avatarUrl;
-    });
+      var charIndex = characters.findIndex(function (c) { return characterMatches(c, avatarUrl); });
 
-    if (charIndex < 0) { postError(cmdId, 'Character not found: ' + avatarUrl); return; }
+      if (charIndex < 0) { postError(cmdId, 'Character not found: ' + avatarUrl); return; }
 
-    if (typeof ctx.selectCharacterById === 'function') {
-      ctx.selectCharacterById(charIndex, { switchMenu: false });
-    } else {
-      postError(cmdId, 'selectCharacterById not available');
-      return;
+      if (typeof ctx.selectCharacterById === 'function') {
+        await ctx.selectCharacterById(charIndex, { switchMenu: false });
+      } else {
+        postError(cmdId, 'selectCharacterById not available');
+        return;
+      }
+
+      ctx = getContext();
+      var activeCharacter = ctx && Array.isArray(ctx.characters) ? ctx.characters[ctx.characterId] : null;
+      var activeMatches = characterMatches(activeCharacter, avatarUrl);
+      if (!activeMatches) {
+        postError(cmdId, 'Character did not open: ' + avatarUrl);
+        return;
+      }
+
+      if (chatFile && typeof ctx.openCharacterChat === 'function') {
+        var normalized = String(chatFile).replace(/\.jsonl$/i, '');
+        await ctx.openCharacterChat(normalized);
+      }
+      postSnapshot();
+      postResult(cmdId, {});
+    } catch (err) {
+      postError(cmdId, 'openCharacter failed: ' + (err && err.message ? err.message : err));
     }
-
-    if (chatFile && typeof ctx.openCharacterChat === 'function') {
-      var normalized = String(chatFile).replace(/\.jsonl$/i, '');
-      setTimeout(function () {
-        ctx.openCharacterChat(normalized);
-        setTimeout(function () { throttledSnapshot(); }, 500);
-      }, 300);
-    } else {
-      setTimeout(function () { throttledSnapshot(); }, 500);
-    }
-    postResult(cmdId, {});
   }
 
   function handleSend(payload, cmdId) {
     var text = payload.text || '';
     if (!text.trim()) { postError(cmdId, 'Empty message'); return; }
+    if (isRuntimeGenerating(getContext())) { postError(cmdId, 'Generation is already running'); return; }
 
     var textarea = document.getElementById('send_textarea');
     var sendBtn = document.getElementById('send_but');
@@ -290,14 +340,16 @@
     setTimeout(function () {
       sendBtn.click();
       postResult(cmdId, {});
+      setTimeout(postSnapshot, 300);
     }, 50);
   }
 
   function handleStop(cmdId) {
     var ctx = getContext();
     if (ctx && typeof ctx.stopGeneration === 'function') {
-      ctx.stopGeneration();
-      postResult(cmdId, {});
+      var stopped = ctx.stopGeneration();
+      stopped ? postResult(cmdId, {}) : postError(cmdId, 'No active generation to stop');
+      setTimeout(postSnapshot, 200);
       return;
     }
     var stopBtn = document.getElementById('mes_stop');
@@ -312,8 +364,12 @@
   function handleRegenerate(cmdId) {
     var ctx = getContext();
     if (ctx && typeof ctx.generate === 'function') {
-      ctx.generate('regenerate');
-      postResult(cmdId, {});
+      Promise.resolve(ctx.generate('regenerate')).then(function () {
+        postSnapshot();
+        postResult(cmdId, {});
+      }).catch(function (err) {
+        postError(cmdId, 'regenerate failed: ' + (err && err.message ? err.message : err));
+      });
     } else {
       postError(cmdId, 'generate not available');
     }
@@ -322,8 +378,12 @@
   function handleContinue(cmdId) {
     var ctx = getContext();
     if (ctx && typeof ctx.generate === 'function') {
-      ctx.generate('continue');
-      postResult(cmdId, {});
+      Promise.resolve(ctx.generate('continue')).then(function () {
+        postSnapshot();
+        postResult(cmdId, {});
+      }).catch(function (err) {
+        postError(cmdId, 'continue failed: ' + (err && err.message ? err.message : err));
+      });
     } else {
       postError(cmdId, 'generate not available');
     }
@@ -336,6 +396,7 @@
     if (btn) {
       btn.click();
       postResult(cmdId, {});
+      setTimeout(postSnapshot, 500);
     } else {
       postError(cmdId, 'New chat button not found');
     }
@@ -345,7 +406,7 @@
     var ctx = getContext();
     if (ctx && typeof ctx.reloadCurrentChat === 'function') {
       ctx.reloadCurrentChat().then(function () {
-        throttledSnapshot();
+        postSnapshot();
         postResult(cmdId, {});
       }).catch(function (err) {
         postError(cmdId, 'reloadCurrentChat failed: ' + (err && err.message ? err.message : err));
@@ -361,27 +422,18 @@
   // emits APP_READY (after full initialization including character load).
   function init() {
     if (tryBindEvents()) {
-      // Events bound. If APP_READY already fired before we got here
-      // (unlikely but possible), check by seeing if characters are loaded.
-      var ctx = getContext();
-      if (ctx && ctx.characters && ctx.characters.length > 0 && ctx.chat) {
-        appReady = true;
-        postEvent('runtime.ready', {});
-        throttledSnapshot();
+      // APP_READY is auto-fired by ST's EventEmitter when it already happened.
+      if (appReady) {
+        postSnapshot();
       }
-      // Otherwise APP_READY listener will fire when ST is truly ready.
     } else {
       var attempts = 0;
       var timer = setInterval(function () {
         attempts++;
         if (tryBindEvents()) {
           clearInterval(timer);
-          // Same fallback check
-          var ctx = getContext();
-          if (ctx && ctx.characters && ctx.characters.length > 0 && ctx.chat) {
-            appReady = true;
-            postEvent('runtime.ready', {});
-            throttledSnapshot();
+          if (appReady) {
+            postSnapshot();
           }
         } else if (attempts > 150) {
           clearInterval(timer);

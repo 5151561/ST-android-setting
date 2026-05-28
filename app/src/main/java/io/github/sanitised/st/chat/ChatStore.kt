@@ -21,6 +21,8 @@ class ChatStore {
     val messages = mutableStateListOf<ChatMessage>()
 
     fun applySnapshot(snapshot: ChatSnapshot) {
+        runtimeState = RuntimeState.READY
+        runtimeError = null
         characterName = snapshot.characterName
         avatarUrl = snapshot.avatarUrl
         chatFile = snapshot.chatFile
@@ -29,11 +31,36 @@ class ChatStore {
         messages.addAll(snapshot.messages)
     }
 
+    fun markRuntimeReady() {
+        runtimeState = RuntimeState.READY
+        runtimeError = null
+    }
+
+    fun markRuntimeUnavailable(message: String? = null) {
+        runtimeState = RuntimeState.NOT_READY
+        isGenerating = false
+        runtimeError = message
+    }
+
+    fun markRuntimeError(message: String) {
+        runtimeState = RuntimeState.ERROR
+        isGenerating = false
+        runtimeError = message
+    }
+
+    fun recordCommandError(message: String) {
+        runtimeError = message
+    }
+
     fun addMessage(message: ChatMessage) {
-        messages.add(message)
+        upsertMessage(message)
     }
 
     fun updateMessage(message: ChatMessage) {
+        upsertMessage(message)
+    }
+
+    private fun upsertMessage(message: ChatMessage) {
         val idx = messages.indexOfFirst { it.id == message.id }
         if (idx >= 0) {
             messages[idx] = message

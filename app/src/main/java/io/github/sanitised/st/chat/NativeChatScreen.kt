@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -27,6 +30,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
@@ -40,9 +45,7 @@ import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SentimentSatisfied
-import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material.icons.filled.Translate
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -61,11 +64,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.ThemeMode
 import io.github.sanitised.st.ui.prototype.PrototypeAssistPill
@@ -85,48 +91,136 @@ fun NativeChatScreen(
     onBackToHome: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
-        ChatHeader(
-            characterName = store.characterName,
-            isGenerating = store.isGenerating,
-            runtimeState = store.runtimeState,
-            onBack = onBackToHome
-        )
-
-        Box(modifier = Modifier.weight(1f)) {
-            if (store.runtimeState == RuntimeState.NOT_READY && store.messages.isEmpty()) {
-                ChatLoadingView(modifier = Modifier.fillMaxSize())
-            } else {
-                MessageList(
-                    messages = store.messages,
-                    characterName = store.characterName.ifBlank { "Aria" },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            Box(modifier = Modifier.size(0.dp)) {
-                ChatWebViewScreen(
-                    status = status,
-                    target = target,
-                    themeMode = themeMode,
-                    onStartService = onStartService,
-                    onShowLogs = onShowLogs,
-                    onBackToHome = onBackToHome,
-                    chatEventHandler = { json -> bridge.onEvent(json) },
-                    onWebViewReady = { wv -> bridge.attach(wv) }
-                )
-            }
+    LaunchedEffect(status.state) {
+        if (status.state != NodeState.RUNNING) {
+            bridge.markRuntimeLoading()
         }
-
-        ChatQuickStrip(runtimeReady = store.runtimeState == RuntimeState.READY)
-
-        ChatInputBar(
-            isGenerating = store.isGenerating,
-            runtimeReady = store.runtimeState == RuntimeState.READY,
-            onSend = { text -> bridge.sendMessage(text) },
-            onStop = { bridge.stopGeneration() }
-        )
     }
+
+    LaunchedEffect(store.runtimeState, target) {
+        if (store.runtimeState != RuntimeState.READY) return@LaunchedEffect
+        when (target) {
+            WebViewTarget.CHAT -> bridge.requestSnapshot()
+            is WebViewTarget.CharacterChat -> bridge.openCharacter(target.avatar, target.chatFile)
+        }
+    }
+
+    val targetMatched = targetMatchesStore(target, store)
+    val visibleCharacterName = if (targetMatched) {
+        store.characterName.ifBlank { target.displayLabel() }
+    } else {
+        target.displayLabel()
+    }
+    val readyForTarget = store.runtimeState == RuntimeState.READY && targetMatched
+
+    Box(modifier = modifier.fillMaxSize()) {
+        ChatWebViewScreen(
+            status = status,
+            target = target,
+            themeMode = themeMode,
+            onStartService = onStartService,
+            onShowLogs = onShowLogs,
+            onBackToHome = onBackToHome,
+            chatEventHandler = { json -> bridge.onEvent(json) },
+            onWebViewReady = { wv -> bridge.attach(wv) },
+            onWebViewDisposed = { wv -> bridge.detach(wv) },
+            onRuntimeReset = { bridge.markRuntimeLoading() },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .size(1.dp)
+                .alpha(0.01f)
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+        ) {
+            ChatHeader(
+                characterName = visibleCharacterName,
+                isGenerating = store.isGenerating,
+                runtimeState = store.runtimeState,
+                runtimeError = store.runtimeError,
+                targetMatched = targetMatched,
+                targetLabel = target.displayLabel(),
+                onBack = onBackToHome
+            )
+
+            Box(modifier = Modifier.weight(1f)) {
+                if (!targetMatched || (store.runtimeState == RuntimeState.NOT_READY && store.messages.isEmpty())) {
+                    ChatLoadingView(
+                        targetLabel = target.displayLabel(),
+                        runtimeError = store.runtimeError,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    MessageList(
+                        messages = store.messages,
+                        characterName = visibleCharacterName,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+
+            ChatQuickStrip(runtimeReady = readyForTarget)
+
+            ChatInputBar(
+                isGenerating = store.isGenerating,
+                runtimeReady = readyForTarget,
+                onSend = { text -> bridge.sendMessage(text) },
+                onStop = { bridge.stopGeneration() }
+            )
+        }
+    }
+}
+
+private fun targetMatchesStore(target: WebViewTarget, store: ChatStore): Boolean {
+    return when (target) {
+        WebViewTarget.CHAT -> true
+        is WebViewTarget.CharacterChat -> {
+            val characterMatches = listOf(store.avatarUrl, store.characterName)
+                .any { identifiersMatch(target.avatar, it) }
+            val chatMatches = target.chatFile.isNullOrBlank() ||
+                normalizeChatFile(target.chatFile) == normalizeChatFile(store.chatFile)
+            characterMatches && chatMatches
+        }
+    }
+}
+
+private fun WebViewTarget.displayLabel(): String {
+    return when (this) {
+        WebViewTarget.CHAT -> "对话"
+        is WebViewTarget.CharacterChat -> chatFile
+            ?.takeIf { it.isNotBlank() }
+            ?.substringBeforeLast(".jsonl")
+            ?: avatar.substringAfterLast('/').substringBeforeLast('.').ifBlank { "角色聊天" }
+    }
+}
+
+private fun identifiersMatch(expected: String, actual: String): Boolean {
+    val left = normalizeIdentifier(expected)
+    val right = normalizeIdentifier(actual)
+    return left.isNotBlank() && right.isNotBlank() && left == right
+}
+
+private fun normalizeIdentifier(value: String?): String {
+    return value
+        .orEmpty()
+        .substringAfterLast('/')
+        .substringAfterLast('\\')
+        .substringBeforeLast('.')
+        .trim()
+        .lowercase()
+}
+
+private fun normalizeChatFile(value: String?): String {
+    return value
+        .orEmpty()
+        .substringAfterLast('/')
+        .substringAfterLast('\\')
+        .removeSuffix(".jsonl")
+        .trim()
+        .lowercase()
 }
 
 @Composable
@@ -134,6 +228,9 @@ private fun ChatHeader(
     characterName: String,
     isGenerating: Boolean,
     runtimeState: RuntimeState,
+    runtimeError: String?,
+    targetMatched: Boolean,
+    targetLabel: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -169,6 +266,8 @@ private fun ChatHeader(
                         overflow = TextOverflow.Ellipsis
                     )
                     val subtitle = when {
+                        !runtimeError.isNullOrBlank() -> runtimeError
+                        !targetMatched -> "正在打开 $targetLabel…"
                         isGenerating -> "生成中…"
                         runtimeState == RuntimeState.NOT_READY -> "正在连接运行时…"
                         runtimeState == RuntimeState.ERROR -> "运行时异常"
@@ -177,7 +276,7 @@ private fun ChatHeader(
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (runtimeState == RuntimeState.ERROR) {
+                        color = if (runtimeState == RuntimeState.ERROR || !runtimeError.isNullOrBlank()) {
                             MaterialTheme.colorScheme.error
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
@@ -201,16 +300,32 @@ private fun ChatHeader(
 }
 
 @Composable
-private fun ChatLoadingView(modifier: Modifier = Modifier) {
+private fun ChatLoadingView(
+    targetLabel: String,
+    runtimeError: String?,
+    modifier: Modifier = Modifier
+) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator()
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "正在等待 SillyTavern 运行时…",
+                text = if (targetLabel.isBlank()) {
+                    "正在等待 SillyTavern 运行时…"
+                } else {
+                    "正在打开 $targetLabel…"
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (!runtimeError.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = runtimeError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
     }
 }
@@ -223,8 +338,10 @@ private fun MessageList(
 ) {
     val listState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
 
-    LaunchedEffect(messages.size, messages.lastOrNull()?.mes) {
+    LaunchedEffect(messages.size, messages.lastOrNull()?.mes, imeBottom) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size)
         }
@@ -526,10 +643,10 @@ private fun AttachSheet() {
         Icons.Filled.AttachFile to "附件",
         Icons.Filled.Image to "图片",
         Icons.Filled.Palette to "生成图",
-        Icons.Filled.VolumeUp to "朗读",
+        Icons.AutoMirrored.Filled.VolumeUp to "朗读",
         Icons.Filled.Translate to "翻译",
         Icons.Filled.RecordVoiceOver to "代笔",
-        Icons.Filled.StickyNote2 to "作者注",
+        Icons.AutoMirrored.Filled.StickyNote2 to "作者注",
         Icons.Filled.Lightbulb to "思考"
     )
     Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer) {

@@ -30,24 +30,23 @@ fun rememberLocalTavernLibrarySnapshot(
         refreshKey
     ) {
         value = withContext(Dispatchers.IO) {
+            val reader = LocalTavernLibraryReader(dataRoot)
             if (serverRunning) {
                 runCatching {
                     val client = io.github.sanitised.st.api.TavernCoreClient(baseUrl = baseUrl)
-                    val characters = client.listCharacters()
-                    val recentChats = client.listRecentChats()
+                    val characters = client.listCharacters().ifEmpty { reader.listCharacters() }
+                    val recentChats = client.listRecentChats().ifEmpty { reader.listRecentChats() }
                     LocalTavernLibrarySnapshot(
                         characters = characters,
                         recentChats = recentChats
                     )
                 }.getOrElse {
-                    val reader = LocalTavernLibraryReader(dataRoot)
                     LocalTavernLibrarySnapshot(
                         characters = reader.listCharacters(),
                         recentChats = reader.listRecentChats()
                     )
                 }
             } else {
-                val reader = LocalTavernLibraryReader(dataRoot)
                 LocalTavernLibrarySnapshot(
                     characters = reader.listCharacters(),
                     recentChats = reader.listRecentChats()

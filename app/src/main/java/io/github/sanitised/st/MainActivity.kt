@@ -20,6 +20,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -550,9 +551,6 @@ class MainActivity : ComponentActivity() {
             }
             val openCharacterChatFromCharacterManagement: (String, String?) -> Unit = { avatar, chatFile ->
                 pendingWebViewTarget = WebViewTarget.CharacterChat(avatar, chatFile)
-                if (chatStore.runtimeState == io.github.sanitised.st.chat.RuntimeState.READY) {
-                    chatBridge.openCharacter(avatar, chatFile)
-                }
                 navController.navigate(STRoutes.CHAT) {
                     launchSingleTop = true
                 }
@@ -590,10 +588,15 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 ) { innerPadding ->
-                    Box(modifier = Modifier.padding(innerPadding)) {
+                    Box(
+                        modifier = Modifier
+                            .padding(innerPadding)
+                            .fillMaxSize()
+                    ) {
                         NavHost(
                             navController = navController,
-                            startDestination = STRoutes.HOME
+                            startDestination = STRoutes.HOME,
+                            modifier = Modifier.fillMaxSize()
                         ) {
                             composable(STRoutes.HOME) {
                                 // Replaces the old STAndroidApp dashboard with the prototype ChatListScreen.
@@ -612,11 +615,7 @@ class MainActivity : ComponentActivity() {
                                     nodeLabel = nodeLabel,
                                     recentChats = librarySnapshot.recentChats,
                                     onOpenChat = { chat ->
-                                        if (chat.id.endsWith("/demo")) {
-                                            navigateMainTab(STRoutes.CHAT)
-                                        } else {
-                                            openCharacterChatFromCharacterManagement(chat.characterId, chat.chatFile)
-                                        }
+                                        openCharacterChatFromCharacterManagement(chat.characterId, chat.chatFile)
                                     },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
@@ -636,7 +635,7 @@ class MainActivity : ComponentActivity() {
                             }
 
                             composable(STRoutes.CHARACTERS) {
-                                // CharacterListScreen remains as the functional fallback; the visible route uses the prototype CharLibScreen.
+                                // The visible route uses the prototype character library surface.
                                 PrototypeCharacterLibraryScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
