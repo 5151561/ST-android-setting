@@ -104,6 +104,7 @@ import io.github.sanitised.st.ui.prototype.PrototypeExtensionsScreen
 import io.github.sanitised.st.ui.prototype.PrototypeAuthorNoteCFGScreen
 import io.github.sanitised.st.ui.prototype.PrototypeQuickReplyScreen
 import io.github.sanitised.st.ui.prototype.PrototypeAppearanceScreen
+import io.github.sanitised.st.ui.prototype.configuredApiConnectionProviderCount
 import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STDialogButtonStyle
@@ -139,7 +140,7 @@ private val drawerNavItems = listOf(
     DrawerNavItem(STRoutes.CHAT_BACKUPS, "记忆与回顾", Icons.Filled.CloudSync),
     DrawerNavItem(STRoutes.AUTHOR_NOTE, "作者注 & CFG", Icons.Filled.History),
     DrawerNavItem(STRoutes.PRESETS, "AI 采样设置", Icons.Filled.Tune, isPrimaryGroup = false),
-    DrawerNavItem(STRoutes.CONNECTIONS, "API 连接", Icons.Filled.SettingsEthernet, supportingText = "3 个已连接", isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.CONNECTIONS, "API 连接", Icons.Filled.SettingsEthernet, supportingText = "0 个已配置", isPrimaryGroup = false),
     DrawerNavItem(STRoutes.EXTENSIONS, "扩展", Icons.Filled.Extension, supportingText = "6 个", isPrimaryGroup = false),
     DrawerNavItem(STRoutes.APPEARANCE, "主题外观", Icons.Filled.Palette, isPrimaryGroup = false),
     DrawerNavItem(STRoutes.MANAGE_ST, "ST 内核", Icons.Filled.Memory, supportingText = "运行中", isPrimaryGroup = false),
@@ -347,7 +348,7 @@ class MainActivity : ComponentActivity() {
             val lifecycleOwner = LocalLifecycleOwner.current
             val snackbarHostState = remember { SnackbarHostState() }
             
-            var connectedCount by remember { mutableStateOf(3) }
+            var connectedCount by remember { mutableStateOf(0) }
             val running = statusState.value.state == NodeState.RUNNING
             LaunchedEffect(running, statusState.value.port) {
                 if (running) {
@@ -356,8 +357,10 @@ class MainActivity : ComponentActivity() {
                             io.github.sanitised.st.SillyTavernUrl.localWebUrl(statusState.value.port)
                         )
                         val secretsList = client.listSecrets()
-                        connectedCount = secretsList.count { it.entries.isNotEmpty() }.coerceAtLeast(1)
+                        connectedCount = configuredApiConnectionProviderCount(secretsList)
                     }
+                } else {
+                    connectedCount = 0
                 }
             }
 
@@ -558,7 +561,7 @@ class MainActivity : ComponentActivity() {
             val dynamicDrawerItems = remember(drawerNavItems, connectedCount) {
                 drawerNavItems.map { item ->
                     if (item.route == STRoutes.CONNECTIONS) {
-                        item.copy(supportingText = "${connectedCount} 个已连接")
+                        item.copy(supportingText = "${connectedCount} 个已配置")
                     } else {
                         item
                     }

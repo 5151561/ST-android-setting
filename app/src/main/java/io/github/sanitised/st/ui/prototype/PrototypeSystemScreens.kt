@@ -431,42 +431,41 @@ fun PrototypeApiConnectionScreen(
     val running = status.state == NodeState.RUNNING
 
     var activeMode by remember { mutableStateOf("cc") }
-    var activeProvider by remember { mutableStateOf("Claude") }
+    var activeProviderId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(running, baseUrl) {
         if (running) {
             runCatching {
                 val client = TavernCoreClient(baseUrl)
                 profiles = client.listConnectionProfiles()
-                secrets = client.listSecrets()
+                val secretsList = client.listSecrets()
+                secrets = secretsList
                 val coreSettings = client.getSettings()
                 settings = coreSettings
-                
-                val apiType = coreSettings.stringValue("api_type")
-                if (apiType.isNotBlank()) {
-                    val (mode, provider) = when (apiType) {
-                        "openai" -> Pair("cc", "OpenAI")
-                        "anthropic" -> Pair("cc", "Claude")
-                        "google" -> Pair("cc", "Google AI")
-                        "deepseek" -> Pair("cc", "DeepSeek")
-                        "openrouter" -> Pair("cc", "OpenRouter")
-                        "koboldcpp", "kobold" -> Pair("tc", "KoboldCpp")
-                        "textgenerationwebui" -> Pair("tc", "Text-Gen WebUI")
-                        "llamacpp" -> Pair("tc", "llama.cpp")
-                        "ollama" -> Pair("tc", "Ollama")
-                        "novel" -> Pair("novel", "NovelAI Official")
-                        else -> Pair("cc", apiType.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() })
-                    }
-                    activeMode = mode
-                    activeProvider = provider
-                }
+
+                val loadedState = buildApiConnectionUiState(
+                    settings = coreSettings,
+                    secrets = secretsList,
+                    serviceRunning = true
+                )
+                activeMode = loadedState.activeMode
+                activeProviderId = loadedState.activeProvider.id
             }.onFailure { onShowMessage(it.message ?: "API 连接加载失败") }
         }
     }
 
     var selectedProfileId by remember { mutableStateOf("daily") }
-    var selectedProfileName by remember { mutableStateOf("日常 — Claude Sonnet 4.5") }
+    var selectedProfileName by remember { mutableStateOf("当前 SillyTavern 设置") }
     var showProfileSheet by remember { mutableStateOf(false) }
+    val connectionState = remember(settings, secrets, running, activeMode, activeProviderId) {
+        buildApiConnectionUiState(
+            settings = settings,
+            secrets = secrets,
+            serviceRunning = running,
+            selectedProviderId = activeProviderId,
+            selectedMode = activeMode
+        )
+    }
 
     Surface(modifier = modifier.fillMaxSize(), color = STThemeBg) {
         Column(
@@ -512,14 +511,17 @@ fun PrototypeApiConnectionScreen(
             // Dynamic API Mode Segmented Picker
             PrototypeModeControl(
                 activeMode = activeMode,
-                onModeChange = { activeMode = it }
+                onModeChange = { mode ->
+                    activeMode = mode
+                    activeProviderId = apiConnectionProvidersForMode(mode).firstOrNull()?.id
+                }
             )
 
             // Section Header: 当前核心装载状态
             PremiumSectionHeader(
                 title = "当前核心装载状态",
                 trailing = {
-                    val statusText = if (running) "● 活跃就绪" else "○ 未连接"
+                    val statusText = if (running) "● 服务运行中" else "○ 服务未启动"
                     val statusColor = if (running) STThemeTertiary else STThemeError
                     Text(
                         text = statusText,
@@ -531,69 +533,25 @@ fun PrototypeApiConnectionScreen(
             )
 
             // Active Connection HUD Card
-            val activeModelName = remember(settings, activeMode, activeProvider) {
-                if (settings.isEmpty()) {
-                    when (activeMode) {
-                        "cc" -> "claude-3-5-sonnet-20241022"
-                        "tc" -> "Mistral-Nemo-12B-Q5_K"
-                        "kobold" -> "Llama-3-8B-Instruct"
-                        "novel" -> "Erato-8B"
-                        else -> "无可用模型"
-                    }
-                } else {
-                    settings.stringValue("openai_model").takeIf { it.isNotBlank() }
-                        ?: settings.stringValue("model").takeIf { it.isNotBlank() }
-                        ?: (settings["textgenerationwebui_settings"] as? Map<*, *>)?.stringValue("preset").takeIf { it?.isNotBlank() == true }
-                        ?: "default-model"
-                }
-            }
-
-            val activeProviderSecretKey = remember(activeProvider) {
-                when (activeProvider) {
-                    "OpenAI" -> "openai"
-                    "Claude", "Claude (Anthropic)" -> "anthropic"
-                    "Google AI" -> "google"
-                    "DeepSeek" -> "deepseek"
-                    "OpenRouter" -> "openrouter"
-                    "KoboldCpp" -> "koboldcpp"
-                    "NovelAI Official" -> "novel"
-                    else -> activeProvider.lowercase().replace(" ", "")
-                }
-            }
-            val activeProviderConnected = remember(secrets, activeProviderSecretKey) {
-                secrets.find { it.key.equals(activeProviderSecretKey, ignoreCase = true) }?.entries?.isNotEmpty() == true
-            }
-
             PrototypeActiveConnectionCard(
-                activeMode = activeMode,
-                activeProvider = activeProvider,
-                connectedCount = secrets.count { it.entries.isNotEmpty() }.coerceAtLeast(1),
-                activeModel = activeModelName,
-                connectionTested = running && activeProviderConnected,
+                activeMode = connectionState.activeMode,
+                activeProvider = connectionState.activeProvider.label,
+                configuredProviderCount = connectionState.configuredProviderCount,
+                activeModel = connectionState.activeModel,
+                connectionStatusText = connectionState.connectionStatusText,
+                connectionStatusOk = connectionState.connectionStatusOk,
+                activeSecretLabel = connectionState.activeProvider.activeSecretLabel,
                 onConfigure = {
-                    val providerId = when (activeProvider) {
-                        "OpenAI", "openai" -> "openai"
-                        "Claude", "Claude (Anthropic)", "anthropic" -> "anthropic"
-                        "Google AI", "google" -> "google"
-                        "DeepSeek", "deepseek" -> "deepseek"
-                        "OpenRouter", "openrouter" -> "openrouter"
-                        "KoboldCpp", "koboldcpp" -> "koboldcpp"
-                        "llama.cpp", "llamacpp" -> "llamacpp"
-                        "Ollama", "ollama" -> "ollama"
-                        "NovelAI Official", "novelai", "NovelAI Erato" -> "novelai"
-                        else -> activeProvider.lowercase().replace(" ", "")
-                    }
-                    onOpenProviderDetail(providerId)
+                    onOpenProviderDetail(connectionState.activeProvider.id)
                 }
             )
 
             // Section Header: 选择 API 提供商
-            val providersCount = if (activeMode == "tc") 9 else if (activeMode == "cc") 9 else if (activeMode == "kobold") 2 else 1
             PremiumSectionHeader(
                 title = if (activeMode == "tc") "文本补全 — 后端" else "聊天补全 — 提供商",
                 trailing = {
                     Text(
-                        text = "$providersCount 个可用",
+                        text = "${connectionState.visibleProviders.size} 个可用",
                         style = MaterialTheme.typography.labelMedium,
                         color = STThemePrimary,
                         fontWeight = FontWeight.Bold
@@ -603,33 +561,22 @@ fun PrototypeApiConnectionScreen(
 
             // Provider grid
             ProviderGrid(
-                activeMode = activeMode,
-                activeProvider = activeProvider,
-                secrets = secrets,
-                onProviderChange = { name ->
-                    activeProvider = name
+                providers = connectionState.visibleProviders,
+                activeProviderId = connectionState.activeProvider.id,
+                onProviderChange = { provider ->
+                    activeProviderId = provider.id
+                    activeMode = provider.mode
                     if (running) {
                         scope.launch {
                             runCatching {
                                 val client = TavernCoreClient(baseUrl)
-                                val updated = settings.toMutableMap()
-                                val newApiType = when (name) {
-                                    "OpenAI" -> "openai"
-                                    "Claude" -> "anthropic"
-                                    "Google AI" -> "google"
-                                    "DeepSeek" -> "deepseek"
-                                    "OpenRouter" -> "openrouter"
-                                    "KoboldCpp" -> "koboldcpp"
-                                    "Text-Gen WebUI" -> "textgenerationwebui"
-                                    "llama.cpp" -> "llamacpp"
-                                    "Ollama" -> "ollama"
-                                    "NovelAI Official" -> "novel"
-                                    else -> name.lowercase()
-                                }
-                                updated["api_type"] = newApiType
+                                val updated = settingsWithSelectedApiProvider(
+                                    settings = settings,
+                                    provider = provider.definition
+                                )
                                 client.saveSettings(updated)
                                 settings = updated
-                                onShowMessage("已切换 API 提供商为 $name")
+                                onShowMessage("已切换 API 提供商为 ${provider.label}")
                             }.onFailure {
                                 onShowMessage("切换失败：${it.message}")
                             }
@@ -678,15 +625,7 @@ fun PrototypeApiConnectionScreen(
                         selectedProfileId = id
                         selectedProfileName = name
                         activeMode = mode
-                        activeProvider = if (mode == "cc") {
-                            if (id == "daily" || id == "long" || id.contains("claude", ignoreCase = true)) "Claude" else "OpenAI"
-                        } else if (mode == "tc") {
-                            "KoboldCpp"
-                        } else if (mode == "kobold") {
-                            "KoboldAI Classic"
-                        } else {
-                            "NovelAI Official"
-                        }
+                        activeProviderId = apiConnectionProvidersForMode(mode).firstOrNull()?.id
                         showProfileSheet = false
                         onShowMessage("已切换连接预设：$name")
                     }
@@ -1408,7 +1347,7 @@ private fun PrototypeConnectionProfileCard(
                 modifier = Modifier.padding(horizontal = 4.dp)
             ) {
                 Text(
-                    text = "${profiles.size.coerceAtLeast(5)} 项",
+                    text = "${profiles.size} 项",
                     style = MaterialTheme.typography.labelSmall,
                     color = STThemePrimary,
                     fontWeight = FontWeight.Bold,
@@ -1489,9 +1428,11 @@ private fun PrototypeModeControl(
 private fun PrototypeActiveConnectionCard(
     activeMode: String,
     activeProvider: String,
-    connectedCount: Int,
+    configuredProviderCount: Int,
     activeModel: String,
-    connectionTested: Boolean,
+    connectionStatusText: String,
+    connectionStatusOk: Boolean,
+    activeSecretLabel: String?,
     onConfigure: () -> Unit
 ) {
     val title = when (activeMode) {
@@ -1510,16 +1451,8 @@ private fun PrototypeActiveConnectionCard(
         else -> "?"
     }
     
-    val latencyText = when (activeMode) {
-        "cc" -> "约 0.8s"
-        "tc" -> "12 tok/s"
-        "kobold" -> "约 8s"
-        "novel" -> "约 0.5s"
-        else -> "—"
-    }
-
     PremiumCard(
-        borderColor = if (connectionTested) Color(0x407FCE8E) else Color(0x0DFFFFFF)
+        borderColor = if (connectionStatusOk) Color(0x407FCE8E) else Color(0x0DFFFFFF)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1528,8 +1461,8 @@ private fun PrototypeActiveConnectionCard(
             Surface(
                 modifier = Modifier.size(40.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = if (connectionTested) MaterialTheme.colorScheme.primaryContainer else Color(0x0DFFFFFF),
-                contentColor = if (connectionTested) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (connectionStatusOk) MaterialTheme.colorScheme.primaryContainer else Color(0x0DFFFFFF),
+                contentColor = if (connectionStatusOk) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
@@ -1568,16 +1501,16 @@ private fun PrototypeActiveConnectionCard(
         ) {
             PrototypeStat(
                 label = "连接状态", 
-                value = if (connectionTested) "成功连通" else "离线/未验证", 
-                tone = if (connectionTested) "ok" else "error"
+                value = connectionStatusText,
+                tone = if (connectionStatusOk) "ok" else "error"
             )
             PrototypeStat(
-                label = if (activeMode == "tc") "模型窗口" else "计费消耗", 
-                value = if (activeMode == "tc") "32k tokens" else "$connectedCount 个已设"
+                label = "密钥配置",
+                value = activeSecretLabel ?: "${configuredProviderCount} 个已配置"
             )
             PrototypeStat(
-                label = "运行速度/延迟", 
-                value = if (connectionTested) latencyText else "—"
+                label = "连接验证",
+                value = "尚未测试"
             )
         }
     }
@@ -1611,34 +1544,10 @@ private fun RowScope.PrototypeStat(label: String, value: String, tone: String? =
 
 @Composable
 private fun ProviderGrid(
-    activeMode: String,
-    activeProvider: String,
-    onProviderChange: (String) -> Unit
+    providers: List<ApiConnectionProviderState>,
+    activeProviderId: String,
+    onProviderChange: (ApiConnectionProviderState) -> Unit
 ) {
-    val ccProviders = listOf(
-        Triple("OpenAI", "O", true), 
-        Triple("Claude", "C", true), 
-        Triple("Google AI", "G", false),
-        Triple("Mistral", "M", false), 
-        Triple("OpenRouter", "R", false), 
-        Triple("DeepSeek", "D", true),
-        Triple("xAI Grok", "X", false), 
-        Triple("Cohere", "C", false), 
-        Triple("Perplexity", "P", false)
-    )
-    val tcProviders = listOf(
-        Triple("KoboldCpp", "K", true), 
-        Triple("Text-Gen WebUI", "T", false), 
-        Triple("TabbyAPI", "τ", false),
-        Triple("Aphrodite", "φ", false), 
-        Triple("Mancer", "M", false), 
-        Triple("Featherless", "F", false),
-        Triple("Horde (文本)", "H", false), 
-        Triple("llama.cpp", "L", false), 
-        Triple("Ollama", "🦙", false)
-    )
-    val providers = if (activeMode == "tc") tcProviders else ccProviders
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1649,10 +1558,10 @@ private fun ProviderGrid(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(bottom = 8.dp)
             ) {
-                row.forEach { (name, icon, connected) ->
-                    val active = name == activeProvider
+                row.forEach { provider ->
+                    val active = provider.id == activeProviderId
                     Surface(
-                        onClick = { onProviderChange(name) },
+                        onClick = { onProviderChange(provider) },
                         modifier = Modifier.weight(1f),
                         shape = MaterialTheme.shapes.large,
                         color = if (active) STThemePrimary.copy(alpha = 0.08f) else Color(0x05FFFFFF),
@@ -1672,7 +1581,7 @@ private fun ProviderGrid(
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
-                                        text = icon,
+                                        text = provider.icon,
                                         color = if (active) Color(0xFF18130E) else STThemePrimary,
                                         fontWeight = FontWeight.Bold,
                                         style = MaterialTheme.typography.titleMedium,
@@ -1681,7 +1590,7 @@ private fun ProviderGrid(
                                 }
                             }
                             Text(
-                                text = name,
+                                text = provider.label,
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.Bold,
@@ -1691,9 +1600,9 @@ private fun ProviderGrid(
                                 fontSize = 11.sp
                             )
                             Text(
-                                text = if (connected) "已配口令" else "空闲",
+                                text = provider.secretStatusLabel,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (connected) STThemeTertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (provider.hasConfiguredSecret) STThemeTertiary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
@@ -1715,19 +1624,9 @@ private fun ConnectionProfileBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val displayProfiles = remember(apiProfiles) {
-        if (apiProfiles.isNotEmpty()) {
-            apiProfiles.map { profile ->
-                val mode = if (profile.url.contains("kobold", ignoreCase = true) || profile.url.contains("127.0.0.1", ignoreCase = true)) "tc" else "cc"
-                Triple(profile.label, profile.label, mode)
-            }
-        } else {
-            listOf(
-                Triple("daily", "日常 — Claude Sonnet 4.5", "cc"),
-                Triple("long", "长篇写作 — Claude Opus", "cc"),
-                Triple("local", "本地 — KoboldCpp · Mistral-Nemo", "tc"),
-                Triple("free", "免费 — Horde", "kobold"),
-                Triple("novel", "小说 — NovelAI Erato", "novel")
-            )
+        apiProfiles.map { profile ->
+            val mode = if (profile.url.contains("kobold", ignoreCase = true) || profile.url.contains("127.0.0.1", ignoreCase = true)) "tc" else "cc"
+            Triple(profile.label, profile.label, mode)
         }
     }
     ModalBottomSheet(
@@ -1758,54 +1657,58 @@ private fun ConnectionProfileBottomSheet(
             HorizontalDivider(color = Color(0x0DFFFFFF))
             Spacer(modifier = Modifier.height(8.dp))
             
-            Column(
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false)
-            ) {
-                displayProfiles.forEach { (id, name, mode) ->
-                    val active = id == selectedProfileId
-                    Surface(
-                        onClick = { onProfileSelected(id, name, mode) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.large,
-                        color = if (active) Color(0x08FFFFFF) else Color.Transparent
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+            if (displayProfiles.isEmpty()) {
+                PrototypeSystemInfoCard("暂无连接预设", "当前会直接使用 SillyTavern 的真实 API 设置。")
+            } else {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false)
+                ) {
+                    displayProfiles.forEach { (id, name, mode) ->
+                        val active = id == selectedProfileId
+                        Surface(
+                            onClick = { onProfileSelected(id, name, mode) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large,
+                            color = if (active) Color(0x08FFFFFF) else Color.Transparent
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (active) STThemePrimary else Color(0x0DFFFFFF),
-                                contentColor = if (active) Color(0xFF4A2700) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(36.dp)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (active) STThemePrimary else Color(0x0DFFFFFF),
+                                    contentColor = if (active) Color(0xFF4A2700) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = mode.uppercase(),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
                                     Text(
-                                        text = mode.uppercase(),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp
+                                        text = name,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = if (active) STThemePrimary else MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Endpoint details for $mode profile",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(top = 2.dp)
                                     )
                                 }
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = name,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = if (active) STThemePrimary else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Endpoint details for $mode profile",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 11.sp,
-                                    modifier = Modifier.padding(top = 2.dp)
-                                )
-                            }
-                            if (active) {
-                                Icon(Icons.Filled.CheckCircle, null, tint = STThemePrimary)
+                                if (active) {
+                                    Icon(Icons.Filled.CheckCircle, null, tint = STThemePrimary)
+                                }
                             }
                         }
                     }
@@ -2055,6 +1958,12 @@ fun PrototypeProviderDetailScreen(
     var contextSize by remember { mutableStateOf(4096f) }
     
     val running = status.state == NodeState.RUNNING
+    val providerDefinition = remember(providerId) {
+        apiConnectionProviderForId(providerId) ?: apiConnectionProviderForId("openai")!!
+    }
+    var providerState by remember(providerDefinition.id) {
+        mutableStateOf<ApiConnectionProviderState?>(null)
+    }
     
     LaunchedEffect(running, baseUrl, providerId) {
         if (running) {
@@ -2068,18 +1977,29 @@ fun PrototypeProviderDetailScreen(
                 
                 proxy = coreSettings.stringValue("proxy_$providerId")
                 
-                val modelKey = when (providerId) {
-                    "koboldcpp", "kobold" -> "model"
-                    else -> "openai_model"
-                }
-                selectedModel = coreSettings.stringValue(modelKey)
+                selectedModel = modelForProvider(coreSettings, providerDefinition)
                 
                 temp = coreSettings.floatValue("temp", 1.0f)
                 contextSize = coreSettings.intValue("context_width", 4096).toFloat()
                 
                 val secretsList = client.listSecrets()
-                val state = secretsList.find { it.key.equals(providerId, ignoreCase = true) }
-                val firstEntry = state?.entries?.firstOrNull()
+                providerState = buildApiConnectionUiState(
+                    settings = coreSettings,
+                    secrets = secretsList,
+                    serviceRunning = true,
+                    selectedProviderId = providerDefinition.id,
+                    selectedMode = providerDefinition.mode
+                ).activeProvider
+                val firstEntry = providerDefinition.secretKeys
+                    .asSequence()
+                    .mapNotNull { secretKey -> secretsList.firstOrNull { it.key == secretKey } }
+                    .flatMap { it.entries.asSequence() }
+                    .firstOrNull { it.active }
+                    ?: providerDefinition.secretKeys
+                        .asSequence()
+                        .mapNotNull { secretKey -> secretsList.firstOrNull { it.key == secretKey } }
+                        .flatMap { it.entries.asSequence() }
+                        .firstOrNull()
                 apiKey = firstEntry?.value ?: ""
                 initialApiKey = apiKey
                 
@@ -2092,18 +2012,7 @@ fun PrototypeProviderDetailScreen(
         }
     }
     
-    val displayName = remember(providerId) {
-        when (providerId.lowercase()) {
-            "anthropic" -> "Anthropic"
-            "openai" -> "OpenAI"
-            "google" -> "Google AI"
-            "deepseek" -> "DeepSeek"
-            "openrouter" -> "OpenRouter"
-            "koboldcpp" -> "KoboldCpp"
-            "novelai" -> "NovelAI"
-            else -> providerId.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
-        }
-    }
+    val displayName = providerDefinition.label
     
     PrototypeBackRoot(
         title = "$displayName 配置",
@@ -2117,31 +2026,40 @@ fun PrototypeProviderDetailScreen(
                     scope.launch {
                         runCatching {
                             val client = TavernCoreClient(baseUrl)
-                            val updatedSettings = settings.toMutableMap()
-                            
+                            val updatedSettings = settingsWithSelectedApiProvider(
+                                settings = settings,
+                                provider = providerDefinition
+                            ).toMutableMap()
+
                             updatedSettings["api_url_$providerId"] = customUrl
                             if (providerId == "openai") {
                                 updatedSettings["api_url"] = customUrl
                             }
                             updatedSettings["proxy_$providerId"] = proxy
-                            
-                            val modelKey = when (providerId) {
-                                "koboldcpp", "kobold" -> "model"
-                                else -> "openai_model"
+
+                            val modelGroup = providerDefinition.modelSettingsGroup
+                            val modelKey = providerDefinition.modelKey
+                            if (!modelGroup.isNullOrBlank() && !modelKey.isNullOrBlank()) {
+                                val groupSettings = (updatedSettings[modelGroup] as? Map<*, *>)
+                                    ?.entries
+                                    ?.associate { (key, value) -> key.toString() to value }
+                                    ?.toMutableMap()
+                                    ?: mutableMapOf()
+                                groupSettings[modelKey] = selectedModel
+                                updatedSettings[modelGroup] = groupSettings
                             }
-                            updatedSettings[modelKey] = selectedModel
-                            
+
                             updatedSettings["temp"] = temp
                             updatedSettings["openai_temp"] = temp
                             updatedSettings["context_width"] = contextSize.toInt()
                             updatedSettings["openai_max_context"] = contextSize.toInt()
-                            
+
                             client.saveSettings(updatedSettings)
-                            
-                            if (apiKey != initialApiKey) {
-                                client.writeSecret(providerId, apiKey, "默认密钥")
+
+                            if (apiKey != initialApiKey && providerDefinition.secretKeys.isNotEmpty()) {
+                                client.writeSecret(providerDefinition.secretKeys.first(), apiKey, "默认密钥")
                             }
-                            
+
                             onShowMessage("配置已成功保存！")
                             onBack()
                         }.onFailure {
@@ -2173,17 +2091,24 @@ fun PrototypeProviderDetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 4.dp)
                     ) {
+                        val configured = providerState?.hasConfiguredSecret == true
+                        val statusText = when {
+                            !running -> "服务未启动"
+                            configured -> "密钥已配置，尚未验证"
+                            else -> "未配置密钥"
+                        }
+                        val statusOk = running && configured
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
-                                .background(if (running) STThemeTertiary else STThemeError, CircleShape)
+                                .background(if (statusOk) STThemeTertiary else STThemeError, CircleShape)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (running) "服务活跃就绪" else "服务未启动",
+                            text = statusText,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (running) STThemeTertiary else STThemeError
+                            color = if (statusOk) STThemeTertiary else STThemeError
                         )
                     }
                 }

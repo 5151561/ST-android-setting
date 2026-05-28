@@ -165,25 +165,6 @@ fun AnimatedToast(
     }
 }
 
-// Simulated keys for offline mode
-data class SimulatedSecret(
-    val id: String,
-    val name: String,
-    var key: String,
-    var status: String, // "SET", "UNSET", "EXPIRED"
-    var time: String,
-    var usage: String,
-    val danger: Boolean = false
-)
-
-private fun initialSimulatedSecrets() = listOf(
-    SimulatedSecret("openai", "OpenAI API Key", "sk-proj-4A9x...F82s", "SET", "已设于 2026/05/20", "$12.42 已用"),
-    SimulatedSecret("anthropic", "Anthropic Claude Key", "sk-ant-api03-...q8W2", "SET", "已设于 2026/05/22", "1.2M token 计费"),
-    SimulatedSecret("openrouter", "OpenRouter Shared Key", "", "UNSET", "未设置此密钥", "—"),
-    SimulatedSecret("google", "Gemini (Google AI) Key", "AIzaSyA8...9xZq", "EXPIRED", "检测到已过期 (HTTP 401)", "需重新验证", danger = true),
-    SimulatedSecret("extras", "SillyTavern Extras Key", "st-extras-auth-secret", "SET", "本地 Extras API", "就绪")
-)
-
 // ─────────────────────────────────────────────────────────────
 // 19 · API 密钥管理 (SecretsScreen)
 // ─────────────────────────────────────────────────────────────
@@ -200,8 +181,6 @@ fun PrototypeSecretsScreen(
     val scope = rememberCoroutineScope()
     var toastMessage by remember { mutableStateOf<String?>(null) }
 
-    // Key lists
-    var simulatedSecrets by remember { mutableStateOf(initialSimulatedSecrets()) }
     var backendSecrets by remember { mutableStateOf<List<SecretProviderState>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
 
@@ -225,16 +204,24 @@ fun PrototypeSecretsScreen(
     }
 
     // Modal state
-    var editingSecretSimulated by remember { mutableStateOf<SimulatedSecret?>(null) }
     var editingSecretBackend by remember { mutableStateOf<Pair<SecretProviderState, SecretEntry?>?>(null) }
     var showAddCustomKeySheet by remember { mutableStateOf(false) }
     
     var editingKeyText by remember { mutableStateOf("") }
     var customKeyName by remember { mutableStateOf("") }
-    var customKeyProvider by remember { mutableStateOf("openai") }
+    var customKeyProvider by remember { mutableStateOf("api_key_openai") }
     var showKeyInSheet by remember { mutableStateOf(false) }
+    val secretRows = remember(backendSecrets) { configuredSecretRows(backendSecrets) }
+    val providerOptions = remember(backendSecrets) { secretProviderOptions(backendSecrets) }
+    val providerOptionKeys = remember(providerOptions) { providerOptions.map { it.key }.toSet() }
     
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    LaunchedEffect(providerOptions) {
+        if (providerOptions.isNotEmpty() && customKeyProvider !in providerOptionKeys) {
+            customKeyProvider = providerOptions.first().key
+        }
+    }
 
     Surface(modifier = modifier.fillMaxSize(), color = STThemeBg) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -289,214 +276,104 @@ fun PrototypeSecretsScreen(
                     )
                 }
 
-                PremiumSectionHeader(
-                    title = if (running) "在线后端密钥 (SillyTavern API)" else "本地模拟密钥库 (服务离线预览)"
-                )
+                PremiumSectionHeader(title = "SillyTavern 后端密钥")
 
-                if (running) {
-                    if (backendSecrets.isEmpty()) {
+                when {
+                    !running -> {
+                        PrototypeSystemInfoCard(
+                            "服务未启动，无法读取真实密钥",
+                            "这里不再展示模拟密钥。启动 SillyTavern 后端后，会从后端密钥接口读取当前配置。"
+                        )
+                    }
+                    loading && backendSecrets.isEmpty() -> {
+                        PrototypeSystemInfoCard("正在读取后端密钥", "正在同步 SillyTavern 当前保存的 API 密钥状态。")
+                    }
+                    secretRows.isEmpty() -> {
                         PrototypeSystemInfoCard("后端暂无配置的密钥", "可点击下方“新增”按钮配置新的 API 供应商密钥。")
-                    } else {
-                        backendSecrets.forEach { provider ->
-                            val providerLabel = provider.label
-                            provider.entries.forEach { entry ->
-                                val isSet = entry.value.isNotBlank() && entry.value != "null"
-                                val isExpired = entry.active == false && isSet
-                                
-                                val statusBadgeColor = when {
-                                    isExpired -> STThemeError
-                                    isSet -> STThemeTertiary
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                                val statusBadgeBg = when {
-                                    isExpired -> STThemeError.copy(alpha = 0.12f)
-                                    isSet -> STThemeTertiary.copy(alpha = 0.12f)
-                                    else -> Color(0x0DFFFFFF)
-                                }
-                                val statusText = when {
-                                    isExpired -> "失效/过期"
-                                    isSet -> "已配置"
-                                    else -> "未配置"
-                                }
+                    }
+                    else -> {
+                        secretRows.forEach { row ->
+                            val entry = row.entry
+                            val statusBadgeColor = if (entry.active) STThemeTertiary else STThemePrimary
+                            val statusBadgeBg = statusBadgeColor.copy(alpha = 0.12f)
+                            val provider = backendSecrets.first { it.key == row.providerKey }
 
-                                PremiumCard(
-                                    borderColor = if (isExpired) STThemeError.copy(alpha = 0.5f) else Color(0x12FFFFFF)
+                            PremiumCard(borderColor = Color(0x12FFFFFF)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth()
+                                    Surface(
+                                        modifier = Modifier.size(36.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = STThemePrimary.copy(alpha = 0.1f),
+                                        contentColor = STThemePrimary
                                     ) {
-                                        Surface(
-                                            modifier = Modifier.size(36.dp),
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = if (!isSet) Color(0x0DFFFFFF) else STThemePrimary.copy(alpha = 0.1f),
-                                            contentColor = if (!isSet) MaterialTheme.colorScheme.onSurfaceVariant else STThemePrimary
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Text(
-                                                    text = providerLabel.take(1).uppercase(),
-                                                    fontWeight = FontWeight.Bold,
-                                                    style = MaterialTheme.typography.titleMedium
-                                                )
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = "${providerLabel} (${entry.label})",
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    fontWeight = FontWeight.Bold,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                PrototypeBadge(
-                                                    label = statusText,
-                                                    containerColor = statusBadgeBg,
-                                                    contentColor = statusBadgeColor
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.height(2.dp))
+                                        Box(contentAlignment = Alignment.Center) {
                                             Text(
-                                                text = if (isSet) entry.value else "尚未设置密钥口令",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                text = row.providerLabel.take(1).uppercase(),
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.titleMedium
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = "${row.providerLabel} (${row.displayLabel})",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = FontWeight.Bold,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            PrototypeBadge(
+                                                label = row.statusLabel,
+                                                containerColor = statusBadgeBg,
+                                                contentColor = statusBadgeColor
+                                            )
                                         }
-                                        PrototypeIconButton(
-                                            icon = Icons.Filled.Edit,
-                                            contentDescription = "编辑",
-                                            onClick = {
-                                                editingSecretBackend = provider to entry
-                                                editingKeyText = ""
-                                                showKeyInSheet = false
-                                            }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = row.displayValue,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    HorizontalDivider(color = Color(0x0DFFFFFF))
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "后端就绪",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = "Active ID: ${entry.id.take(8)}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = STThemePrimary,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    simulatedSecrets.forEach { s ->
-                        val isSet = s.status == "SET"
-                        val isExpired = s.status == "EXPIRED"
-                        
-                        val statusBadgeColor = when {
-                            isExpired -> STThemeError
-                            isSet -> STThemeTertiary
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                        val statusBadgeBg = when {
-                            isExpired -> STThemeError.copy(alpha = 0.12f)
-                            isSet -> STThemeTertiary.copy(alpha = 0.12f)
-                            else -> Color(0x0DFFFFFF)
-                        }
-                        val statusText = when {
-                            isExpired -> "失效/过期"
-                            isSet -> "已配置"
-                            else -> "未配置"
-                        }
-
-                        PremiumCard(
-                            borderColor = if (isExpired) STThemeError.copy(alpha = 0.5f) else Color(0x12FFFFFF)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Surface(
-                                    modifier = Modifier.size(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (!isSet) Color(0x0DFFFFFF) else STThemePrimary.copy(alpha = 0.1f),
-                                    contentColor = if (!isSet) MaterialTheme.colorScheme.onSurfaceVariant else STThemePrimary
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = s.name.take(1).uppercase(),
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = s.name,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        PrototypeBadge(
-                                            label = statusText,
-                                            containerColor = statusBadgeBg,
-                                            contentColor = statusBadgeColor
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = if (isSet || isExpired) s.key else "尚未设置密钥口令",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                    PrototypeIconButton(
+                                        icon = Icons.Filled.Edit,
+                                        contentDescription = "编辑",
+                                        onClick = {
+                                            editingSecretBackend = provider to entry
+                                            editingKeyText = ""
+                                            showKeyInSheet = false
+                                        }
                                     )
                                 }
-                                PrototypeIconButton(
-                                    icon = Icons.Filled.Edit,
-                                    contentDescription = "编辑",
-                                    onClick = {
-                                        editingSecretSimulated = s
-                                        editingKeyText = ""
-                                        showKeyInSheet = false
-                                    }
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            HorizontalDivider(color = Color(0x0DFFFFFF))
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = s.time,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isExpired) STThemeError else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "用量：${s.usage}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = STThemePrimary,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                HorizontalDivider(color = Color(0x0DFFFFFF))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "来自 SillyTavern 后端",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "ID: ${entry.id.take(8).ifBlank { "默认" }}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = STThemePrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
@@ -512,14 +389,12 @@ fun PrototypeSecretsScreen(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            if (running) {
+                            if (running && secretRows.isNotEmpty()) {
                                 scope.launch {
                                     runCatching {
                                         val client = TavernCoreClient(baseUrl)
-                                        backendSecrets.forEach { provider ->
-                                            provider.entries.forEach { entry ->
-                                                client.deleteSecret(provider.key, entry.id)
-                                            }
+                                        secretRows.forEach { row ->
+                                            client.deleteSecret(row.providerKey, row.entry.id)
                                         }
                                         toastMessage = "所有密钥已从后端安全删除！"
                                         refreshBackendSecrets()
@@ -527,13 +402,13 @@ fun PrototypeSecretsScreen(
                                         toastMessage = "擦除密钥失败: ${it.message}"
                                     }
                                 }
+                            } else if (!running) {
+                                toastMessage = "请先启动后端，再管理真实密钥"
                             } else {
-                                simulatedSecrets = simulatedSecrets.map {
-                                    it.copy(key = "", status = "UNSET", time = "全部已擦除", usage = "—")
-                                }
-                                toastMessage = "所有密钥已从本地擦除！"
+                                toastMessage = "后端暂无可删除的密钥"
                             }
                         },
+                        enabled = running && secretRows.isNotEmpty(),
                         border = androidx.compose.foundation.BorderStroke(1.dp, STThemeError),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = STThemeError),
                         shape = RoundedCornerShape(16.dp),
@@ -543,7 +418,7 @@ fun PrototypeSecretsScreen(
                     ) {
                         Icon(imageVector = Icons.Filled.KeyOff, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("擦除全部本地密钥")
+                        Text("删除全部后端密钥")
                     }
                 }
                 
@@ -557,9 +432,10 @@ fun PrototypeSecretsScreen(
                         showAddCustomKeySheet = true
                         customKeyName = ""
                         editingKeyText = ""
-                        customKeyProvider = "openai"
+                        showKeyInSheet = false
+                        customKeyProvider = providerOptions.firstOrNull()?.key ?: "api_key_openai"
                     } else {
-                        toastMessage = "在模拟状态下暂不支持新增自定义供应商"
+                        toastMessage = "请先启动后端，再新增真实密钥"
                     }
                 },
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
@@ -579,153 +455,6 @@ fun PrototypeSecretsScreen(
                 message = toastMessage,
                 onDismiss = { toastMessage = null }
             )
-        }
-
-        // Bottom sheet for editing SIMULATED secret
-        editingSecretSimulated?.let { s ->
-            ModalBottomSheet(
-                onDismissRequest = { editingSecretSimulated = null },
-                sheetState = sheetState,
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .padding(bottom = 32.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.LockReset,
-                            contentDescription = null,
-                            tint = STThemePrimary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "轮换 ${s.name}",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "安全写入与会话重新验证",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton(onClick = { editingSecretSimulated = null }) {
-                            Icon(imageVector = Icons.Filled.Close, contentDescription = "关闭")
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.large,
-                        color = STThemePrimary.copy(alpha = 0.08f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, STThemePrimary.copy(alpha = 0.15f))
-                    ) {
-                        Text(
-                            text = "⚠️ 注意：频繁的密钥轮换或输入无效口令会导致正在等待生成队列的单聊或群聊任务连接超时断开。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = "写入新 API 密钥口令",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = STThemePrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    OutlinedTextField(
-                        value = editingKeyText,
-                        onValueChange = { editingKeyText = it },
-                        placeholder = { Text("在此粘贴密钥 (如 sk-...)") },
-                        singleLine = true,
-                        visualTransformation = if (showKeyInSheet) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { showKeyInSheet = !showKeyInSheet }) {
-                                Icon(
-                                    imageVector = if (showKeyInSheet) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = null
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                simulatedSecrets = simulatedSecrets.map {
-                                    if (it.id == s.id) it.copy(key = "", status = "UNSET", time = "密钥已被清空", usage = "—") else it
-                                }
-                                toastMessage = "密钥已安全擦除"
-                                editingSecretSimulated = null
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = STThemeError),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, STThemeError),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Icon(imageVector = Icons.Filled.Delete, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("清空")
-                        }
-
-                        Button(
-                            onClick = {
-                                if (editingKeyText.isBlank()) {
-                                    toastMessage = "请输入有效的密钥串"
-                                    return@Button
-                                }
-                                val masked = if (editingKeyText.length > 12) {
-                                    editingKeyText.take(8) + "..." + editingKeyText.takeLast(4)
-                                } else {
-                                    "sk-••••••••"
-                                }
-                                simulatedSecrets = simulatedSecrets.map {
-                                    if (it.id == s.id) {
-                                        it.copy(
-                                            key = masked,
-                                            status = "SET",
-                                            time = "刚刚完成密钥轮换",
-                                            usage = "待统计用量"
-                                        )
-                                    } else it
-                                }
-                                toastMessage = "已成功轮换 ${s.name}"
-                                editingSecretSimulated = null
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = STThemePrimary, contentColor = Color(0xFF4A2700)),
-                            modifier = Modifier.weight(2f),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Icon(imageVector = Icons.Filled.Check, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("确认轮换")
-                        }
-                    }
-                }
-            }
         }
 
         // Bottom sheet for editing BACKEND secret
@@ -929,12 +658,12 @@ fun PrototypeSecretsScreen(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("openai" to "OpenAI", "anthropic" to "Anthropic", "openrouter" to "OpenRouter", "google" to "Google Gemini").forEach { (key, label) ->
-                            val sel = customKeyProvider == key
+                        providerOptions.forEach { option ->
+                            val sel = customKeyProvider == option.key
                             FilterChip(
                                 selected = sel,
-                                onClick = { customKeyProvider = key },
-                                label = { Text(label) }
+                                onClick = { customKeyProvider = option.key },
+                                label = { Text(option.label) }
                             )
                         }
                     }
@@ -982,12 +711,20 @@ fun PrototypeSecretsScreen(
                                 toastMessage = "密钥内容不能为空"
                                 return@Button
                             }
+                            if (customKeyProvider.isBlank()) {
+                                toastMessage = "请选择 API 提供商"
+                                return@Button
+                            }
                             val finalLabel = customKeyName.ifBlank { "default" }
+                            val providerLabel = providerOptions
+                                .firstOrNull { it.key == customKeyProvider }
+                                ?.label
+                                ?: customKeyProvider
                             scope.launch {
                                 runCatching {
                                     val client = TavernCoreClient(baseUrl)
                                     client.writeSecret(customKeyProvider, editingKeyText, finalLabel)
-                                    toastMessage = "已成功添加 $customKeyProvider 密钥凭证"
+                                    toastMessage = "已成功添加 $providerLabel 密钥凭证"
                                     refreshBackendSecrets()
                                 }.onFailure {
                                     toastMessage = "添加密钥失败: ${it.message}"
@@ -995,6 +732,7 @@ fun PrototypeSecretsScreen(
                                 showAddCustomKeySheet = false
                             }
                         },
+                        enabled = providerOptions.isNotEmpty(),
                         colors = ButtonDefaults.buttonColors(containerColor = STThemePrimary, contentColor = Color(0xFF4A2700)),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp)

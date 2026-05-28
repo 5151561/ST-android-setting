@@ -1156,12 +1156,24 @@ class TavernCoreClient(
         val secretProviderLabels = linkedMapOf(
             "api_key_openai" to "OpenAI",
             "api_key_openrouter" to "OpenRouter",
+            "api_key_makersuite" to "Google AI Studio",
+            "api_key_vertexai" to "Google Vertex AI",
             "api_key_custom" to "OpenAI-compatible",
+            "api_key_horde" to "AI Horde",
             "api_key_koboldcpp" to "KoboldCpp",
             "api_key_ooba" to "Text Generation WebUI",
             "api_key_claude" to "Claude",
             "api_key_mistralai" to "Mistral",
             "api_key_deepseek" to "DeepSeek",
+            "api_key_xai" to "xAI",
+            "api_key_cohere" to "Cohere",
+            "api_key_perplexity" to "Perplexity",
+            "api_key_tabby" to "TabbyAPI",
+            "api_key_aphrodite" to "Aphrodite",
+            "api_key_mancer" to "Mancer",
+            "api_key_featherless" to "Featherless",
+            "api_key_llamacpp" to "llama.cpp",
+            "api_key_novel" to "NovelAI",
             "api_key_generic" to "Generic"
         )
 
