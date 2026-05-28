@@ -6,6 +6,11 @@ import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
 
+enum class PrototypeChatKind {
+    DIRECT,
+    GROUP
+}
+
 data class PrototypeChatItem(
     val id: String,
     val characterId: String,
@@ -16,7 +21,8 @@ data class PrototypeChatItem(
     val initial: String,
     val favorite: Boolean,
     val unread: Int = 0,
-    val streaming: Boolean = false
+    val streaming: Boolean = false,
+    val kind: PrototypeChatKind = PrototypeChatKind.DIRECT
 )
 
 data class PrototypeCharacterCard(
@@ -71,11 +77,11 @@ fun ChatSummary.toPrototypeChatItem(index: Int): PrototypeChatItem {
         chatFile = parsedChatFile,
         title = characterName.ifBlank { characterId.readableName() },
         preview = lastMessage?.trim().orEmpty().ifBlank { "还没有消息，点开开始一段新对话。" },
-        time = lastUpdated.toPrototypeTime(index),
+        time = lastUpdated.toPrototypeTime(),
         initial = characterName.initial(),
         favorite = isPinned,
         unread = 0,
-        streaming = false
+        kind = PrototypeChatKind.DIRECT
     )
 }
 
@@ -111,25 +117,6 @@ fun CharacterDetail.toPrototypeCharacterCard(index: Int): PrototypeCharacterCard
     )
 }
 
-fun prototypeFallbackChats(): List<PrototypeChatItem> = listOf(
-    PrototypeChatItem("aria/demo", "aria", null, "Aria", "那我多加了一份饼干哦，别告诉店长。", "刚才", "A", true, unread = 2),
-    PrototypeChatItem("zoey/demo", "zoey", null, "Zoey", "你：等等，所以她真的把那个发到群里了？？", "12 分钟前", "Z", false),
-    PrototypeChatItem("vex/demo", "vex", null, "Captain Vex", "*她的目光扫过控制台上闪烁的红色警示灯，没有移开。*", "今天 14:02", "V", true, streaming = true),
-    PrototypeChatItem("eleanor/demo", "eleanor", null, "Eleanor Wright", "那一章的结尾，我想了三个版本。你来听听看？", "昨天", "E", false),
-    PrototypeChatItem("group/1", "group", null, "雨夜小聚", "Zoey: 那个小蛋糕真的超级好吃！", "刚才", "群", true, unread = 2),
-    PrototypeChatItem("group/2", "group", null, "银河探索队", "Captain Vex: Wraith号准备跃迁，大家抓稳。", "今天 10:15", "队", false),
-    PrototypeChatItem("checkpoint/1", "aria", null, "Aria [检查点: 雨天谈话]", "我们上次说到哪里了？", "2 天前", "查", false)
-)
-
-fun prototypeFallbackCharacters(): List<PrototypeCharacterCard> = listOf(
-    PrototypeCharacterCard("aria", "Aria", "咖啡馆的女店员", listOf("女性", "日常"), "A", 247, true, prototypeGradientFor(0)),
-    PrototypeCharacterCard("vex", "Captain Vex", "银河走私船 Wraith 号船长", listOf("科幻", "反英雄"), "V", 89, true, prototypeGradientFor(1)),
-    PrototypeCharacterCard("eleanor", "Eleanor Wright", "维多利亚时代小说家", listOf("历史", "文学"), "E", 412, false, prototypeGradientFor(2)),
-    PrototypeCharacterCard("kael", "Kael", "吟游精灵", listOf("奇幻", "精灵"), "K", 56, false, prototypeGradientFor(3)),
-    PrototypeCharacterCard("zoey", "Zoey", "高中同桌 / 闺蜜", listOf("现代", "青春"), "Z", 1241, true, prototypeGradientFor(4)),
-    PrototypeCharacterCard("archive", "档案室", "神秘档案员", listOf("悬疑", "非人"), "档", 12, false, prototypeGradientFor(5))
-)
-
 fun prototypeGradientFor(index: Int): List<Long> {
     val gradients = listOf(
         listOf(0xFFFFD7B0, 0xFFA55A2A),
@@ -151,9 +138,9 @@ private fun String.readableName(): String =
 private fun String.linePreview(): String =
     lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
 
-private fun Long.toPrototypeTime(index: Int): String {
+private fun Long.toPrototypeTime(): String {
     if (this <= 0L) {
-        return listOf("刚才", "12 分钟前", "今天 14:02", "昨天", "3 天前")[index.floorMod(5)]
+        return "未知时间"
     }
     val age = System.currentTimeMillis() - this
     val minute = 60_000L

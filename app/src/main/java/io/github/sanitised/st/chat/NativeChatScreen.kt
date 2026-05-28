@@ -89,6 +89,7 @@ fun NativeChatScreen(
     onStartService: () -> Unit,
     onShowLogs: () -> Unit,
     onBackToHome: () -> Unit,
+    onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LaunchedEffect(status.state) {
@@ -97,11 +98,13 @@ fun NativeChatScreen(
         }
     }
 
-    LaunchedEffect(store.runtimeState, target) {
-        if (store.runtimeState != RuntimeState.READY) return@LaunchedEffect
+    val readyTargetKey = if (store.runtimeState == RuntimeState.READY) readyTargetCommandKey(target) else null
+    LaunchedEffect(readyTargetKey) {
+        if (readyTargetKey == null) return@LaunchedEffect
         when (target) {
             WebViewTarget.CHAT -> bridge.requestSnapshot()
             is WebViewTarget.CharacterChat -> bridge.openCharacter(target.avatar, target.chatFile)
+            is WebViewTarget.GroupChat -> bridge.openGroup(target.groupId, target.chatId)
         }
     }
 
@@ -143,7 +146,13 @@ fun NativeChatScreen(
                 runtimeError = store.runtimeError,
                 targetMatched = targetMatched,
                 targetLabel = target.displayLabel(),
-                onBack = onBackToHome
+                chatFile = if (targetMatched) store.chatFile else "",
+                onBack = onBackToHome,
+                onSearch = { onShowMessage("消息搜索暂未接入原生聊天运行时") },
+                onMore = {
+                    bridge.reloadChat()
+                    onShowMessage("已请求重新同步当前聊天")
+                }
             )
 
             Box(modifier = Modifier.weight(1f)) {
@@ -157,6 +166,11 @@ fun NativeChatScreen(
                     MessageList(
                         messages = store.messages,
                         characterName = visibleCharacterName,
+                        onSwipePrevious = { messageId -> bridge.swipePrevious(messageId) },
+                        onSwipeNext = { messageId -> bridge.swipeNext(messageId) },
+                        onRegenerate = { bridge.regenerate() },
+                        onContinue = { bridge.continueGeneration() },
+                        onMore = { onShowMessage("更多消息操作暂未接入原生聊天运行时") },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -165,14 +179,17 @@ fun NativeChatScreen(
             ChatQuickStrip(
                 runtimeReady = readyForTarget,
                 onContinue = { bridge.continueGeneration() },
-                onRegenerate = { bridge.regenerate() }
+                onRegenerate = { bridge.regenerate() },
+                onUnavailableAction = { label -> onShowMessage("$label 功能暂未接入原生聊天运行时") }
             )
 
             ChatInputBar(
                 isGenerating = store.isGenerating,
                 runtimeReady = readyForTarget,
                 onSend = { text -> bridge.sendMessage(text) },
-                onStop = { bridge.stopGeneration() }
+                onStop = { bridge.stopGeneration() },
+                onVoiceInput = { onShowMessage("语音输入暂未接入") },
+                onAttachmentAction = { label -> onShowMessage("$label 功能暂未接入原生聊天运行时") }
             )
         }
     }
@@ -188,6 +205,13 @@ private fun targetMatchesStore(target: WebViewTarget, store: ChatStore): Boolean
                 normalizeChatFile(target.chatFile) == normalizeChatFile(store.chatFile)
             characterMatches && chatMatches
         }
+        is WebViewTarget.GroupChat -> {
+            val groupMatches = store.mode == "group" &&
+                identifiersMatch(target.groupId, store.avatarUrl)
+            val chatMatches = target.chatId.isNullOrBlank() ||
+                normalizeChatFile(target.chatId) == normalizeChatFile(store.chatFile)
+            groupMatches && chatMatches
+        }
     }
 }
 
@@ -198,6 +222,9 @@ private fun WebViewTarget.displayLabel(): String {
             ?.takeIf { it.isNotBlank() }
             ?.substringBeforeLast(".jsonl")
             ?: avatar.substringAfterLast('/').substringBeforeLast('.').ifBlank { "角色聊天" }
+        is WebViewTarget.GroupChat -> chatId
+            ?.takeIf { it.isNotBlank() }
+            ?: groupId.ifBlank { "群聊" }
     }
 }
 
@@ -235,7 +262,10 @@ private fun ChatHeader(
     runtimeError: String?,
     targetMatched: Boolean,
     targetLabel: String,
+    chatFile: String,
     onBack: () -> Unit,
+    onSearch: () -> Unit,
+    onMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(modifier = modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
@@ -275,7 +305,8 @@ private fun ChatHeader(
                         isGenerating -> "生成中…"
                         runtimeState == RuntimeState.NOT_READY -> "正在连接运行时…"
                         runtimeState == RuntimeState.ERROR -> "运行时异常"
-                        else -> "Claude Sonnet · 200k 上下文"
+                        chatFile.isNotBlank() -> chatFile
+                        else -> "运行时已连接"
                     }
                     Text(
                         text = subtitle,
@@ -290,10 +321,10 @@ private fun ChatHeader(
                     )
                 }
             }
-            IconButton(onClick = {}) {
+            IconButton(onClick = onSearch) {
                 Icon(Icons.Filled.Search, contentDescription = "搜索消息")
             }
-            IconButton(onClick = {}) {
+            IconButton(onClick = onMore) {
                 Icon(Icons.Filled.MoreVert, contentDescription = "更多")
             }
             if (isGenerating) {
@@ -338,16 +369,23 @@ private fun ChatLoadingView(
 private fun MessageList(
     messages: List<ChatMessage>,
     characterName: String,
+    onSwipePrevious: (Int) -> Unit,
+    onSwipeNext: (Int) -> Unit,
+    onRegenerate: () -> Unit,
+    onContinue: () -> Unit,
+    onMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val density = LocalDensity.current
     val imeBottom = WindowInsets.ime.getBottom(density)
+    val visibleMessages = visibleChatMessages(messages)
+    val dateLabel = conversationDateLabel(messages)
 
-    LaunchedEffect(messages.size, messages.lastOrNull()?.mes, imeBottom) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size)
+    LaunchedEffect(visibleMessages.size, visibleMessages.lastOrNull()?.mes, imeBottom, dateLabel) {
+        chatListScrollTargetIndex(visibleMessages, dateLabel)?.let { index ->
+            listState.animateScrollToItem(index)
         }
     }
 
@@ -357,21 +395,26 @@ private fun MessageList(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        item(key = "date-chip") {
-            DateChip(text = "今天 14:00")
+        if (dateLabel != null) {
+            item(key = "date-chip") {
+                DateChip(text = dateLabel)
+            }
         }
         items(
-            items = messages,
-            key = { msg -> "${msg.id}_${msg.swipeId}" }
+            items = visibleMessages,
+            key = { msg -> chatMessageItemKey(msg) }
         ) { message ->
-            if (!message.isSystem) {
-                MessageBubble(
-                    message = message,
-                    characterName = characterName,
-                    lastAssistant = !message.isUser && messages.lastOrNull { !it.isSystem }?.id == message.id,
-                    maxWidth = screenWidth * 0.82f
-                )
-            }
+            MessageBubble(
+                message = message,
+                characterName = characterName,
+                lastAssistant = !message.isUser && visibleMessages.lastOrNull()?.id == message.id,
+                maxWidth = if (message.isUser) screenWidth * 0.82f else screenWidth * 0.92f,
+                onSwipePrevious = onSwipePrevious,
+                onSwipeNext = onSwipeNext,
+                onRegenerate = onRegenerate,
+                onContinue = onContinue,
+                onMore = onMore
+            )
         }
     }
 }
@@ -382,6 +425,11 @@ private fun MessageBubble(
     characterName: String,
     lastAssistant: Boolean,
     maxWidth: androidx.compose.ui.unit.Dp,
+    onSwipePrevious: (Int) -> Unit,
+    onSwipeNext: (Int) -> Unit,
+    onRegenerate: () -> Unit,
+    onContinue: () -> Unit,
+    onMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isUser = message.isUser
@@ -429,8 +477,14 @@ private fun MessageBubble(
                     }
                     if (lastAssistant) {
                         AssistantMessageControls(
+                            messageId = message.id,
                             swipeIndex = message.swipeId,
-                            swipeCount = message.swipes.size.coerceAtLeast(1)
+                            swipeCount = message.swipes.size.coerceAtLeast(1),
+                            onSwipePrevious = onSwipePrevious,
+                            onSwipeNext = onSwipeNext,
+                            onRegenerate = onRegenerate,
+                            onContinue = onContinue,
+                            onMore = onMore
                         )
                     }
                 }
@@ -458,11 +512,17 @@ private fun DateChip(text: String) {
 
 @Composable
 private fun AssistantMessageControls(
+    messageId: Int,
     swipeIndex: Int,
-    swipeCount: Int
+    swipeCount: Int,
+    onSwipePrevious: (Int) -> Unit,
+    onSwipeNext: (Int) -> Unit,
+    onRegenerate: () -> Unit,
+    onContinue: () -> Unit,
+    onMore: () -> Unit
 ) {
     Row(modifier = Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = {}, modifier = Modifier.size(28.dp)) {
+        IconButton(onClick = { onSwipePrevious(messageId) }, modifier = Modifier.size(28.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
         }
         Text(
@@ -471,14 +531,18 @@ private fun AssistantMessageControls(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 6.dp)
         )
-        IconButton(onClick = {}, modifier = Modifier.size(28.dp)) {
+        IconButton(onClick = { onSwipeNext(messageId) }, modifier = Modifier.size(28.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
         }
         Spacer(modifier = Modifier.weight(1f))
-        listOf(Icons.Filled.Refresh, Icons.AutoMirrored.Filled.ArrowForward, Icons.Filled.MoreVert).forEach { icon ->
-            IconButton(onClick = {}, modifier = Modifier.size(32.dp)) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            }
+        IconButton(onClick = onRegenerate, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Filled.Refresh, contentDescription = "重写", modifier = Modifier.size(18.dp))
+        }
+        IconButton(onClick = onContinue, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "继续", modifier = Modifier.size(18.dp))
+        }
+        IconButton(onClick = onMore, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Filled.MoreVert, contentDescription = "更多消息操作", modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -487,7 +551,8 @@ private fun AssistantMessageControls(
 private fun ChatQuickStrip(
     runtimeReady: Boolean,
     onContinue: () -> Unit,
-    onRegenerate: () -> Unit
+    onRegenerate: () -> Unit,
+    onUnavailableAction: (String) -> Unit
 ) {
     data class QuickAction(
         val icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -498,8 +563,8 @@ private fun ChatQuickStrip(
     val actions = listOf(
         QuickAction(Icons.AutoMirrored.Filled.ArrowForward, "继续", runtimeReady, onContinue),
         QuickAction(Icons.Filled.Refresh, "重写上条", runtimeReady, onRegenerate),
-        QuickAction(Icons.Filled.RecordVoiceOver, "代笔我的消息", false) {},
-        QuickAction(Icons.Filled.EditNote, "剧情推进", false) {}
+        QuickAction(Icons.Filled.RecordVoiceOver, "代笔我的消息", runtimeReady) { onUnavailableAction("代笔我的消息") },
+        QuickAction(Icons.Filled.EditNote, "剧情推进", runtimeReady) { onUnavailableAction("剧情推进") }
     )
     Row(
         modifier = Modifier
@@ -526,6 +591,8 @@ private fun ChatInputBar(
     runtimeReady: Boolean,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
+    onVoiceInput: () -> Unit,
+    onAttachmentAction: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var text by rememberSaveable { mutableStateOf("") }
@@ -533,7 +600,7 @@ private fun ChatInputBar(
 
     Column(modifier = modifier.fillMaxWidth()) {
         if (showAttach) {
-            AttachSheet()
+            AttachSheet(onAction = onAttachmentAction)
         }
         Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
             Row(
@@ -591,6 +658,7 @@ private fun ChatInputBar(
                     isGenerating = isGenerating,
                     runtimeReady = runtimeReady,
                     onStop = onStop,
+                    onVoiceInput = onVoiceInput,
                     onSend = {
                         val msg = text.trim()
                         if (msg.isNotEmpty()) {
@@ -610,6 +678,7 @@ private fun ChatSendButton(
     isGenerating: Boolean,
     runtimeReady: Boolean,
     onStop: () -> Unit,
+    onVoiceInput: () -> Unit,
     onSend: () -> Unit
 ) {
     when {
@@ -625,7 +694,7 @@ private fun ChatSendButton(
         }
 
         text.isBlank() -> IconButton(
-            onClick = {},
+            onClick = onVoiceInput,
             enabled = runtimeReady,
             modifier = Modifier.size(48.dp)
         ) {
@@ -653,7 +722,9 @@ private fun ChatSendButton(
 }
 
 @Composable
-private fun AttachSheet() {
+private fun AttachSheet(
+    onAction: (String) -> Unit
+) {
     val items = listOf(
         Icons.Filled.AttachFile to "附件",
         Icons.Filled.Image to "图片",
@@ -676,6 +747,7 @@ private fun AttachSheet() {
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Surface(
+                                onClick = { onAction(label) },
                                 modifier = Modifier.size(48.dp),
                                 shape = MaterialTheme.shapes.large,
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,

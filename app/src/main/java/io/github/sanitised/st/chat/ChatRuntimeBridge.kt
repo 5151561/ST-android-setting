@@ -112,6 +112,32 @@ class ChatRuntimeBridge(
         dispatch(BridgeMessage(kind = "command", name = "chat.openCharacter", payload = payload))
     }
 
+    fun openGroup(groupId: String, chatId: String? = null) {
+        val payload = JSONObject().put("groupId", groupId)
+        if (chatId != null) payload.put("chatId", chatId)
+        dispatch(BridgeMessage(kind = "command", name = "chat.openGroup", payload = payload))
+    }
+
+    fun swipePrevious(messageId: Int) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "message.swipePrevious",
+                payload = JSONObject().put("id", messageId)
+            )
+        )
+    }
+
+    fun swipeNext(messageId: Int) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "message.swipeNext",
+                payload = JSONObject().put("id", messageId)
+            )
+        )
+    }
+
     fun newChat() {
         dispatch(BridgeMessage(kind = "command", name = "chat.new"))
     }

@@ -60,6 +60,7 @@ fun PrototypeChatListScreen(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpenChat: (PrototypeChatItem) -> Unit,
+    onNewChat: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -72,9 +73,6 @@ fun PrototypeChatListScreen(
     val filteredChats = remember(chatItems, selectedFilter) {
         when (selectedFilter) {
             1 -> chatItems.filter { it.favorite }
-            2 -> chatItems.filter { it.streaming }
-            3 -> chatItems.filter { it.id.contains("group") }
-            4 -> chatItems.filter { it.id.contains("checkpoint") }
             else -> chatItems
         }
     }
@@ -113,10 +111,7 @@ fun PrototypeChatListScreen(
                         PrototypeChipRow(
                             items = listOf(
                                 "全部 ${chatItems.size}",
-                                "收藏 ${chatItems.count { it.favorite }}",
-                                "进行中 ${chatItems.count { it.streaming }}",
-                                "群聊 ${chatItems.count { it.id.contains("group") }}",
-                                "检查点 ${chatItems.count { it.id.contains("checkpoint") }}"
+                                "置顶 ${chatItems.count { it.favorite }}"
                             ),
                             selectedIndex = selectedFilter,
                             onSelected = { selectedFilter = it },
@@ -148,14 +143,7 @@ fun PrototypeChatListScreen(
             }
 
             ExtendedFloatingActionButton(
-                onClick = {
-                    val firstChat = chatItems.firstOrNull()
-                    if (firstChat != null) {
-                        onOpenChat(firstChat)
-                    } else {
-                        onShowMessage("没有历史对话，请在“角色”页选择角色开始聊天")
-                    }
-                },
+                onClick = onNewChat,
                 icon = { Icon(Icons.Filled.Edit, contentDescription = null) },
                 text = { Text("新对话") },
                 modifier = Modifier
@@ -185,14 +173,9 @@ private fun PrototypeChatListItem(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (item.id.contains("group")) {
-                val groupInitials = when (item.id) {
-                    "group/1" -> listOf("A", "Z", "K")
-                    "group/2" -> listOf("V", "E")
-                    else -> listOf(item.initial)
-                }
+            if (item.kind == PrototypeChatKind.GROUP) {
                 PrototypeGroupAvatar(
-                    initials = groupInitials,
+                    initials = listOf(item.initial),
                     size = 52.dp
                 )
             } else {
@@ -228,7 +211,7 @@ private fun PrototypeChatListItem(
                             Spacer(modifier = Modifier.width(6.dp))
                             Icon(
                                 imageVector = Icons.Filled.Star,
-                                contentDescription = "已收藏",
+                                contentDescription = "已置顶",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp)
                             )

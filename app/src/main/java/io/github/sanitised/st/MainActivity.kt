@@ -133,18 +133,18 @@ private val bottomNavItems = listOf(
 )
 
 private val drawerNavItems = listOf(
-    DrawerNavItem(STRoutes.HOME, "对话", Icons.AutoMirrored.Filled.Chat, badgeText = "23"),
-    DrawerNavItem(STRoutes.CHARACTERS, "角色库", Icons.Filled.Groups, badgeText = "247"),
-    DrawerNavItem(STRoutes.GROUP_CHAT, "群聊", Icons.Filled.GroupAdd, badgeText = "2"),
-    DrawerNavItem(STRoutes.PERSONA, "扮演者", Icons.Filled.Face, badgeText = "4"),
-    DrawerNavItem(STRoutes.WORLD_INFO, "世界书", Icons.Filled.Book, badgeText = "4"),
+    DrawerNavItem(STRoutes.HOME, "对话", Icons.AutoMirrored.Filled.Chat),
+    DrawerNavItem(STRoutes.CHARACTERS, "角色库", Icons.Filled.Groups),
+    DrawerNavItem(STRoutes.GROUP_CHAT, "群聊", Icons.Filled.GroupAdd),
+    DrawerNavItem(STRoutes.PERSONA, "扮演者", Icons.Filled.Face),
+    DrawerNavItem(STRoutes.WORLD_INFO, "世界书", Icons.Filled.Book),
     DrawerNavItem(STRoutes.CHAT_BACKUPS, "记忆与回顾", Icons.Filled.CloudSync),
     DrawerNavItem(STRoutes.AUTHOR_NOTE, "作者注 & CFG", Icons.Filled.History),
     DrawerNavItem(STRoutes.PRESETS, "AI 采样设置", Icons.Filled.Tune, isPrimaryGroup = false),
-    DrawerNavItem(STRoutes.CONNECTIONS, "API 连接", Icons.Filled.SettingsEthernet, supportingText = "0 个已配置", isPrimaryGroup = false),
-    DrawerNavItem(STRoutes.EXTENSIONS, "扩展", Icons.Filled.Extension, supportingText = "6 个", isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.CONNECTIONS, "API 连接", Icons.Filled.SettingsEthernet, isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.EXTENSIONS, "扩展", Icons.Filled.Extension, isPrimaryGroup = false),
     DrawerNavItem(STRoutes.APPEARANCE, "主题外观", Icons.Filled.Palette, isPrimaryGroup = false),
-    DrawerNavItem(STRoutes.MANAGE_ST, "ST 内核", Icons.Filled.Memory, supportingText = "运行中", isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.MANAGE_ST, "ST 内核", Icons.Filled.Memory, isPrimaryGroup = false),
     DrawerNavItem(STRoutes.SETTINGS, "设置", Icons.Filled.Settings, isPrimaryGroup = false),
     DrawerNavItem(STRoutes.LEGAL, "帮助 & 文档", Icons.Filled.Help, isPrimaryGroup = false),
     DrawerNavItem(STRoutes.SETTINGS, "退出登录", Icons.Filled.Logout, isPrimaryGroup = false)
@@ -289,6 +289,7 @@ class MainActivity : ComponentActivity() {
             val navBackStackEntry by navController.currentBackStackEntryAsState()
             val currentRoute = navBackStackEntry?.destination?.route
             val bottomBarSelectedRoute = when (currentRoute) {
+                STRoutes.CHAT -> STRoutes.HOME
                 STRoutes.CHARACTER_NEW,
                 STRoutes.CHARACTER_DETAIL,
                 STRoutes.CHARACTER_EDIT -> STRoutes.CHARACTERS
@@ -310,6 +311,7 @@ class MainActivity : ComponentActivity() {
                 STRoutes.APPEARANCE -> STRoutes.SETTINGS
                 else -> currentRoute
             }
+            val showNavigationChrome = currentRoute != STRoutes.CHAT
             val appPaths = remember { AppPaths(this@MainActivity) }
 
             val legalDocs = remember {
@@ -536,9 +538,12 @@ class MainActivity : ComponentActivity() {
             }
             val chatStore = remember { ChatStore() }
             val chatBridge = remember { ChatRuntimeBridge(chatStore) }
-            var pendingWebViewTarget by remember { mutableStateOf<WebViewTarget>(WebViewTarget.CHAT) }
+            var pendingWebViewTarget by rememberSaveable(stateSaver = webViewTargetSaver()) {
+                mutableStateOf<WebViewTarget>(WebViewTarget.CHAT)
+            }
             val navigateMainTab: (String) -> Unit = { route ->
                 if (route == STRoutes.CHAT) {
+                    chatStore.reset()
                     pendingWebViewTarget = WebViewTarget.CHAT
                 }
                 navController.navigate(route) {
@@ -555,13 +560,31 @@ class MainActivity : ComponentActivity() {
                     launchSingleTop = true
                 }
             }
+            val openGroupChat: (String, String?) -> Unit = { groupId, chatId ->
+                pendingWebViewTarget = WebViewTarget.GroupChat(groupId, chatId)
+                navController.navigate(STRoutes.CHAT) {
+                    launchSingleTop = true
+                }
+            }
 
-            val dynamicDrawerItems = remember(drawerNavItems, connectedCount) {
+            val dynamicDrawerItems = remember(drawerNavItems, connectedCount, librarySnapshot, statusState.value.state) {
                 drawerNavItems.map { item ->
-                    if (item.route == STRoutes.CONNECTIONS) {
-                        item.copy(supportingText = "${connectedCount} 个已配置")
-                    } else {
-                        item
+                    when (item.route) {
+                        STRoutes.HOME -> item.copy(
+                            badgeText = librarySnapshot.recentChats.size
+                                .takeIf { it > 0 }
+                                ?.toString()
+                        )
+                        STRoutes.CHARACTERS -> item.copy(
+                            badgeText = librarySnapshot.characters.size
+                                .takeIf { it > 0 }
+                                ?.toString()
+                        )
+                        STRoutes.CONNECTIONS -> item.copy(supportingText = "${connectedCount} 个已配置")
+                        STRoutes.MANAGE_ST -> item.copy(
+                            supportingText = if (statusState.value.state == NodeState.RUNNING) "运行中" else "未运行"
+                        )
+                        else -> item
                     }
                 }
             }
@@ -572,6 +595,7 @@ class MainActivity : ComponentActivity() {
                     drawerItems = dynamicDrawerItems,
                     currentRoute = bottomBarSelectedRoute,
                     onNavigate = navigateMainTab,
+                    showNavigation = showNavigationChrome,
                     snackbarHost = {
                         SnackbarHost(
                             hostState = snackbarHostState,
@@ -617,6 +641,10 @@ class MainActivity : ComponentActivity() {
                                     onOpenChat = { chat ->
                                         openCharacterChatFromCharacterManagement(chat.characterId, chat.chatFile)
                                     },
+                                    onNewChat = {
+                                        navController.navigate(STRoutes.CHARACTERS)
+                                        viewModel.showTransientMessage("请选择角色开始新对话")
+                                    },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
@@ -630,7 +658,12 @@ class MainActivity : ComponentActivity() {
                                     bridge = chatBridge,
                                     onStartService = { startNode() },
                                     onShowLogs = { navController.navigate(STRoutes.LOGS) },
-                                    onBackToHome = { if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME) }
+                                    onBackToHome = {
+                                        chatStore.reset()
+                                        pendingWebViewTarget = WebViewTarget.CHAT
+                                        if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME)
+                                    },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
@@ -782,8 +815,10 @@ class MainActivity : ComponentActivity() {
                             composable(STRoutes.GROUP_CHAT) {
                                 BackHandler { navController.popBackStack() }
                                 PrototypeGroupChatScreen(
-                                    onBack = { navController.popBackStack() },
-                                    onConfirm = { navController.popBackStack() },
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onOpenGroupChat = openGroupChat,
+                                    onStartService = { startNode() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
@@ -1319,6 +1354,40 @@ private fun pendingDialogStateSaver(): androidx.compose.runtime.saveable.Saver<P
                     previewText = Uri.decode(key.removePrefix("import:").split(":", limit = 3).getOrElse(2) { "" })
                 )
                 else -> null
+            }
+        }
+    )
+}
+
+private fun webViewTargetSaver(): androidx.compose.runtime.saveable.Saver<WebViewTarget, String> {
+    return androidx.compose.runtime.saveable.Saver(
+        save = { target ->
+            when (target) {
+                WebViewTarget.CHAT -> "chat"
+                is WebViewTarget.CharacterChat -> listOf(
+                    "character",
+                    Uri.encode(target.avatar),
+                    Uri.encode(target.chatFile.orEmpty())
+                ).joinToString("|")
+                is WebViewTarget.GroupChat -> listOf(
+                    "group",
+                    Uri.encode(target.groupId),
+                    Uri.encode(target.chatId.orEmpty())
+                ).joinToString("|")
+            }
+        },
+        restore = { encoded ->
+            val parts = encoded.split('|')
+            when (parts.firstOrNull()) {
+                "character" -> WebViewTarget.CharacterChat(
+                    avatar = parts.getOrNull(1)?.let { Uri.decode(it) }.orEmpty(),
+                    chatFile = parts.getOrNull(2)?.let { Uri.decode(it) }?.takeIf { it.isNotBlank() }
+                )
+                "group" -> WebViewTarget.GroupChat(
+                    groupId = parts.getOrNull(1)?.let { Uri.decode(it) }.orEmpty(),
+                    chatId = parts.getOrNull(2)?.let { Uri.decode(it) }?.takeIf { it.isNotBlank() }
+                )
+                else -> WebViewTarget.CHAT
             }
         }
     )

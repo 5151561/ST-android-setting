@@ -16,6 +16,7 @@ class ChatStore {
     var characterName by mutableStateOf("")
     var avatarUrl by mutableStateOf("")
     var chatFile by mutableStateOf("")
+    var mode by mutableStateOf("character")
     var isGenerating by mutableStateOf(false)
     var runtimeError by mutableStateOf<String?>(null)
     val messages = mutableStateListOf<ChatMessage>()
@@ -23,6 +24,7 @@ class ChatStore {
     fun applySnapshot(snapshot: ChatSnapshot) {
         runtimeState = RuntimeState.READY
         runtimeError = null
+        mode = snapshot.mode
         characterName = snapshot.characterName
         avatarUrl = snapshot.avatarUrl
         chatFile = snapshot.chatFile
@@ -78,6 +80,7 @@ class ChatStore {
         characterName = ""
         avatarUrl = ""
         chatFile = ""
+        mode = "character"
         isGenerating = false
         runtimeError = null
         messages.clear()

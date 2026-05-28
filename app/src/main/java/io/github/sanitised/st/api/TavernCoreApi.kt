@@ -236,6 +236,34 @@ data class ChatSummary(
     val isPinned: Boolean = false
 )
 
+data class GroupSummary(
+    val id: String,
+    val name: String,
+    val members: List<String> = emptyList(),
+    val chatId: String = "",
+    val chats: List<String> = emptyList(),
+    val lastUpdated: Long = 0,
+    val chatSize: Long = 0,
+    val avatarUrl: String = "",
+    val allowSelfResponses: Boolean = false,
+    val activationStrategy: Int = 0,
+    val generationMode: Int = 0,
+    val isFavorite: Boolean = false
+)
+
+data class GroupCreateRequest(
+    val name: String,
+    val members: List<String>,
+    val avatarUrl: String = "img/ai4.png",
+    val allowSelfResponses: Boolean = false,
+    val activationStrategy: Int = 0,
+    val generationMode: Int = 0,
+    val disabledMembers: List<String> = emptyList(),
+    val isFavorite: Boolean = false,
+    val chatId: String = "",
+    val autoModeDelay: Int = 5
+)
+
 data class GenerationChunk(
     val text: String,
     val isFinal: Boolean = false
@@ -306,6 +334,8 @@ interface TavernCoreApi {
         format: ChatExportFormat
     ): CharacterExportFile
     suspend fun listRecentChats(): List<ChatSummary>
+    suspend fun listGroups(): List<GroupSummary>
+    suspend fun createGroup(request: GroupCreateRequest): GroupSummary
     suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk>
     suspend fun stopGeneration(chatId: String)
 }
@@ -1131,6 +1161,44 @@ class TavernCoreClient(
         return emptyList()
     }
 
+    override suspend fun listGroups(): List<GroupSummary> {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/groups/all", "{}")
+            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            items.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                map.toGroupSummary()
+            }
+        }
+    }
+
+    override suspend fun createGroup(request: GroupCreateRequest): GroupSummary {
+        return withContext(Dispatchers.IO) {
+            val payload = linkedMapOf<String, Any?>(
+                "name" to request.name,
+                "members" to request.members,
+                "avatar_url" to request.avatarUrl,
+                "allow_self_responses" to request.allowSelfResponses,
+                "activation_strategy" to request.activationStrategy,
+                "generation_mode" to request.generationMode,
+                "disabled_members" to request.disabledMembers,
+                "fav" to request.isFavorite,
+                "auto_mode_delay" to request.autoModeDelay
+            )
+            request.chatId.takeIf { it.isNotBlank() }?.let { chatId ->
+                payload["chat_id"] = chatId
+                payload["chats"] = listOf(chatId)
+            }
+            val body = postJson(
+                path = "api/groups/create",
+                json = jsonValue(payload)
+            )
+            val map = yaml.load<Any?>(body) as? Map<*, *>
+                ?: throw IllegalStateException("Invalid group response")
+            map.toGroupSummary()
+        }
+    }
+
     override suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk> {
         // TODO: POST /api/chats/{chatId}/messages with SSE streaming
         return kotlinx.coroutines.flow.emptyFlow()
@@ -1473,6 +1541,25 @@ class TavernCoreClient(
                 is Number -> value.toLong().toString()
                 else -> ""
             }
+        )
+    }
+
+    private fun Map<*, *>.toGroupSummary(): GroupSummary {
+        val id = stringValue("id")
+        val chatId = stringValue("chat_id")
+        return GroupSummary(
+            id = id,
+            name = stringValue("name").ifBlank { id.ifBlank { "未命名群聊" } },
+            members = stringListValue("members"),
+            chatId = chatId,
+            chats = stringListValue("chats"),
+            lastUpdated = longValue("date_last_chat"),
+            chatSize = longValue("chat_size"),
+            avatarUrl = stringValue("avatar_url"),
+            allowSelfResponses = booleanValue("allow_self_responses"),
+            activationStrategy = intValue("activation_strategy", 0),
+            generationMode = intValue("generation_mode", 0),
+            isFavorite = booleanValue("fav")
         )
     }
 

@@ -25,6 +25,19 @@ class PrototypeModelsTest {
         assertEquals("那我多加了一份饼干哦，别告诉店长。", row.preview)
         assertEquals("A", row.initial)
         assertTrue(row.favorite)
+        assertEquals(PrototypeChatKind.DIRECT, row.kind)
+    }
+
+    @Test
+    fun chatSummaryWithoutTimestampDoesNotInventRelativeTime() {
+        val row = ChatSummary(
+            id = "aria/session",
+            characterId = "aria.png",
+            characterName = "Aria",
+            lastUpdated = 0
+        ).toPrototypeChatItem(index = 0)
+
+        assertEquals("未知时间", row.time)
     }
 
     @Test

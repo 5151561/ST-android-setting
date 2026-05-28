@@ -6,6 +6,7 @@ import android.webkit.WebView
 sealed class WebViewTarget {
     object CHAT : WebViewTarget()
     data class CharacterChat(val avatar: String, val chatFile: String? = null) : WebViewTarget()
+    data class GroupChat(val groupId: String, val chatId: String? = null) : WebViewTarget()
 }
 
 object WebViewNavigator {
@@ -41,6 +42,7 @@ object WebViewNavigator {
         when (target) {
             WebViewTarget.CHAT -> Unit
             is WebViewTarget.CharacterChat -> Unit
+            is WebViewTarget.GroupChat -> Unit
         }
     }
 }

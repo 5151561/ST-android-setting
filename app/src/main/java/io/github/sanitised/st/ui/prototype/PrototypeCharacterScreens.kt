@@ -142,8 +142,12 @@ fun PrototypeCharacterLibraryScreen(
             loading = true
             val paths = io.github.sanitised.st.AppPaths(context)
             val reader = io.github.sanitised.st.data.LocalTavernLibraryReader(paths.dataDir)
-            characters = reader.listCharacters()
-            error = null
+            runCatching { reader.listCharacters() }
+                .onSuccess {
+                    characters = it
+                    error = null
+                }
+                .onFailure { error = it.message ?: "本地角色读取失败" }
             loading = false
             return@LaunchedEffect
         }
@@ -157,9 +161,28 @@ fun PrototypeCharacterLibraryScreen(
         loading = false
     }
 
-    val cards = remember(characters, searchQuery, selectedFilter) {
-        characters.mapIndexed { index, item -> item.toPrototypeCharacterCard(index) }
-            .filter { card ->
+    val tagFilters = remember(characters) {
+        characters
+            .flatMap { it.tags }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+            .take(4)
+    }
+    val filterChips = remember(characters, tagFilters) {
+        listOf("全部", "收藏", "最近") + tagFilters
+    }
+
+    LaunchedEffect(filterChips.size, selectedFilter) {
+        if (selectedFilter >= filterChips.size) {
+            selectedFilter = 0
+        }
+    }
+
+    val cards = remember(characters, searchQuery, selectedFilter, tagFilters) {
+        val selectedTag = tagFilters.getOrNull(selectedFilter - 3)
+        characters.mapIndexed { index, item -> item to item.toPrototypeCharacterCard(index) }
+            .filter { (item, card) ->
                 val queryMatched = searchQuery.isBlank() ||
                     card.name.contains(searchQuery, ignoreCase = true) ||
                     card.subtitle.contains(searchQuery, ignoreCase = true) ||
@@ -167,10 +190,14 @@ fun PrototypeCharacterLibraryScreen(
                 val filterMatched = when (selectedFilter) {
                     1 -> card.favorite
                     2 -> card.messageCount > 0
+                    in 3 until (3 + tagFilters.size) -> {
+                        selectedTag != null && item.tags.any { it.equals(selectedTag, ignoreCase = true) }
+                    }
                     else -> true
                 }
                 queryMatched && filterMatched
             }
+            .map { (_, card) -> card }
     }
 
     if (searchDialogOpen) {
@@ -233,7 +260,7 @@ fun PrototypeCharacterLibraryScreen(
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
                 PrototypeChipRow(
-                    items = listOf("全部", "收藏", "最近", "日常", "奇幻", "科幻", "历史"),
+                    items = filterChips,
                     selectedIndex = selectedFilter,
                     onSelected = { selectedFilter = it },
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 8.dp)
@@ -256,7 +283,12 @@ fun PrototypeCharacterLibraryScreen(
                     ) {
                         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                             PrototypeSectionHeader(
-                                title = if (selectedFilter == 1) "收藏" else "所有角色",
+                                title = when {
+                                    selectedFilter == 1 -> "收藏"
+                                    selectedFilter == 2 -> "最近"
+                                    selectedFilter >= 3 -> filterChips.getOrNull(selectedFilter).orEmpty()
+                                    else -> "所有角色"
+                                },
                                 modifier = Modifier.padding(horizontal = 0.dp),
                                 trailing = {
                                     Text(
@@ -305,11 +337,13 @@ fun PrototypeCharacterProfileScreen(
 ) {
     val scope = rememberCoroutineScope()
     val serverRunning = status.state == NodeState.RUNNING
-    var detail by remember { mutableStateOf<CharacterDetail?>(null) }
+    var detail by remember(avatar) { mutableStateOf<CharacterDetail?>(null) }
     var loading by remember { mutableStateOf(false) }
-    var favorite by remember { mutableStateOf(false) }
+    var favorite by remember(avatar) { mutableStateOf(false) }
 
     LaunchedEffect(serverRunning, baseUrl, avatar) {
+        detail = null
+        favorite = false
         if (!serverRunning || avatar.isNullOrBlank()) return@LaunchedEffect
         loading = true
         runCatching { TavernCoreClient(baseUrl = baseUrl).getCharacter(avatar) }
@@ -398,7 +432,7 @@ fun PrototypeCharacterProfileScreen(
                         }
                     ) {
                         Icon(
-                            imageVector = if (favorite || card.favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
                             contentDescription = "收藏",
                             tint = MaterialTheme.colorScheme.primary
                         )
@@ -736,35 +770,37 @@ private fun CharacterDetailSections(
 ) {
     PrototypeEditSection(title = "基本信息", icon = Icons.Filled.Badge, open = true) {
         PrototypeFieldRow("角色名", detail?.name ?: fallback.name)
-        PrototypeFieldRow("创作者", detail?.creator?.ifBlank { "未知" } ?: "原型演示")
-        PrototypeFieldRow("版本", detail?.characterVersion?.ifBlank { "未标注" } ?: "v2.1")
-        PrototypeFieldRow("语言", "中文 · 双语")
+        PrototypeFieldRow("创作者", detail?.creator?.ifBlank { "未标注" } ?: "未加载")
+        PrototypeFieldRow("版本", detail?.characterVersion?.ifBlank { "未标注" } ?: "未加载")
     }
     PrototypeEditSection(title = "角色描述", icon = Icons.Filled.Description, open = true, count = detail?.description?.length) {
         Text(
             text = detail?.description?.ifBlank { fallback.subtitle }
-                ?: "${fallback.subtitle}。她不是英雄，也不是反派；她只是想把故事继续讲下去。",
+                ?: fallback.subtitle,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
-        PrototypeFieldRow("个性", detail?.personality?.lineSequence()?.firstOrNull()?.ifBlank { null } ?: "冷静 / 直接 / 私下幽默")
-        PrototypeFieldRow("说话方式", detail?.personality?.lineSequence()?.drop(1)?.firstOrNull()?.ifBlank { null } ?: "短句、偶尔粗口、行话很多")
+        PrototypeFieldRow("个性", detail?.personality?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: "未填写")
+        PrototypeFieldRow("场景", detail?.scenario?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: "未填写")
     }
     PrototypeEditSection(title = "开场白", icon = Icons.Filled.EmojiPeople, open = true, count = detail?.firstMessage?.length) {
         Text(
-            text = "\"${detail?.firstMessage?.ifBlank { "诶？又是你啊。今天还是老样子？" } ?: "诶？又是你啊。今天还是老样子？"}\"",
+            text = detail?.firstMessage?.takeIf { it.isNotBlank() } ?: "未设置开场白",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
-        Row(
-            modifier = Modifier
-                .padding(start = 16.dp, bottom = 12.dp)
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf("主开场", "备选 1", "备选 2").forEach { PrototypeBadge(it) }
+        val greetings = detail?.alternateGreetings.orEmpty().filter { it.isNotBlank() }
+        if (greetings.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .padding(start = 16.dp, bottom = 12.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                greetings.forEachIndexed { index, _ -> PrototypeBadge("备选 ${index + 1}") }
+            }
         }
     }
     PrototypeEditSection(title = "场景 (Scenario)", icon = Icons.Filled.Theaters) {}

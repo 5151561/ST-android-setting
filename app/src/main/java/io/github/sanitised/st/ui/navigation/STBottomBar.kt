@@ -70,12 +70,13 @@ fun STNavigationScaffold(
     drawerItems: List<DrawerNavItem> = emptyList(),
     currentRoute: String?,
     onNavigate: (String) -> Unit,
+    showNavigation: Boolean = true,
     snackbarHost: @Composable () -> Unit,
     drawerHeader: @Composable (() -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit
 ) {
     val useRail = LocalConfiguration.current.screenWidthDp >= NAVIGATION_RAIL_MIN_WIDTH_DP
-    if (useRail) {
+    if (useRail && showNavigation) {
         CompositionLocalProvider(LocalSTOpenDrawer provides {}) {
             Row(modifier = Modifier.fillMaxSize()) {
                 STNavigationRail(
@@ -90,6 +91,14 @@ fun STNavigationScaffold(
                     content = content
                 )
             }
+        }
+    } else if (useRail) {
+        CompositionLocalProvider(LocalSTOpenDrawer provides {}) {
+            Scaffold(
+                snackbarHost = snackbarHost,
+                containerColor = MaterialTheme.colorScheme.background,
+                content = content
+            )
         }
     } else {
         val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -114,11 +123,13 @@ fun STNavigationScaffold(
             ) {
                 Scaffold(
                     bottomBar = {
-                        STBottomBar(
-                            items = items,
-                            currentRoute = currentRoute,
-                            onNavigate = onNavigate
-                        )
+                        if (showNavigation) {
+                            STBottomBar(
+                                items = items,
+                                currentRoute = currentRoute,
+                                onNavigate = onNavigate
+                            )
+                        }
                     },
                     snackbarHost = snackbarHost,
                     containerColor = MaterialTheme.colorScheme.background,

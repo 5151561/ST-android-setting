@@ -484,6 +484,117 @@ class TavernCoreClientTest {
     }
 
     @Test
+    fun groupChatListAndCreateUseSillyTavernGroupEndpoints() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    [
+                      {
+                        "id": "group-1",
+                        "name": "Archive Team",
+                        "members": ["Seraphina.png", "Vex.png"],
+                        "chat_id": "May 26, 2026 12:00pm",
+                        "chats": ["May 26, 2026 12:00pm"],
+                        "date_last_chat": 1748246400000,
+                        "chat_size": 2048,
+                        "fav": true
+                      }
+                    ]
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "id": "group-2",
+                      "name": "New Team",
+                      "members": ["Seraphina.png"],
+                      "chat_id": "May 27, 2026 09:00am",
+                      "chats": ["May 27, 2026 09:00am"],
+                      "date_last_chat": 0,
+                      "chat_size": 0
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val groups = client.listGroups()
+        val created = client.createGroup(
+            GroupCreateRequest(
+                name = "New Team",
+                members = listOf("Seraphina.png"),
+                chatId = "May 27, 2026 09:00am"
+            )
+        )
+
+        assertCsrfRequest()
+        assertEquals("/api/groups/all", server.takeRequest().path)
+        assertEquals("group-1", groups.single().id)
+        assertEquals("Archive Team", groups.single().name)
+        assertEquals(listOf("Seraphina.png", "Vex.png"), groups.single().members)
+        assertEquals("May 26, 2026 12:00pm", groups.single().chatId)
+        assertEquals(1748246400000L, groups.single().lastUpdated)
+        assertTrue(groups.single().isFavorite)
+
+        val createRequest = server.takeRequest()
+        assertEquals("/api/groups/create", createRequest.path)
+        val createBody = createRequest.body.readUtf8()
+        assertTrue(createBody.contains("\"name\":\"New Team\""))
+        assertTrue(createBody.contains("\"members\":[\"Seraphina.png\"]"))
+        assertTrue(createBody.contains("\"chat_id\":\"May 27, 2026 09:00am\""))
+        assertEquals("group-2", created.id)
+    }
+
+    @Test
+    fun createGroupLetsServerChooseChatIdWhenRequestDoesNotSpecifyOne() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "id": "group-3",
+                      "name": "Server Named Chat",
+                      "members": ["Seraphina.png"],
+                      "chat_id": "May 28, 2026 10:00am",
+                      "chats": ["May 28, 2026 10:00am"]
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val created = client.createGroup(
+            GroupCreateRequest(
+                name = "Server Named Chat",
+                members = listOf("Seraphina.png"),
+                allowSelfResponses = true,
+                activationStrategy = 2
+            )
+        )
+
+        assertCsrfRequest()
+        val createRequest = server.takeRequest()
+        assertEquals("/api/groups/create", createRequest.path)
+        val createBody = createRequest.body.readUtf8()
+        assertTrue(createBody.contains("\"allow_self_responses\":true"))
+        assertTrue(createBody.contains("\"activation_strategy\":2"))
+        assertFalse(createBody.contains("\"chat_id\""))
+        assertFalse(createBody.contains("\"chats\""))
+        assertEquals("May 28, 2026 10:00am", created.chatId)
+    }
+
+    @Test
     fun listCharactersSurfacesApiErrors() = runBlocking {
         enqueueCsrf()
         server.enqueue(MockResponse().setResponseCode(500).setBody("broken"))

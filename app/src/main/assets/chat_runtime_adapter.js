@@ -106,15 +106,18 @@
     if (!ctx) return null;
     var chat = ctx.chat || [];
     var characters = ctx.characters || [];
+    var groups = ctx.groups || [];
     var thisChid = ctx.characterId;
+    var groupId = ctx.groupId || '';
     var character = (thisChid != null && characters[thisChid]) ? characters[thisChid] : null;
+    var group = groupId ? groups.find(function (item) { return item && item.id == groupId; }) : null;
     var chatMetadata = ctx.chatMetadata || {};
 
     return {
-      mode: ctx.groupId ? 'group' : 'character',
-      avatarUrl: character ? (character.avatar || '') : '',
-      characterName: character ? (character.name || '') : '',
-      chatFile: character ? (character.chat || '') : '',
+      mode: group ? 'group' : 'character',
+      avatarUrl: group ? (group.id || '') : (character ? (character.avatar || '') : ''),
+      characterName: group ? (group.name || '') : (character ? (character.name || '') : ''),
+      chatFile: group ? (group.chat_id || '') : (character ? (character.chat || '') : ''),
       isGenerating: isRuntimeGenerating(),
       messages: chat.map(function (msg, i) { return serializeMessage(msg, i); }).filter(Boolean),
       metadata: { integrity: chatMetadata.integrity || '' }
@@ -284,6 +287,10 @@
             handleOpenCharacter(payload, cmdId);
             break;
 
+          case 'chat.openGroup':
+            handleOpenGroup(payload, cmdId);
+            break;
+
           case 'chat.send':
             handleSend(payload, cmdId);
             break;
@@ -306,6 +313,14 @@
 
           case 'chat.reload':
             handleReload(cmdId);
+            break;
+
+          case 'message.swipePrevious':
+            handleSwipe(payload, cmdId, 'left');
+            break;
+
+          case 'message.swipeNext':
+            handleSwipe(payload, cmdId, 'right');
             break;
 
           default:
@@ -357,6 +372,50 @@
       postResult(cmdId, {});
     } catch (err) {
       postError(cmdId, 'openCharacter failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  async function handleOpenGroup(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+
+      var groupId = payload.groupId || '';
+      var groups = ctx.groups || [];
+      var group = groups.find(function (g) { return g && String(g.id) === String(groupId); });
+
+      if (!group) { postError(cmdId, 'Group not found: ' + groupId); return; }
+      if (typeof ctx.openGroupChat !== 'function') {
+        postError(cmdId, 'openGroupChat not available');
+        return;
+      }
+
+      var chatId = payload.chatId || group.chat_id || (Array.isArray(group.chats) ? group.chats[0] : null);
+      if (!chatId) {
+        postError(cmdId, 'Group has no chat file: ' + groupId);
+        return;
+      }
+
+      var openedByClick = false;
+      if (!payload.chatId || payload.chatId === group.chat_id) {
+        var groupNodes = Array.prototype.slice.call(document.querySelectorAll('.group_select'));
+        var groupNode = groupNodes.find(function (node) {
+          return node.getAttribute('data-grid') === String(group.id) ||
+            node.getAttribute('data-chid') === String(group.id);
+        });
+        if (groupNode) {
+          groupNode.click();
+          await new Promise(function (resolve) { setTimeout(resolve, 600); });
+          openedByClick = true;
+        }
+      }
+      if (!openedByClick) {
+        await ctx.openGroupChat(group.id, chatId);
+      }
+      postSnapshot();
+      postResult(cmdId, {});
+    } catch (err) {
+      postError(cmdId, 'openGroup failed: ' + (err && err.message ? err.message : err));
     }
   }
 
@@ -452,6 +511,27 @@
     } else {
       postError(cmdId, 'reloadCurrentChat not available');
     }
+  }
+
+  function handleSwipe(payload, cmdId, direction) {
+    var ctx = getContext();
+    if (!ctx || !ctx.swipe) {
+      postError(cmdId, 'Swipe runtime not available');
+      return;
+    }
+    var messageId = Number(payload.id);
+    var message = Array.isArray(ctx.chat) ? ctx.chat[messageId] : null;
+    var action = direction === 'left' ? ctx.swipe.left : ctx.swipe.right;
+    if (!message || typeof action !== 'function') {
+      postError(cmdId, 'Message cannot be swiped');
+      return;
+    }
+    Promise.resolve(action(null, { message: message })).then(function () {
+      postSnapshot();
+      postResult(cmdId, {});
+    }).catch(function (err) {
+      postError(cmdId, 'swipe failed: ' + (err && err.message ? err.message : err));
+    });
   }
 
   // --- Initialization ---
