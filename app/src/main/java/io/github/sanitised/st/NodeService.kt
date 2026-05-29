@@ -105,6 +105,14 @@ class NodeService : Service() {
                 return
             }
         }
+        val requestedPort = status.port
+        if (!PortAvailability.isTcpPortAvailable(requestedPort)) {
+            val logsDir = AppPaths(this).logsDir
+            appendServiceLog(logsDir, "start blocked: port $requestedPort is already in use")
+            updateStatus(NodeState.ERROR, getString(R.string.node_status_port_in_use, requestedPort))
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            return
+        }
         val layout = try {
             val layoutResult = payload.ensureExtracted()
             if (layoutResult.isFailure) {
@@ -268,12 +276,15 @@ class NodeService : Service() {
                 }
             }
             if (wasStopRequested) {
+                appendServiceLog(AppPaths(this@NodeService).logsDir, "node stopped by user")
                 updateStatus(NodeState.STOPPED, getString(R.string.node_status_stopped))
             } else {
                 if (exitCode == 0) {
+                    appendServiceLog(AppPaths(this@NodeService).logsDir, "node exited cleanly")
                     updateStatus(NodeState.STOPPED, getString(R.string.node_status_exited))
                 } else {
                     val message = getString(R.string.node_status_exited_with_code, exitCode?.toString() ?: "?")
+                    appendServiceLog(AppPaths(this@NodeService).logsDir, "unexpected exit: $message")
                     updateStatus(NodeState.ERROR, message)
                 }
             }

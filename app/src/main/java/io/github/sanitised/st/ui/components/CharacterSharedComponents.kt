@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -16,7 +17,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.sanitised.st.R
 import io.github.sanitised.st.api.STTag
-import io.github.sanitised.st.ui.theme.STTheme
 
 @Composable
 internal fun FavoriteIconButton(
@@ -30,7 +30,7 @@ internal fun FavoriteIconButton(
         Icon(
             imageVector = Icons.Filled.Star,
             contentDescription = stringResource(R.string.character_filter_favorites),
-            tint = if (isFavorite) STTheme.colors.warn else STTheme.colors.muted,
+            tint = if (isFavorite) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = iconSize?.let { Modifier.size(it) } ?: Modifier
         )
     }

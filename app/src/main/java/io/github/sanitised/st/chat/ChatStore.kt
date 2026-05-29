@@ -1,0 +1,88 @@
+package io.github.sanitised.st.chat
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
+enum class RuntimeState {
+    NOT_READY,
+    READY,
+    ERROR
+}
+
+class ChatStore {
+    var runtimeState by mutableStateOf(RuntimeState.NOT_READY)
+    var characterName by mutableStateOf("")
+    var avatarUrl by mutableStateOf("")
+    var chatFile by mutableStateOf("")
+    var mode by mutableStateOf("character")
+    var isGenerating by mutableStateOf(false)
+    var runtimeError by mutableStateOf<String?>(null)
+    val messages = mutableStateListOf<ChatMessage>()
+
+    fun applySnapshot(snapshot: ChatSnapshot) {
+        runtimeState = RuntimeState.READY
+        runtimeError = null
+        mode = snapshot.mode
+        characterName = snapshot.characterName
+        avatarUrl = snapshot.avatarUrl
+        chatFile = snapshot.chatFile
+        isGenerating = snapshot.isGenerating
+        messages.clear()
+        messages.addAll(snapshot.messages)
+    }
+
+    fun markRuntimeReady() {
+        runtimeState = RuntimeState.READY
+        runtimeError = null
+    }
+
+    fun markRuntimeUnavailable(message: String? = null) {
+        runtimeState = RuntimeState.NOT_READY
+        isGenerating = false
+        runtimeError = message
+    }
+
+    fun markRuntimeError(message: String) {
+        runtimeState = RuntimeState.ERROR
+        isGenerating = false
+        runtimeError = message
+    }
+
+    fun recordCommandError(message: String) {
+        runtimeError = message
+    }
+
+    fun addMessage(message: ChatMessage) {
+        upsertMessage(message)
+    }
+
+    fun updateMessage(message: ChatMessage) {
+        upsertMessage(message)
+    }
+
+    private fun upsertMessage(message: ChatMessage) {
+        val idx = messages.indexOfFirst { it.id == message.id }
+        if (idx >= 0) {
+            messages[idx] = message
+        } else {
+            messages.add(message)
+        }
+    }
+
+    fun deleteMessage(messageId: Int) {
+        messages.removeAll { it.id == messageId }
+    }
+
+    fun reset() {
+        runtimeState = RuntimeState.NOT_READY
+        characterName = ""
+        avatarUrl = ""
+        chatFile = ""
+        mode = "character"
+        isGenerating = false
+        runtimeError = null
+        messages.clear()
+    }
+}

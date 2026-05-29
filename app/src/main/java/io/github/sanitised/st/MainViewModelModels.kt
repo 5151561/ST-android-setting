@@ -38,7 +38,18 @@ enum class ThemeMode(val storageValue: String) {
 
     companion object {
         fun fromStorage(value: String?): ThemeMode {
-            return entries.firstOrNull { it.storageValue == value } ?: AUTO
+            return entries.firstOrNull { it.storageValue == value } ?: DARK
+        }
+    }
+}
+
+enum class ThemeColorSource(val storageValue: String) {
+    DYNAMIC("dynamic"),
+    BRAND("brand");
+
+    companion object {
+        fun fromStorage(value: String?): ThemeColorSource {
+            return entries.firstOrNull { it.storageValue == value } ?: BRAND
         }
     }
 }

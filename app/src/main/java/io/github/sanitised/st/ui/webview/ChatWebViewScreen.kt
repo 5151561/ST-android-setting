@@ -71,6 +71,10 @@ fun ChatWebViewScreen(
     onStartService: () -> Unit,
     onShowLogs: () -> Unit,
     onBackToHome: () -> Unit,
+    chatEventHandler: ((String) -> Unit)? = null,
+    onWebViewReady: ((WebView) -> Unit)? = null,
+    onWebViewDisposed: ((WebView) -> Unit)? = null,
+    onRuntimeReset: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -79,6 +83,9 @@ fun ChatWebViewScreen(
     val currentPort = rememberUpdatedState(status.port)
     val currentThemeMode = rememberUpdatedState(themeMode)
     val currentTarget = rememberUpdatedState(target)
+    val currentOnWebViewReady = rememberUpdatedState(onWebViewReady)
+    val currentOnWebViewDisposed = rememberUpdatedState(onWebViewDisposed)
+    val currentOnRuntimeReset = rememberUpdatedState(onRuntimeReset)
     val logWebView: (String) -> Unit = remember(context, diagnosticScope) {
         { message ->
             diagnosticScope.launch(Dispatchers.IO) {
@@ -121,7 +128,8 @@ fun ChatWebViewScreen(
                 STAndroidBridge(
                     context = context,
                     portProvider = { currentPort.value },
-                    themeModeProvider = { currentThemeMode.value }
+                    themeModeProvider = { currentThemeMode.value },
+                    chatEventHandler = chatEventHandler
                 ),
                 "STAndroid"
             )
@@ -165,6 +173,8 @@ fun ChatWebViewScreen(
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
                     pageError = null
+                    WebViewNavigator.resetInjectionState()
+                    currentOnRuntimeReset.value?.invoke()
                     logWebView("webview: page-started url=$url")
                 }
 
@@ -192,6 +202,7 @@ fun ChatWebViewScreen(
                     logWebView("webview: page-finished url=$url current=${finishedView.url}")
                     finishedView.logDocumentState(logWebView)
                     WebViewNavigator.injectAndroidRuntimeFlags(finishedView)
+                    WebViewNavigator.injectChatRuntimeAdapter(finishedView, context)
                     WebViewNavigator.navigateToTarget(finishedView, currentTarget.value)
                 }
 
@@ -237,6 +248,9 @@ fun ChatWebViewScreen(
     }
 
     LaunchedEffect(status.state) {
+        if (status.state != NodeState.RUNNING) {
+            currentOnRuntimeReset.value?.invoke()
+        }
         if (status.state == NodeState.STOPPED && !startRequested) {
             startRequested = true
             onStartService()
@@ -286,7 +300,10 @@ fun ChatWebViewScreen(
         }
     }
     DisposableEffect(Unit) {
+        currentOnWebViewReady.value?.invoke(webView)
         onDispose {
+            WebViewNavigator.resetInjectionState()
+            currentOnWebViewDisposed.value?.invoke(webView)
             webView.stopLoading()
             webView.destroy()
         }

@@ -13,6 +13,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -26,7 +27,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.sanitised.st.R
-import io.github.sanitised.st.ui.theme.STTheme
 
 internal enum class STDialogButtonStyle {
     TEXT,
@@ -40,20 +40,20 @@ internal fun STInfoCard(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
-    borderColor: Color = STTheme.colors.border
+    borderColor: Color = MaterialTheme.colorScheme.outline
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
-        border = BorderStroke(1.dp, borderColor)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(text = body, style = MaterialTheme.typography.bodySmall, color = STTheme.colors.muted)
-            if (actionLabel != null && onAction != null) {
-                Button(onClick = onAction) {
-                    Text(actionLabel)
-                }
+        Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(text = body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (actionLabel != null && onAction != null) {
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedButton(onClick = onAction) {
+                Text(actionLabel)
             }
         }
     }
@@ -62,23 +62,20 @@ internal fun STInfoCard(
 @Composable
 internal fun STSectionCard(
     title: String? = null,
-    borderColor: Color = STTheme.colors.border,
+    borderColor: Color = MaterialTheme.colorScheme.outline,
     modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = PaddingValues(16.dp),
+    contentPadding: PaddingValues = PaddingValues(vertical = 8.dp),
     contentSpacing: Dp = 12.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = STTheme.colors.surface),
-        border = BorderStroke(1.dp, borderColor)
+    Column(
+        modifier = modifier.fillMaxWidth().padding(contentPadding),
+        verticalArrangement = Arrangement.spacedBy(contentSpacing)
     ) {
-        Column(modifier = Modifier.padding(contentPadding), verticalArrangement = Arrangement.spacedBy(contentSpacing)) {
-            if (title != null) {
-                Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-            content()
+        if (title != null) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
+        content()
     }
 }
 
@@ -139,12 +136,14 @@ internal fun STOperationProgressCard(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+    val contentColor = MaterialTheme.colorScheme.onSurface
     Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        modifier = modifier.fillMaxWidth()
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
@@ -156,11 +155,11 @@ internal fun STOperationProgressCard(
                 Text(
                     text = details,
                     style = MaterialTheme.typography.bodySmall,
-                    color = contentColor
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(modifier = Modifier.height(10.dp))
-            STProgressBlock(progressPercent = progressPercent, contentColor = contentColor)
+            STProgressBlock(progressPercent = progressPercent, contentColor = MaterialTheme.colorScheme.primary)
             if (showCancel) {
                 Spacer(modifier = Modifier.height(10.dp))
                 OutlinedButton(onClick = onCancel) {

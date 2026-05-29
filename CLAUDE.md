@@ -1,5 +1,10 @@
 # CLAUDE.md
 
+给我讲中文。
+
+
+
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What This Project Is
@@ -61,7 +66,7 @@ The M2 milestone is migrating character management to primarily use the API path
 
 ## Key Conventions
 
-- UI language is Chinese (底部导航标签: 首页/聊天/角色/工具/设置). String resources are in `res/values/strings.xml` and `res/values-zh/strings.xml`.
+- UI language is Chinese . String resources are in `res/values/strings.xml` and `res/values-zh/strings.xml`.
 - Compose is used with Material 3 (`androidx.compose.material3`). No Compose compiler plugin — uses `kotlinCompilerExtensionVersion = "1.5.14"` in build config.
 - JSON construction in `TavernCoreClient` is hand-rolled (`jsonObject()`, `jsonValue()`, `quoteJson()`) — no JSON library dependency for serialization.
 - The debug build variant uses applicationId suffix `.dev` and app name "ST dev".

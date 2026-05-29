@@ -133,6 +133,100 @@ data class STTagSettings(
     val rawSettings: Map<String, Any?> = emptyMap()
 )
 
+data class SettingsSnapshot(
+    val name: String,
+    val date: Long,
+    val size: Long
+)
+
+data class WorldInfoSummary(
+    val id: String,
+    val name: String,
+    val extensions: Map<String, Any?> = emptyMap()
+)
+
+data class WorldInfoEntry(
+    val uid: Int,
+    val keys: List<String> = emptyList(),
+    val secondaryKeys: List<String> = emptyList(),
+    val comment: String = "",
+    val content: String = "",
+    val order: Int = 0,
+    val depth: Int = 4,
+    val position: Int = 0,
+    val constant: Boolean = false,
+    val selective: Boolean = false,
+    val disabled: Boolean = false,
+    val raw: Map<String, Any?> = emptyMap()
+)
+
+data class WorldInfoBook(
+    val name: String,
+    val entries: List<WorldInfoEntry> = emptyList(),
+    val rawData: Map<String, Any?> = emptyMap()
+)
+
+data class PersonaProfile(
+    val avatar: String,
+    val name: String,
+    val title: String = "",
+    val description: String = "",
+    val isDefault: Boolean = false,
+    val hasAvatar: Boolean = true
+)
+
+data class PersonaSaveRequest(
+    val avatar: String,
+    val name: String,
+    val title: String = "",
+    val description: String = "",
+    val makeDefault: Boolean = false
+)
+
+data class SecretEntry(
+    val id: String,
+    val value: String,
+    val label: String,
+    val active: Boolean
+)
+
+data class SecretProviderState(
+    val key: String,
+    val label: String,
+    val entries: List<SecretEntry> = emptyList()
+)
+
+data class PresetSummary(
+    val apiId: String,
+    val name: String,
+    val content: String,
+    val selected: Boolean = false
+)
+
+data class PresetCategory(
+    val apiId: String,
+    val title: String,
+    val presets: List<PresetSummary> = emptyList()
+)
+
+data class PresetLibrary(
+    val categories: List<PresetCategory> = emptyList()
+)
+
+data class ConnectionProfile(
+    val label: String,
+    val url: String,
+    val lastConnection: Long = 0
+)
+
+data class ChatBackupSummary(
+    val fileName: String,
+    val fileSize: String = "",
+    val messageCount: Int = 0,
+    val lastMessage: String = "",
+    val lastMessageAt: String = ""
+)
+
 data class ChatSummary(
     val id: String,
     val characterId: String,
@@ -140,6 +234,34 @@ data class ChatSummary(
     val lastMessage: String? = null,
     val lastUpdated: Long = 0,
     val isPinned: Boolean = false
+)
+
+data class GroupSummary(
+    val id: String,
+    val name: String,
+    val members: List<String> = emptyList(),
+    val chatId: String = "",
+    val chats: List<String> = emptyList(),
+    val lastUpdated: Long = 0,
+    val chatSize: Long = 0,
+    val avatarUrl: String = "",
+    val allowSelfResponses: Boolean = false,
+    val activationStrategy: Int = 0,
+    val generationMode: Int = 0,
+    val isFavorite: Boolean = false
+)
+
+data class GroupCreateRequest(
+    val name: String,
+    val members: List<String>,
+    val avatarUrl: String = "img/ai4.png",
+    val allowSelfResponses: Boolean = false,
+    val activationStrategy: Int = 0,
+    val generationMode: Int = 0,
+    val disabledMembers: List<String> = emptyList(),
+    val isFavorite: Boolean = false,
+    val chatId: String = "",
+    val autoModeDelay: Int = 5
 )
 
 data class GenerationChunk(
@@ -160,6 +282,36 @@ interface TavernCoreApi {
     )
     suspend fun getTagSettings(): STTagSettings
     suspend fun saveTagSettings(settings: STTagSettings)
+    suspend fun listSettingsSnapshots(): List<SettingsSnapshot>
+    suspend fun makeSettingsSnapshot()
+    suspend fun loadSettingsSnapshot(name: String): String
+    suspend fun restoreSettingsSnapshot(name: String)
+    suspend fun listWorldInfos(): List<WorldInfoSummary>
+    suspend fun getWorldInfo(name: String): WorldInfoBook
+    suspend fun saveWorldInfo(book: WorldInfoBook)
+    suspend fun deleteWorldInfo(name: String)
+    suspend fun listPersonas(): List<PersonaProfile>
+    suspend fun savePersona(request: PersonaSaveRequest)
+    suspend fun uploadPersonaAvatar(fileName: String, bytes: ByteArray, overwriteName: String? = null): String
+    suspend fun deletePersona(avatar: String)
+    suspend fun listSecrets(): List<SecretProviderState>
+    suspend fun writeSecret(key: String, value: String, label: String): String
+    suspend fun rotateSecret(key: String, id: String)
+    suspend fun renameSecret(key: String, id: String, label: String)
+    suspend fun deleteSecret(key: String, id: String? = null)
+    suspend fun getSettings(): Map<String, Any?>
+    suspend fun saveSettings(settings: Map<String, Any?>)
+    suspend fun fetchModels(providerId: String): List<String>
+    suspend fun getPresetLibrary(): PresetLibrary
+    suspend fun savePreset(apiId: String, name: String, presetJson: String)
+    suspend fun selectPreset(apiId: String, name: String)
+    suspend fun deletePreset(apiId: String, name: String)
+    suspend fun restorePreset(apiId: String, name: String): String
+    suspend fun listConnectionProfiles(): List<ConnectionProfile>
+    suspend fun saveConnectionProfile(profile: ConnectionProfile)
+    suspend fun listChatBackups(): List<ChatBackupSummary>
+    suspend fun downloadChatBackup(name: String): CharacterExportFile
+    suspend fun deleteChatBackup(name: String)
     suspend fun renameCharacter(avatar: String, newName: String): String
     suspend fun duplicateCharacter(avatar: String): String
     suspend fun deleteCharacter(avatar: String, deleteChats: Boolean = false)
@@ -182,6 +334,8 @@ interface TavernCoreApi {
         format: ChatExportFormat
     ): CharacterExportFile
     suspend fun listRecentChats(): List<ChatSummary>
+    suspend fun listGroups(): List<GroupSummary>
+    suspend fun createGroup(request: GroupCreateRequest): GroupSummary
     suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk>
     suspend fun stopGeneration(chatId: String)
 }
@@ -312,6 +466,488 @@ class TavernCoreClient(
             postJson(
                 path = "api/settings/save",
                 json = jsonValue(merged)
+            )
+        }
+    }
+
+    override suspend fun listSettingsSnapshots(): List<SettingsSnapshot> {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/settings/get-snapshots", "{}")
+            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            items.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                SettingsSnapshot(
+                    name = map.stringValue("name"),
+                    date = map.longValue("date"),
+                    size = map.longValue("size")
+                )
+            }
+        }
+    }
+
+    override suspend fun makeSettingsSnapshot() {
+        withContext(Dispatchers.IO) {
+            postJson("api/settings/make-snapshot", "{}")
+        }
+    }
+
+    override suspend fun loadSettingsSnapshot(name: String): String {
+        return withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/settings/load-snapshot",
+                json = jsonObject("name" to name)
+            )
+        }
+    }
+
+    override suspend fun restoreSettingsSnapshot(name: String) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/settings/restore-snapshot",
+                json = jsonObject("name" to name)
+            )
+        }
+    }
+
+    override suspend fun listWorldInfos(): List<WorldInfoSummary> {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/worldinfo/list", "{}")
+            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            items.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                WorldInfoSummary(
+                    id = map.stringValue("file_id").ifBlank { map.stringValue("name") },
+                    name = map.stringValue("name").ifBlank { map.stringValue("file_id") },
+                    extensions = map.mapValue("extensions").toStringKeyMap()
+                )
+            }
+        }
+    }
+
+    override suspend fun getWorldInfo(name: String): WorldInfoBook {
+        return withContext(Dispatchers.IO) {
+            val body = postJson(
+                path = "api/worldinfo/get",
+                json = jsonObject("name" to name)
+            )
+            val map = (yaml.load<Any?>(body) as? Map<*, *>)
+                ?.toStringKeyMap()
+                ?: emptyMap()
+            map.toWorldInfoBook(fallbackName = name)
+        }
+    }
+
+    override suspend fun saveWorldInfo(book: WorldInfoBook) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/worldinfo/edit",
+                json = jsonObject(
+                    "name" to book.name,
+                    "data" to book.toApiData()
+                )
+            )
+        }
+    }
+
+    override suspend fun deleteWorldInfo(name: String) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/worldinfo/delete",
+                json = jsonObject("name" to name)
+            )
+        }
+    }
+
+    override suspend fun listPersonas(): List<PersonaProfile> {
+        return withContext(Dispatchers.IO) {
+            val avatarBody = postJson("api/avatars/get", "{}")
+            val avatars = (yaml.load<Any?>(avatarBody) as? List<*>)
+                ?.mapNotNull { it as? String }
+                ?: emptyList()
+            val settings = fetchSettings()
+            val powerUser = settings.settings.anyMapValue("power_user")
+            val personas = powerUser.anyMapValue("personas")
+            val descriptions = powerUser.anyMapValue("persona_descriptions")
+            val defaultPersona = powerUser.stringAnyValue("default_persona")
+            val personaIds = (avatars + personas.keys).distinct().sortedBy { personas[it]?.toString() ?: it }
+            personaIds.map { avatar ->
+                val descriptor = descriptions.anyMapValue(avatar)
+                PersonaProfile(
+                    avatar = avatar,
+                    name = personas[avatar]?.toString()?.ifBlank { null } ?: avatar.substringBeforeLast('.'),
+                    title = descriptor.stringAnyValue("title"),
+                    description = descriptor.stringAnyValue("description"),
+                    isDefault = avatar == defaultPersona,
+                    hasAvatar = avatar in avatars
+                )
+            }
+        }
+    }
+
+    override suspend fun savePersona(request: PersonaSaveRequest) {
+        withContext(Dispatchers.IO) {
+            val settings = fetchSettings()
+            val merged = settings.settings.toMutableMap()
+            val powerUser = merged.anyMapValue("power_user").toMutableMap()
+            val personas = powerUser.anyMapValue("personas").toMutableMap()
+            val descriptions = powerUser.anyMapValue("persona_descriptions").toMutableMap()
+            val existingDescriptor = descriptions.anyMapValue(request.avatar).toMutableMap()
+
+            personas[request.avatar] = request.name
+            existingDescriptor["title"] = request.title
+            existingDescriptor["description"] = request.description
+            descriptions[request.avatar] = existingDescriptor
+            powerUser["personas"] = personas
+            powerUser["persona_descriptions"] = descriptions
+            if (request.makeDefault) {
+                powerUser["default_persona"] = request.avatar
+            }
+            merged["power_user"] = powerUser
+            saveSettingsInternal(merged)
+        }
+    }
+
+    override suspend fun uploadPersonaAvatar(fileName: String, bytes: ByteArray, overwriteName: String?): String {
+        return withContext(Dispatchers.IO) {
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("avatar", fileName, bytes.toRequestBody(binaryMediaType))
+                .apply {
+                    overwriteName?.takeIf { it.isNotBlank() }?.let { name ->
+                        addFormDataPart("overwrite_name", name)
+                    }
+                }
+                .build()
+            val responseBody = postMultipart("api/avatars/upload", body)
+            val map = yaml.load<Any?>(responseBody) as? Map<*, *> ?: emptyMap<Any, Any>()
+            map.stringValue("path").ifBlank { overwriteName.orEmpty() }
+        }
+    }
+
+    override suspend fun deletePersona(avatar: String) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                postJson(
+                    path = "api/avatars/delete",
+                    json = jsonObject("avatar" to avatar)
+                )
+            }.onFailure { error ->
+                if (!error.message.orEmpty().contains("404")) throw error
+            }
+            val settings = fetchSettings()
+            val merged = settings.settings.toMutableMap()
+            val powerUser = merged.anyMapValue("power_user").toMutableMap()
+            val personas = powerUser.anyMapValue("personas").toMutableMap()
+            val descriptions = powerUser.anyMapValue("persona_descriptions").toMutableMap()
+            personas.remove(avatar)
+            descriptions.remove(avatar)
+            if (powerUser.stringAnyValue("default_persona") == avatar) {
+                powerUser.remove("default_persona")
+            }
+            powerUser["personas"] = personas
+            powerUser["persona_descriptions"] = descriptions
+            merged["power_user"] = powerUser
+            saveSettingsInternal(merged)
+        }
+    }
+
+    override suspend fun listSecrets(): List<SecretProviderState> {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/secrets/read", "{}")
+            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val keys = (secretProviderLabels.keys + map.keys.map { it.toString() }).distinct()
+            keys.map { key ->
+                val entries = (map[key] as? List<*>)
+                    ?.mapNotNull { item ->
+                        val itemMap = item as? Map<*, *> ?: return@mapNotNull null
+                        SecretEntry(
+                            id = itemMap.stringValue("id"),
+                            value = itemMap.stringValue("value"),
+                            label = itemMap.stringValue("label"),
+                            active = itemMap.booleanValue("active")
+                        )
+                    }
+                    ?: emptyList()
+                SecretProviderState(
+                    key = key,
+                    label = secretProviderLabels[key] ?: key,
+                    entries = entries
+                )
+            }.sortedBy { it.label }
+        }
+    }
+
+    override suspend fun writeSecret(key: String, value: String, label: String): String {
+        return withContext(Dispatchers.IO) {
+            val body = postJson(
+                path = "api/secrets/write",
+                json = jsonObject(
+                    "key" to key,
+                    "value" to value,
+                    "label" to label
+                )
+            )
+            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            map.stringValue("id")
+        }
+    }
+
+    override suspend fun rotateSecret(key: String, id: String) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/secrets/rotate",
+                json = jsonObject("key" to key, "id" to id)
+            )
+        }
+    }
+
+    override suspend fun renameSecret(key: String, id: String, label: String) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/secrets/rename",
+                json = jsonObject("key" to key, "id" to id, "label" to label)
+            )
+        }
+    }
+
+    override suspend fun deleteSecret(key: String, id: String?) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/secrets/delete",
+                json = jsonObject("key" to key, "id" to id)
+            )
+        }
+    }
+
+    override suspend fun getSettings(): Map<String, Any?> {
+        return withContext(Dispatchers.IO) {
+            fetchSettings().settings
+        }
+    }
+
+    override suspend fun saveSettings(settings: Map<String, Any?>) {
+        withContext(Dispatchers.IO) {
+            saveSettingsInternal(settings)
+        }
+    }
+
+    override suspend fun fetchModels(providerId: String): List<String> {
+        return withContext(Dispatchers.IO) {
+            val endpoint = when (providerId) {
+                "openrouter" -> "api/openrouter/models"
+                "koboldcpp", "kobold" -> "api/backends/text-completions/models"
+                else -> "api/backends/chat-completions/models"
+            }
+            runCatching {
+                val body = postJson(endpoint, "{}")
+                val parsed = yaml.load<Any?>(body)
+                val list = when (parsed) {
+                    is List<*> -> parsed
+                    is Map<*, *> -> parsed["data"] as? List<*> ?: emptyList<Any?>()
+                    else -> emptyList<Any?>()
+                }
+                list.mapNotNull { item ->
+                    val map = item as? Map<*, *> ?: return@mapNotNull null
+                    val id = map.stringValue("id").takeIf { it.isNotBlank() } ?: map.stringValue("name").takeIf { it.isNotBlank() }
+                    id
+                }.distinct().sorted()
+            }.getOrElse { emptyList() }
+        }
+    }
+
+    override suspend fun getPresetLibrary(): PresetLibrary {
+        return withContext(Dispatchers.IO) {
+            val settings = fetchSettings()
+            val powerUser = settings.settings.anyMapValue("power_user")
+            val categories = mutableListOf<PresetCategory>()
+            categories += pairedPresetCategory(
+                apiId = "openai",
+                title = "Chat Completion",
+                names = settings.response.stringListValue("openai_setting_names"),
+                contents = settings.response.stringListValue("openai_settings"),
+                selectedName = settings.settings.stringAnyValue("openai_settings")
+            )
+            val textGenSettings = settings.settings.anyMapValue("textgenerationwebui_settings")
+            categories += pairedPresetCategory(
+                apiId = "textgenerationwebui",
+                title = "Text Completion",
+                names = settings.response.stringListValue("textgenerationwebui_preset_names"),
+                contents = settings.response.stringListValue("textgenerationwebui_presets"),
+                selectedName = textGenSettings.stringAnyValue("preset")
+            )
+            categories += objectPresetCategory(
+                apiId = "instruct",
+                title = "Instruct",
+                value = settings.response["instruct"],
+                selectedName = powerUser.anyMapValue("instruct").stringAnyValue("preset")
+            )
+            categories += objectPresetCategory(
+                apiId = "context",
+                title = "Context",
+                value = settings.response["context"],
+                selectedName = powerUser.anyMapValue("context").stringAnyValue("preset")
+            )
+            categories += objectPresetCategory(
+                apiId = "sysprompt",
+                title = "System Prompt",
+                value = settings.response["sysprompt"],
+                selectedName = powerUser.anyMapValue("sysprompt").stringAnyValue("name")
+            )
+            categories += objectPresetCategory(
+                apiId = "reasoning",
+                title = "Reasoning",
+                value = settings.response["reasoning"],
+                selectedName = powerUser.anyMapValue("reasoning").stringAnyValue("name")
+            )
+            PresetLibrary(categories = categories.filter { it.presets.isNotEmpty() })
+        }
+    }
+
+    override suspend fun savePreset(apiId: String, name: String, presetJson: String) {
+        withContext(Dispatchers.IO) {
+            val preset = yaml.load<Any?>(presetJson) ?: emptyMap<String, Any?>()
+            postJson(
+                path = "api/presets/save",
+                json = jsonObject(
+                    "apiId" to apiId,
+                    "name" to name,
+                    "preset" to normalizeJsonValue(preset)
+                )
+            )
+        }
+    }
+
+    override suspend fun selectPreset(apiId: String, name: String) {
+        withContext(Dispatchers.IO) {
+            val settings = fetchSettings()
+            val merged = settings.settings.toMutableMap()
+            when (apiId) {
+                "openai" -> merged["openai_settings"] = name
+                "textgenerationwebui" -> {
+                    val textGenSettings = merged.anyMapValue("textgenerationwebui_settings").toMutableMap()
+                    textGenSettings["preset"] = name
+                    merged["textgenerationwebui_settings"] = textGenSettings
+                }
+                "instruct", "context", "sysprompt", "reasoning" -> {
+                    val powerUser = merged.anyMapValue("power_user").toMutableMap()
+                    val key = if (apiId == "sysprompt" || apiId == "reasoning") "name" else "preset"
+                    val preset = settings.response
+                        .listMapValue(apiId)
+                        .firstOrNull { it.stringAnyValue("name") == name }
+                    val current = powerUser.anyMapValue(apiId).toMutableMap()
+                    preset?.forEach { (presetKey, presetValue) ->
+                        current[presetKey] = presetValue
+                    }
+                    current[key] = name
+                    if (apiId == "instruct" || apiId == "sysprompt") {
+                        current["enabled"] = true
+                    }
+                    powerUser[apiId] = current
+                    merged["power_user"] = powerUser
+                }
+                else -> return@withContext
+            }
+            saveSettingsInternal(merged)
+        }
+    }
+
+    override suspend fun deletePreset(apiId: String, name: String) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/presets/delete",
+                json = jsonObject("apiId" to apiId, "name" to name)
+            )
+        }
+    }
+
+    override suspend fun restorePreset(apiId: String, name: String): String {
+        return withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/presets/restore",
+                json = jsonObject("apiId" to apiId, "name" to name)
+            )
+        }
+    }
+
+    override suspend fun listConnectionProfiles(): List<ConnectionProfile> {
+        return withContext(Dispatchers.IO) {
+            val settings = fetchSettings()
+            settings.settings
+                .anyMapValue("power_user")
+                .listMapValue("servers")
+                .map {
+                    ConnectionProfile(
+                        label = it.stringAnyValue("label"),
+                        url = it.stringAnyValue("url"),
+                        lastConnection = it.longAnyValue("lastConnection")
+                    )
+                }
+                .filter { it.url.isNotBlank() }
+                .sortedByDescending { it.lastConnection }
+        }
+    }
+
+    override suspend fun saveConnectionProfile(profile: ConnectionProfile) {
+        withContext(Dispatchers.IO) {
+            val settings = fetchSettings()
+            val merged = settings.settings.toMutableMap()
+            val powerUser = merged.anyMapValue("power_user").toMutableMap()
+            val servers = powerUser.listMapValue("servers").toMutableList()
+            val existingIndex = servers.indexOfFirst { item ->
+                item.stringAnyValue("label") == profile.label && item.stringAnyValue("url") == profile.url
+            }
+            val saved = linkedMapOf(
+                "label" to profile.label,
+                "url" to profile.url,
+                "lastConnection" to (profile.lastConnection.takeIf { it > 0 } ?: System.currentTimeMillis())
+            )
+            if (existingIndex >= 0) {
+                servers[existingIndex] = saved
+            } else {
+                servers.add(saved)
+            }
+            powerUser["servers"] = servers
+            merged["power_user"] = powerUser
+            saveSettingsInternal(merged)
+        }
+    }
+
+    override suspend fun listChatBackups(): List<ChatBackupSummary> {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/backups/chat/get", "{}")
+            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            items.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                ChatBackupSummary(
+                    fileName = map.stringValue("file_name"),
+                    fileSize = map.stringValue("file_size"),
+                    messageCount = map.intValue("chat_items", 0),
+                    lastMessage = map.stringValue("mes"),
+                    lastMessageAt = when (val value = map["last_mes"]) {
+                        is String -> value
+                        is Number -> value.toLong().toString()
+                        else -> ""
+                    }
+                )
+            }
+        }
+    }
+
+    override suspend fun downloadChatBackup(name: String): CharacterExportFile {
+        return withContext(Dispatchers.IO) {
+            postJsonFile(
+                path = "api/backups/chat/download",
+                json = jsonObject("name" to name),
+                fallbackFileName = name
+            )
+        }
+    }
+
+    override suspend fun deleteChatBackup(name: String) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/backups/chat/delete",
+                json = jsonObject("name" to name)
             )
         }
     }
@@ -525,6 +1161,44 @@ class TavernCoreClient(
         return emptyList()
     }
 
+    override suspend fun listGroups(): List<GroupSummary> {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/groups/all", "{}")
+            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            items.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                map.toGroupSummary()
+            }
+        }
+    }
+
+    override suspend fun createGroup(request: GroupCreateRequest): GroupSummary {
+        return withContext(Dispatchers.IO) {
+            val payload = linkedMapOf<String, Any?>(
+                "name" to request.name,
+                "members" to request.members,
+                "avatar_url" to request.avatarUrl,
+                "allow_self_responses" to request.allowSelfResponses,
+                "activation_strategy" to request.activationStrategy,
+                "generation_mode" to request.generationMode,
+                "disabled_members" to request.disabledMembers,
+                "fav" to request.isFavorite,
+                "auto_mode_delay" to request.autoModeDelay
+            )
+            request.chatId.takeIf { it.isNotBlank() }?.let { chatId ->
+                payload["chat_id"] = chatId
+                payload["chats"] = listOf(chatId)
+            }
+            val body = postJson(
+                path = "api/groups/create",
+                json = jsonValue(payload)
+            )
+            val map = yaml.load<Any?>(body) as? Map<*, *>
+                ?: throw IllegalStateException("Invalid group response")
+            map.toGroupSummary()
+        }
+    }
+
     override suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk> {
         // TODO: POST /api/chats/{chatId}/messages with SSE streaming
         return kotlinx.coroutines.flow.emptyFlow()
@@ -537,6 +1211,29 @@ class TavernCoreClient(
     private companion object {
         val jsonMediaType = "application/json; charset=utf-8".toMediaType()
         val binaryMediaType = "application/octet-stream".toMediaType()
+        val secretProviderLabels = linkedMapOf(
+            "api_key_openai" to "OpenAI",
+            "api_key_openrouter" to "OpenRouter",
+            "api_key_makersuite" to "Google AI Studio",
+            "api_key_vertexai" to "Google Vertex AI",
+            "api_key_custom" to "OpenAI-compatible",
+            "api_key_horde" to "AI Horde",
+            "api_key_koboldcpp" to "KoboldCpp",
+            "api_key_ooba" to "Text Generation WebUI",
+            "api_key_claude" to "Claude",
+            "api_key_mistralai" to "Mistral",
+            "api_key_deepseek" to "DeepSeek",
+            "api_key_xai" to "xAI",
+            "api_key_cohere" to "Cohere",
+            "api_key_perplexity" to "Perplexity",
+            "api_key_tabby" to "TabbyAPI",
+            "api_key_aphrodite" to "Aphrodite",
+            "api_key_mancer" to "Mancer",
+            "api_key_featherless" to "Featherless",
+            "api_key_llamacpp" to "llama.cpp",
+            "api_key_novel" to "NovelAI",
+            "api_key_generic" to "Generic"
+        )
 
         val defaultHttpClient: OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(750, TimeUnit.MILLISECONDS)
@@ -627,6 +1324,117 @@ class TavernCoreClient(
                 token
             }
         }.getOrDefault("")
+    }
+
+    private data class SettingsPayload(
+        val response: Map<String, Any?>,
+        val settings: Map<String, Any?>
+    )
+
+    private fun fetchSettings(): SettingsPayload {
+        val body = postJson("api/settings/get", "{}")
+        val response = (yaml.load<Any?>(body) as? Map<*, *>)
+            ?.toStringKeyMap()
+            ?: emptyMap()
+        val settings = (yaml.load<Any?>(response.stringAnyValue("settings")) as? Map<*, *>)
+            ?.toStringKeyMap()
+            ?: emptyMap()
+        return SettingsPayload(response = response, settings = settings)
+    }
+
+    private fun saveSettingsInternal(settings: Map<String, Any?>) {
+        postJson(
+            path = "api/settings/save",
+            json = jsonValue(settings)
+        )
+    }
+
+    private fun Map<String, Any?>.toWorldInfoBook(fallbackName: String): WorldInfoBook {
+        val entriesMap = anyMapValue("entries")
+        val entries = entriesMap.entries.mapNotNull { (key, value) ->
+            val entryMap = (value as? Map<*, *>)?.toStringKeyMap()
+                ?: return@mapNotNull null
+            val uid = entryMap.intAnyValue("uid", key.toIntOrNull() ?: 0)
+            WorldInfoEntry(
+                uid = uid,
+                keys = entryMap["key"].toStringList(),
+                secondaryKeys = entryMap["keysecondary"].toStringList(),
+                comment = entryMap.stringAnyValue("comment"),
+                content = entryMap.stringAnyValue("content"),
+                order = entryMap.intAnyValue("order", 0),
+                depth = entryMap.intAnyValue("depth", 4),
+                position = entryMap.intAnyValue("position", 0),
+                constant = entryMap.booleanAnyValue("constant"),
+                selective = entryMap.booleanAnyValue("selective"),
+                disabled = entryMap.booleanAnyValue("disable") || entryMap.booleanAnyValue("disabled"),
+                raw = entryMap
+            )
+        }.sortedWith(compareBy<WorldInfoEntry> { it.order }.thenBy { it.uid })
+        return WorldInfoBook(
+            name = stringAnyValue("name").ifBlank { fallbackName },
+            entries = entries,
+            rawData = this
+        )
+    }
+
+    private fun WorldInfoBook.toApiData(): Map<String, Any?> {
+        val data = rawData.toMutableMap()
+        data["name"] = name
+        data["entries"] = entries.associate { entry ->
+            entry.uid.toString() to entry.toApiData()
+        }
+        return data
+    }
+
+    private fun WorldInfoEntry.toApiData(): Map<String, Any?> {
+        val data = raw.toMutableMap()
+        data["uid"] = uid
+        data["key"] = keys
+        data["keysecondary"] = secondaryKeys
+        data["comment"] = comment
+        data["content"] = content
+        data["order"] = order
+        data["depth"] = depth
+        data["position"] = position
+        data["constant"] = constant
+        data["selective"] = selective
+        data["disable"] = disabled
+        data.remove("disabled")
+        return data
+    }
+
+    private fun pairedPresetCategory(
+        apiId: String,
+        title: String,
+        names: List<String>,
+        contents: List<String>,
+        selectedName: String
+    ): PresetCategory {
+        val presets = names.mapIndexed { index, name ->
+            PresetSummary(
+                apiId = apiId,
+                name = name,
+                content = contents.getOrNull(index).orEmpty(),
+                selected = selectedName == name
+            )
+        }
+        return PresetCategory(apiId = apiId, title = title, presets = presets)
+    }
+
+    private fun objectPresetCategory(apiId: String, title: String, value: Any?, selectedName: String = ""): PresetCategory {
+        val presets = (value as? List<*>)
+            ?.mapIndexedNotNull { index, item ->
+                val map = (item as? Map<*, *>)?.toStringKeyMap() ?: return@mapIndexedNotNull null
+                val name = map.stringAnyValue("name").ifBlank { "$title ${index + 1}" }
+                PresetSummary(
+                    apiId = apiId,
+                    name = name,
+                    content = jsonValue(map),
+                    selected = selectedName == name
+                )
+            }
+            ?: emptyList()
+        return PresetCategory(apiId = apiId, title = title, presets = presets)
     }
 
     private fun Map<*, *>.toCharacterSummary(): CharacterSummary {
@@ -733,6 +1541,25 @@ class TavernCoreClient(
                 is Number -> value.toLong().toString()
                 else -> ""
             }
+        )
+    }
+
+    private fun Map<*, *>.toGroupSummary(): GroupSummary {
+        val id = stringValue("id")
+        val chatId = stringValue("chat_id")
+        return GroupSummary(
+            id = id,
+            name = stringValue("name").ifBlank { id.ifBlank { "未命名群聊" } },
+            members = stringListValue("members"),
+            chatId = chatId,
+            chats = stringListValue("chats"),
+            lastUpdated = longValue("date_last_chat"),
+            chatSize = longValue("chat_size"),
+            avatarUrl = stringValue("avatar_url"),
+            allowSelfResponses = booleanValue("allow_self_responses"),
+            activationStrategy = intValue("activation_strategy", 0),
+            generationMode = intValue("generation_mode", 0),
+            isFavorite = booleanValue("fav")
         )
     }
 
@@ -860,6 +1687,13 @@ class TavernCoreClient(
             is Number -> value.toInt()
             is String -> value.toIntOrNull() ?: default
             else -> default
+        }
+
+    private fun Map<String, Any?>.longAnyValue(key: String): Long =
+        when (val value = get(key)) {
+            is Number -> value.toLong()
+            is String -> value.toLongOrNull() ?: 0L
+            else -> 0L
         }
 
     private fun Any?.toStringList(): List<String> =

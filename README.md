@@ -1,67 +1,71 @@
-# ST-android
+# ST-android-setting
 
-SillyTavern runner for Android. Works on device with zero setup. Supports Android 8.0+ and arm64.
+[English](README_en.md) | 中文
+
+第三方 SillyTavern 安卓客户端。基于 [Sanitised/ST-android](https://github.com/Sanitised/ST-android) 的嵌入式 Node.js 运行时，开发原生 Android 界面与扩展功能。
 
 <img src="pics/ST-android-app-icon-original.svg" alt="App icon" width="120">
 
-<img src="pics/ST-android-screenshot.png" alt="Screenshot" width="300">
+<img src="pics/ST-android-screenshot.png" alt="截图" width="300">
 
-This is a personal project and is not affiliated with or endorsed by SillyTavern.
-It is intended primarily for basic on-device chatting. Extensions are not properly supported yet.
+> 本项目是独立的第三方分支，与 SillyTavern 官方及上游 ST-android 项目均无关联。
 
-## Privacy
+## 与上游的关系
 
-- No telemetry of any kind.
-- Unlike Termux, the app works in Private Space/Secure Folder/Secondary profiles.
-- Minimal network calls: opt-in GitHub release checks, npm installs, and GitHub downloads for custom ST versions. All other traffic comes from SillyTavern itself.
-- All chats, characters, settings stay local unless you decide to export them manually and share with others.
-- Bundles SillyTavern source code without modifications.
-- Bundles Node.js with minimal patches required to run on Android.
-- Release APKs are built in the pipeline and published automatically through immutable releases.
+本项目 fork 自 [Sanitised/ST-android](https://github.com/Sanitised/ST-android)，沿用其核心能力：
 
-## Features
+- **嵌入式 Node.js 运行时** — 在 Android 设备上直接运行 SillyTavern 服务端，无需 Termux 等额外工具
+- **APK 内打包 SillyTavern 源码** — 开箱即用，零配置
 
-- Runs SillyTavern in one click
-- Properly asks and checks for permissions
-- Has an import/export system; supports the app's own archive format and archives produced by the SillyTavern UI
-- Easily change SillyTavern: any version, branch, repo, or install from a ZIP archive. Not guaranteed to be compatible with something very exotic/outdated.
-- Dark/light mode support
-- Automatically opens the browser
+在此基础上，本项目着重发展：
 
-## Installation
+- **原生 Compose UI** — 使用 Jetpack Compose + Material 3 构建角色管理、设置、工具等原生界面，替代纯 WebView 方案
+- **底部导航架构** — 首页 / 聊天 / 角色 / 工具 / 设置五个标签页
+- **角色管理迁移** — 角色列表、详情、编辑等功能逐步迁移至原生实现
+- **仪表盘首页** — 状态卡片、最近聊天、快捷操作等
 
-Download the APK from [Releases](https://github.com/Sanitised/ST-android/releases/latest) (allow installs from your browser/files app if Android asks).
+## 功能特性
 
-## Transferring data from SillyTavern on Termux/PC
+- 一键运行 SillyTavern，支持 Android 8.0+（arm64）
+- 原生角色管理界面（列表、详情、编辑、标签、筛选）
+- 导入/导出系统，兼容本应用备份格式与 SillyTavern 原生备份
+- 自定义 SillyTavern 版本：任意版本/分支/仓库/ZIP 安装
+- 深色/浅色主题
+- 自动打开浏览器
 
-The app accepts `.tar.gz`, `.tar`, and `.zip` archives. The file format is detected automatically.
+## 隐私
 
-The app supports two archive types: full backups exported from this app and SillyTavern user backups.
+- 无任何遥测。
+- 支持在 Private Space / 安全文件夹 / 多用户配置中使用。
+- 网络请求极少：仅可选的 GitHub 更新检查、npm 安装和自定义版本下载。其余流量均来自 SillyTavern 本身。
+- 所有聊天、角色、设置均保存在本地。
 
-Full backups produced by this app save more information and are generally recommended, especially for reinstalls.
+## 安装
 
-### Use SillyTavern user backups for data transfer
+从 [Releases](https://github.com/5151561/ST-android-setting/releases/latest) 下载 APK（如 Android 提示，请允许从浏览器/文件管理器安装）。
 
-In your old installation of SillyTavern, press **User Settings**, **Account**, **Download Backup**.
+## 数据迁移
 
-Then stop the server in the app, tap **Manage ST**, **Import Data** and select the backup archive (for example, `default-user-20260303-122334.zip`).
+从 Termux 或 PC 上的 SillyTavern 迁移数据，支持 `.tar.gz`、`.tar`、`.zip` 格式，自动识别。
 
-This method is the easiest, and will import all your chats, characters, and other user data. It won't work properly for multi-user setups, and it won't transfer the server config.
+### 方法一：使用 SillyTavern 用户备份
 
-### Quick full backup for data transfer (Termux or Linux)
+1. 在旧的 SillyTavern 中：**User Settings** → **Account** → **Download Backup**
+2. 在本应用中：停止服务 → **管理 ST** → **导入数据** → 选择备份文件
 
-Run this one-liner:
+### 方法二：一键导出脚本（Termux / Linux）
 
 ```bash
 bash <(curl -sSf https://raw.githubusercontent.com/Sanitised/ST-android/master/tools/export_to_st_android.sh)
 ```
-If your SillyTavern folder is not in a standard location, first do `cd ./my-sillytavern`.
 
-Then stop the server in the app, tap **Manage ST**, **Import Data** and select the backup archive (for example, `st_backup.tar.gz`).
+如果 SillyTavern 不在默认路径，先 `cd ./my-sillytavern`。
 
-### Making full data backup manually for data transfer
+然后在应用中：停止服务 → **管理 ST** → **导入数据** → 选择备份文件。
 
-The archive must have this structure:
+### 方法三：手动打包
+
+归档结构：
 
 ```
 st_backup/
@@ -76,31 +80,33 @@ cp -r /path/to/sillytavern/data st_backup/
 tar -czf st_backup.tar.gz st_backup/
 ```
 
-On Termux, copy the archive to Downloads so the app can reach it:
+Termux 下复制到 Downloads：
 
 ```bash
-termux-setup-storage   # one-time permission grant
+termux-setup-storage
 cp st_backup.tar.gz ~/storage/downloads/
 ```
 
-Then stop the server in the app, tap **Manage ST**, **Import Data** and select the backup archive (for example, `st_backup.tar.gz`).
+## 构建
 
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md).
-
-## Build (Docker)
-
-Prereqs: Docker installed (plus Git for cloning the repo). Tested only on Linux.
+需要 Docker（以及 Git）。仅在 Linux 上测试通过。
 
 ```bash
-git clone https://github.com/Sanitised/ST-android
-cd ST-android
+git clone https://github.com/5151561/ST-android-setting
+cd ST-android-setting
 git submodule update --init --recursive
 ./ci/scripts/build_apk_docker.sh
 ```
 
-The first build takes around 2 to 3 hours, compiling Node from scratch. Subsequent builds are a lot faster.
+首次构建需 2-3 小时（从源码编译 Node.js），后续构建快得多。
 
-Output:
-- `app/build/outputs/apk/debug/app-debug.apk`
+输出：`app/build/outputs/apk/debug/app-debug.apk`
+
+## 更新日志
+
+见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 致谢
+
+- [Sanitised/ST-android](https://github.com/Sanitised/ST-android) — 上游项目，提供嵌入式 Node.js 运行时与核心架构
+- [SillyTavern](https://github.com/SillyTavernAI/SillyTavern) — 前端聊天界面

@@ -109,6 +109,492 @@ class TavernCoreClientTest {
     }
 
     @Test
+    fun settingsSnapshotListCallsSillyTavernEndpointAndMapsFiles() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    [
+                      { "name": "settings_default-user_20260526.json", "date": 1748246400000, "size": 42 }
+                    ]
+                    """.trimIndent()
+                )
+        )
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val snapshots = client.listSettingsSnapshots()
+
+        assertCsrfRequest()
+        assertEquals("/api/settings/get-snapshots", server.takeRequest().path)
+        assertEquals(1, snapshots.size)
+        assertEquals("settings_default-user_20260526.json", snapshots.first().name)
+        assertEquals(1748246400000L, snapshots.first().date)
+        assertEquals(42L, snapshots.first().size)
+    }
+
+    @Test
+    fun settingsSnapshotActionsUseSnapshotNamePayloads() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(MockResponse().setResponseCode(204))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{\"theme\":\"dark\"}"))
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        client.makeSettingsSnapshot()
+        val loaded = client.loadSettingsSnapshot("settings_default-user_20260526.json")
+        client.restoreSettingsSnapshot("settings_default-user_20260526.json")
+
+        assertCsrfRequest()
+        assertEquals("/api/settings/make-snapshot", server.takeRequest().path)
+        val loadRequest = server.takeRequest()
+        assertEquals("/api/settings/load-snapshot", loadRequest.path)
+        assertTrue(loadRequest.body.readUtf8().contains("\"name\":\"settings_default-user_20260526.json\""))
+        assertEquals("{\"theme\":\"dark\"}", loaded)
+        val restoreRequest = server.takeRequest()
+        assertEquals("/api/settings/restore-snapshot", restoreRequest.path)
+        assertTrue(restoreRequest.body.readUtf8().contains("\"name\":\"settings_default-user_20260526.json\""))
+    }
+
+    @Test
+    fun worldInfoActionsUseSillyTavernWorldInfoEndpoints() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""[{ "file_id": "archive", "name": "Archive World", "extensions": { "tag": "rp" } }]""")
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "name": "Archive World",
+                      "entries": {
+                        "7": {
+                          "uid": 7,
+                          "key": ["archive", "ledger"],
+                          "keysecondary": ["sealed"],
+                          "comment": "Locked room",
+                          "content": "The ledger is hidden.",
+                          "order": 20,
+                          "depth": 3,
+                          "position": 1,
+                          "constant": true,
+                          "selective": true,
+                          "disable": false,
+                          "foreign_field": "keep"
+                        }
+                      },
+                      "extensions": { "tag": "rp" }
+                    }
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true}"""))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(""))
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val worlds = client.listWorldInfos()
+        val book = client.getWorldInfo("archive")
+        client.saveWorldInfo(book.copy(entries = book.entries.map { it.copy(disabled = true) }))
+        client.deleteWorldInfo("archive")
+
+        assertCsrfRequest()
+        assertEquals("/api/worldinfo/list", server.takeRequest().path)
+        assertEquals("archive", worlds.single().id)
+        assertEquals("Archive World", worlds.single().name)
+        val getRequest = server.takeRequest()
+        assertEquals("/api/worldinfo/get", getRequest.path)
+        assertTrue(getRequest.body.readUtf8().contains("\"name\":\"archive\""))
+        assertEquals("Archive World", book.name)
+        assertEquals(7, book.entries.single().uid)
+        assertEquals(listOf("archive", "ledger"), book.entries.single().keys)
+        assertEquals("keep", book.entries.single().raw["foreign_field"])
+        val saveRequest = server.takeRequest()
+        assertEquals("/api/worldinfo/edit", saveRequest.path)
+        val saveBody = saveRequest.body.readUtf8()
+        assertTrue(saveBody.contains("\"name\":\"Archive World\""))
+        assertTrue(saveBody.contains("\"entries\""))
+        assertTrue(saveBody.contains("\"uid\":7"))
+        assertTrue(saveBody.contains("\"disable\":true"))
+        assertTrue(saveBody.contains("\"foreign_field\":\"keep\""))
+        val deleteRequest = server.takeRequest()
+        assertEquals("/api/worldinfo/delete", deleteRequest.path)
+        assertTrue(deleteRequest.body.readUtf8().contains("\"name\":\"archive\""))
+    }
+
+    @Test
+    fun personaListAndSaveMergeAvatarApiWithPowerUserSettings() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""["default.png","writer.png"]"""))
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "settings": "{\"theme\":\"dark\",\"power_user\":{\"personas\":{\"default.png\":\"Default user\"},\"persona_descriptions\":{\"default.png\":{\"title\":\"Main\",\"description\":\"Careful tester\",\"connections\":[{\"type\":\"character\",\"id\":\"A.png\"}]}},\"default_persona\":\"default.png\"}}"
+                    }
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "settings": "{\"theme\":\"dark\",\"power_user\":{\"personas\":{\"default.png\":\"Default user\"},\"persona_descriptions\":{\"default.png\":{\"title\":\"Main\",\"description\":\"Careful tester\",\"connections\":[{\"type\":\"character\",\"id\":\"A.png\"}]}},\"default_persona\":\"default.png\"}}"
+                    }
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"result":"ok"}"""))
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val personas = client.listPersonas()
+        client.savePersona(
+            PersonaSaveRequest(
+                avatar = "writer.png",
+                name = "Writer",
+                title = "Long RP",
+                description = "Writes in long form.",
+                makeDefault = true
+            )
+        )
+
+        assertCsrfRequest()
+        assertEquals("/api/avatars/get", server.takeRequest().path)
+        assertEquals("/api/settings/get", server.takeRequest().path)
+        assertEquals(2, personas.size)
+        assertEquals("Default user", personas.first { it.avatar == "default.png" }.name)
+        assertTrue(personas.first { it.avatar == "default.png" }.isDefault)
+        assertEquals("writer.png", personas.first { it.avatar == "writer.png" }.avatar)
+        assertEquals("/api/settings/get", server.takeRequest().path)
+        val saveRequest = server.takeRequest()
+        assertEquals("/api/settings/save", saveRequest.path)
+        val saveBody = saveRequest.body.readUtf8()
+        assertTrue(saveBody.contains("\"theme\":\"dark\""))
+        assertTrue(saveBody.contains("\"writer.png\":\"Writer\""))
+        assertTrue(saveBody.contains("\"title\":\"Long RP\""))
+        assertTrue(saveBody.contains("\"description\":\"Writes in long form.\""))
+        assertTrue(saveBody.contains("\"default_persona\":\"writer.png\""))
+        assertTrue(saveBody.contains("\"connections\""))
+    }
+
+    @Test
+    fun secretActionsUseSillyTavernSecretEndpointsWithoutPlaintextReads() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "api_key_openrouter": [
+                        { "id": "s1", "value": "*******abc", "label": "OpenRouter main", "active": true }
+                      ],
+                      "api_key_openai": null
+                    }
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"id":"s2"}"""))
+        server.enqueue(MockResponse().setResponseCode(204))
+        server.enqueue(MockResponse().setResponseCode(204))
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val states = client.listSecrets()
+        val newId = client.writeSecret("api_key_openai", "sk-test", "OpenAI")
+        client.rotateSecret("api_key_openrouter", "s1")
+        client.renameSecret("api_key_openrouter", "s1", "Primary")
+        client.deleteSecret("api_key_openrouter", "s1")
+
+        assertCsrfRequest()
+        assertEquals("/api/secrets/read", server.takeRequest().path)
+        assertEquals("OpenRouter main", states.first { it.key == "api_key_openrouter" }.entries.single().label)
+        assertEquals("s2", newId)
+        val writeRequest = server.takeRequest()
+        assertEquals("/api/secrets/write", writeRequest.path)
+        assertTrue(writeRequest.body.readUtf8().contains("\"value\":\"sk-test\""))
+        val rotateRequest = server.takeRequest()
+        assertEquals("/api/secrets/rotate", rotateRequest.path)
+        assertTrue(rotateRequest.body.readUtf8().contains("\"id\":\"s1\""))
+        val renameRequest = server.takeRequest()
+        assertEquals("/api/secrets/rename", renameRequest.path)
+        assertTrue(renameRequest.body.readUtf8().contains("\"label\":\"Primary\""))
+        val deleteRequest = server.takeRequest()
+        assertEquals("/api/secrets/delete", deleteRequest.path)
+        assertTrue(deleteRequest.body.readUtf8().contains("\"key\":\"api_key_openrouter\""))
+    }
+
+    @Test
+    fun presetLibraryMapsSettingsPayloadAndSavesPresetFiles() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "settings": "{\"openai_settings\":\"Creative\",\"textgenerationwebui_settings\":{\"preset\":\"Kobold\"}}",
+                      "openai_setting_names": ["Creative"],
+                      "openai_settings": ["{\"temperature\":0.8}"],
+                      "textgenerationwebui_preset_names": ["Kobold"],
+                      "textgenerationwebui_presets": ["{\"temperature\":0.7}"],
+                      "instruct": [{ "name": "Alpaca", "input_sequence": "### Instruction:" }],
+                      "context": [{ "name": "Default Context", "story_string": "{{char}}" }],
+                      "sysprompt": [{ "name": "Roleplay", "content": "Stay in character." }],
+                      "reasoning": [{ "name": "Reasoning", "prefix": "<think>" }]
+                    }
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"name":"Creative copy"}"""))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(""))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"isDefault":true,"preset":{"temperature":1}}"""))
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val library = client.getPresetLibrary()
+        client.savePreset("openai", "Creative copy", """{"temperature":0.5}""")
+        client.deletePreset("openai", "Creative copy")
+        val restored = client.restorePreset("openai", "Creative")
+
+        assertCsrfRequest()
+        assertEquals("/api/settings/get", server.takeRequest().path)
+        assertTrue(library.categories.any { it.apiId == "openai" && it.presets.single().name == "Creative" })
+        assertTrue(library.categories.any { it.apiId == "instruct" && it.presets.single().name == "Alpaca" })
+        val saveRequest = server.takeRequest()
+        assertEquals("/api/presets/save", saveRequest.path)
+        assertTrue(saveRequest.body.readUtf8().contains("\"apiId\":\"openai\""))
+        val deleteRequest = server.takeRequest()
+        assertEquals("/api/presets/delete", deleteRequest.path)
+        assertTrue(deleteRequest.body.readUtf8().contains("\"name\":\"Creative copy\""))
+        val restoreRequest = server.takeRequest()
+        assertEquals("/api/presets/restore", restoreRequest.path)
+        assertTrue(restoreRequest.body.readUtf8().contains("\"name\":\"Creative\""))
+        assertTrue(restored.contains("\"temperature\":1"))
+    }
+
+    @Test
+    fun presetSelectionMergesIntoSettingsWithoutDroppingUnknownFields() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "settings": "{\"theme\":\"dark\",\"openai_settings\":\"Creative\",\"textgenerationwebui_settings\":{\"preset\":\"Kobold\",\"temperature\":0.7},\"foreign\":\"keep\"}"
+                    }
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"result":"ok"}"""))
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "settings": "{\"theme\":\"dark\",\"openai_settings\":\"Creative\",\"textgenerationwebui_settings\":{\"preset\":\"Kobold\",\"temperature\":0.7},\"foreign\":\"keep\"}"
+                    }
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"result":"ok"}"""))
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        client.selectPreset("openai", "Precise")
+        client.selectPreset("textgenerationwebui", "Simple")
+
+        assertCsrfRequest()
+        assertEquals("/api/settings/get", server.takeRequest().path)
+        val openAiSave = server.takeRequest()
+        assertEquals("/api/settings/save", openAiSave.path)
+        val openAiBody = openAiSave.body.readUtf8()
+        assertTrue(openAiBody.contains("\"openai_settings\":\"Precise\""))
+        assertTrue(openAiBody.contains("\"foreign\":\"keep\""))
+        assertEquals("/api/settings/get", server.takeRequest().path)
+        val textCompletionSave = server.takeRequest()
+        assertEquals("/api/settings/save", textCompletionSave.path)
+        val textCompletionBody = textCompletionSave.body.readUtf8()
+        assertTrue(textCompletionBody.contains("\"preset\":\"Simple\""))
+        assertTrue(textCompletionBody.contains("\"temperature\":0.7"))
+        assertTrue(textCompletionBody.contains("\"foreign\":\"keep\""))
+    }
+
+    @Test
+    fun chatBackupActionsUseSillyTavernBackupEndpoints() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    [
+                      {
+                        "file_name": "chat_20260526.jsonl",
+                        "file_size": "2 KB",
+                        "chat_items": 4,
+                        "last_mes": 1748246400000,
+                        "mes": "Last backup line"
+                      }
+                    ]
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/jsonl")
+                .setHeader("Content-Disposition", "attachment; filename=\"chat_20260526.jsonl\"")
+                .setBody("{}\n")
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(""))
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val backups = client.listChatBackups()
+        val downloaded = client.downloadChatBackup("chat_20260526.jsonl")
+        client.deleteChatBackup("chat_20260526.jsonl")
+
+        assertCsrfRequest()
+        assertEquals("/api/backups/chat/get", server.takeRequest().path)
+        assertEquals("chat_20260526.jsonl", backups.single().fileName)
+        assertEquals(4, backups.single().messageCount)
+        val downloadRequest = server.takeRequest()
+        assertEquals("/api/backups/chat/download", downloadRequest.path)
+        assertTrue(downloadRequest.body.readUtf8().contains("\"name\":\"chat_20260526.jsonl\""))
+        assertEquals("chat_20260526.jsonl", downloaded.fileName)
+        val deleteRequest = server.takeRequest()
+        assertEquals("/api/backups/chat/delete", deleteRequest.path)
+        assertTrue(deleteRequest.body.readUtf8().contains("\"name\":\"chat_20260526.jsonl\""))
+    }
+
+    @Test
+    fun groupChatListAndCreateUseSillyTavernGroupEndpoints() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    [
+                      {
+                        "id": "group-1",
+                        "name": "Archive Team",
+                        "members": ["Seraphina.png", "Vex.png"],
+                        "chat_id": "May 26, 2026 12:00pm",
+                        "chats": ["May 26, 2026 12:00pm"],
+                        "date_last_chat": 1748246400000,
+                        "chat_size": 2048,
+                        "fav": true
+                      }
+                    ]
+                    """.trimIndent()
+                )
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "id": "group-2",
+                      "name": "New Team",
+                      "members": ["Seraphina.png"],
+                      "chat_id": "May 27, 2026 09:00am",
+                      "chats": ["May 27, 2026 09:00am"],
+                      "date_last_chat": 0,
+                      "chat_size": 0
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val groups = client.listGroups()
+        val created = client.createGroup(
+            GroupCreateRequest(
+                name = "New Team",
+                members = listOf("Seraphina.png"),
+                chatId = "May 27, 2026 09:00am"
+            )
+        )
+
+        assertCsrfRequest()
+        assertEquals("/api/groups/all", server.takeRequest().path)
+        assertEquals("group-1", groups.single().id)
+        assertEquals("Archive Team", groups.single().name)
+        assertEquals(listOf("Seraphina.png", "Vex.png"), groups.single().members)
+        assertEquals("May 26, 2026 12:00pm", groups.single().chatId)
+        assertEquals(1748246400000L, groups.single().lastUpdated)
+        assertTrue(groups.single().isFavorite)
+
+        val createRequest = server.takeRequest()
+        assertEquals("/api/groups/create", createRequest.path)
+        val createBody = createRequest.body.readUtf8()
+        assertTrue(createBody.contains("\"name\":\"New Team\""))
+        assertTrue(createBody.contains("\"members\":[\"Seraphina.png\"]"))
+        assertTrue(createBody.contains("\"chat_id\":\"May 27, 2026 09:00am\""))
+        assertEquals("group-2", created.id)
+    }
+
+    @Test
+    fun createGroupLetsServerChooseChatIdWhenRequestDoesNotSpecifyOne() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "id": "group-3",
+                      "name": "Server Named Chat",
+                      "members": ["Seraphina.png"],
+                      "chat_id": "May 28, 2026 10:00am",
+                      "chats": ["May 28, 2026 10:00am"]
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val created = client.createGroup(
+            GroupCreateRequest(
+                name = "Server Named Chat",
+                members = listOf("Seraphina.png"),
+                allowSelfResponses = true,
+                activationStrategy = 2
+            )
+        )
+
+        assertCsrfRequest()
+        val createRequest = server.takeRequest()
+        assertEquals("/api/groups/create", createRequest.path)
+        val createBody = createRequest.body.readUtf8()
+        assertTrue(createBody.contains("\"allow_self_responses\":true"))
+        assertTrue(createBody.contains("\"activation_strategy\":2"))
+        assertFalse(createBody.contains("\"chat_id\""))
+        assertFalse(createBody.contains("\"chats\""))
+        assertEquals("May 28, 2026 10:00am", created.chatId)
+    }
+
+    @Test
     fun listCharactersSurfacesApiErrors() = runBlocking {
         enqueueCsrf()
         server.enqueue(MockResponse().setResponseCode(500).setBody("broken"))
