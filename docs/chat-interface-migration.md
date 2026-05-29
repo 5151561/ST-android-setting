@@ -1,8 +1,8 @@
 # SillyTavern Chat 原生界面迁移方案
 
-版本：0.5  
+版本：0.7
 日期：2026-05-29
-状态：**P0 已收口 + P1/P2 部分能力提前落地，4 轮界面审计完成**（已对照 SillyTavern 源码审查 + 原生界面逐屏审计）
+状态：**P0 已收口 + P1 基本可用（保存错误检测 best-effort）+ P2 部分能力提前落地**（已对照 SillyTavern 源码审查 + 原生界面逐屏审计）
 适用范围：ST-android 下一阶段 Chat 原生化、JS Bridge、SillyTavern 运行时复用、API 对接
 
 ## 1. 背景和目标
@@ -189,7 +189,7 @@ Bridge 消息统一用 JSON 字符串，避免后续方法爆炸。
 | `chat.changed` | JS -> Android | 当前聊天文件或角色变化（对应 ST `chat_id_changed` 事件） |
 | `message.added` | JS -> Android | 用户消息或 AI 消息新增（对应 ST `MESSAGE_SENT` / `MESSAGE_RECEIVED`） |
 | `message.updated` | JS -> Android | streaming delta、编辑、swipe 切换等（对应 ST `MESSAGE_UPDATED`） |
-| `message.deleted` | JS -> Android | 消息删除（对应 ST `MESSAGE_DELETED`） |
+| `message.deleted` | JS -> Android | Bridge 删除命令确认删除的消息 id；ST `MESSAGE_DELETED` 本身只可靠触发 snapshot 同步 |
 | `message.swiped` | JS -> Android | swipe 切换（对应 ST `MESSAGE_SWIPED`） |
 | `generation.started` | JS -> Android | 生成开始（对应 ST `generation_started`） |
 | `generation.ended` | JS -> Android | 生成完成（对应 ST `generation_ended`） |
@@ -663,12 +663,12 @@ P1 起，编辑和删除也应通过 Bridge 调用 ST 前端函数，确保：
 ### P1：常规聊天体验 — 🔶 部分提前完成
 
 1. ✅ Streaming delta 增量更新（`stream.token` 80ms 节流回传，已实现）。
-2. 🔶 新建聊天（`ChatRuntimeBridge.newChat()` Bridge 已通）、聊天文件列表和切换历史聊天（待 UI）。
+2. ✅ 新建聊天（`ChatRuntimeBridge.newChat()` Bridge 已通）、聊天文件列表和切换历史聊天（`PrototypePastChatsScreen` 已实现，含搜索、重命名、导出、删除操作）。
 3. ✅ 重生成、继续生成（`ChatRuntimeBridge.regenerate()` / `continueGeneration()` 已实现）。
-4. ⬜ 消息复制、编辑、删除。
-5. ⬜ 保存 integrity 错误处理和用户提示。
+4. ✅ 消息复制、编辑、删除（长按消息弹出操作 sheet，内联编辑模式，通过 Bridge `message.edit` / `message.delete` 命令同步 ST runtime）。
+5. 🔶 保存 integrity 错误处理（`runtime.save` 可手动触发保存；`save.error` 只能捕获 wrapper 级失败，ST 内部保存失败仍为 best-effort）。
 6. 🔶 基础 swipe 展示与切换（`ChatRuntimeBridge.swipePrevious()` / `swipeNext()` Bridge 已通，NativeChatScreen 已有 swipe 按钮，需真机验证）。
-7. ⬜ bridge 超时、runtime 崩溃、reload 恢复。
+7. ✅ Bridge 超时追踪（`pendingCommands` + 分级超时 15/30/60s）、runtime 崩溃恢复（`onRenderProcessGone` + `RENDER_PROCESS_GONE` 错误页 + `loadUrl` 自动恢复）。
 
 ### P2：接近 SillyTavern 核心体验 — 🔶 群聊基础已提前落地
 
@@ -802,19 +802,193 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
 1. ✅ 先做 Runtime WebView 管理和 Bridge adapter，不改可见 Chat UI。
 2. ✅ 再做原生 Chat 只读镜像，确保 snapshot 和事件能稳定同步。
 3. ✅ 接管原生输入栏：发送、停止、生成状态。
-4. 🔶 补重生成、继续、新建、历史聊天切换。（Bridge 已通，新建/重生成/继续可用，历史聊天切换 UI 待做）
-5. 🔶 补编辑、删除、swipe、附件。（swipe Bridge 已通，编辑/删除/附件待做）
-6. 🔶 补群聊、Author's Note、世界书和扩展相关能力。（群聊列表/创建/导航已完成，消息发送/AN/WI 待做）
+4. ✅ 补重生成、继续、新建、历史聊天切换。（Bridge 与 UI 已落地；群聊历史通过内联 sheet 切换）
+5. 🔶 补编辑、删除、swipe、附件。（编辑/删除/swipe/隐藏已落地；附件上传和展示待做）
+6. 🔶 补群聊、Author's Note、世界书和扩展相关能力。（群聊打开/发送/历史切换与 Author's Note 基础接入已落地；CFG、世界书和扩展细节待后续）
 7. ⬜ 最后再评估是否抽离部分生成链路到原生端。
 
 阶段性目标应该是”原生 UI 体验明显改善，但聊天语义仍和原版 ST 一致”。在没有契约测试前，不建议重写提示词组装和生成请求。
 
-> **v0.5 进度说明**：步骤 1-3 已完全完成。步骤 4-6 的 Bridge 层面已提前铺设，主要欠缺是上层 UI（聊天文件列表页面、消息编辑弹窗等）和真机验证。当前瓶颈已从”基础架构”转移到”UI 完善 + 真机验证”。
+> **v0.7 进度说明**：步骤 1-4 已基本完成。步骤 5-6 已覆盖常用聊天动作、群聊基础和 Author's Note，主要欠缺是附件、CFG、世界书、扩展/toastr 原生提示，以及真机上的长链路验证。
 
 ## 15. 实现进度
 
-日期：2026-05-29（v0.5 界面审计收口）
-状态：**P0 全部完成 + P1/P2 部分能力已提前落地 + 4 轮界面审计完成**
+日期：2026-05-29（v0.7 阶段 C P2 接续 + adapter 两轮契约修正）
+状态：**P0 基础框架落地 + P1 收口（保存错误检测 best-effort，其余完成）+ P2 接续 5/6 完成（阶段 C 基本 ✅）**
+
+### v0.7 阶段 C P2 接续 + adapter 契约修正（2026-05-29）
+
+实现阶段 C 的 6 项 P2 功能（完成 5 项，附件上传待后续），并修正了 adapter 与 ST 运行时之间的多个 API 契约错误。
+
+#### adapter 契约修正（审计发现）
+
+对 adapter 与 SillyTavern 源码的逐行对照审计，修正了以下重要错误：
+
+**修正 1：`saveChatConditional` → `saveChat`**
+- `getContext()` 暴露的保存函数名为 `saveChat`（st-context.js:151 `saveChat: saveChatConditional`），adapter 之前调用不存在的 `ctx.saveChatConditional()`，实际为 no-op
+- `safeSave()` 修正为 `ctx.saveChat()`，编辑/删除/隐藏/作者注 保存现在正确持久化
+
+**修正 2：移除不存在的 `CHAT_SAVE_ERROR` 事件监听 + 保存错误检测降级**
+- ST 事件系统没有 `CHAT_SAVE_ERROR` 事件（events.js 无此定义）
+- 移除 `tryBindEvents` 中的 `ev.CHAT_SAVE_ERROR` 监听
+- `saveChatConditional()` 内部 try/catch 吞掉所有异常（script.js:9325），不向外抛出，因此 adapter 的 try/catch 无法捕获保存失败
+- 保存错误检测目前为 best-effort，`SaveErrorBanner` 仅在极端情况（如 `ctx.saveChat` 本身不存在时）触发；P1 "保存 integrity 错误提示"标记为部分完成
+
+**修正 3：消息隐藏使用 `is_system` 而非 `is_hidden`**
+- ST 隐藏消息的实际机制是 `hideChatMessageRange()` (chats.js:147)，设置 `message.is_system = true/false`
+- 之前实现设置的 `msg.is_hidden` 在 ST 中不存在，AI 上下文不会真正排除该消息
+- 修正为通过 `import('./scripts/chats.js')` 动态导入并调用 `hideChatMessageRange()`，确保 DOM 更新、swipe 刷新、正确保存
+- Kotlin 端移除 `isHidden` 字段，改用已有的 `isSystem` 作为隐藏标识
+- `visibleChatMessages` 不再过滤系统消息，改为在 UI 中用视觉标识显示
+
+**修正 4：`chat.new` 改用 `doNewChat()` 直接调用**
+- 之前通过 `#option_start_new_chat.click()` 触发，ST 会弹出 `Popup.show.confirm()` 确认框
+- 隐藏 WebView 中无人确认，新建聊天实际不会执行，但 adapter 立即回 success
+- 修正为 `import('./script.js')` 动态导入并直接调用 `doNewChat({ deleteCurrentChat: false })`（注意：`script.js` 在 ST `public/` 根目录，非 `scripts/` 子目录）
+
+**修正 5：群聊 regenerate 改用 `regenerateGroup()`**
+- 之前群聊也走 `ctx.generate('regenerate')`，不会删除同一轮 group generation 的旧回复
+- ST 原生 UI 在群聊里走 `regenerateGroup()`（group-chats.js:167），先删除当前 generation round 的所有 AI 回复再重新生成
+- 修正为检测 `ctx.groupId`，群聊时 `import('./scripts/group-chats.js')` 调用 `regenerateGroup()`
+
+#### C1: 群聊消息发送和停止 ✅
+
+send/stop 复用相同 Bridge 通道（`handleSend` 使用 DOM 元素 `send_textarea` + `send_but`，`handleStop` 使用 `ctx.stopGeneration()`），群聊模式下无需特殊处理。regenerate 分流到 `regenerateGroup()`（见上方修正 5）。
+
+UI 增强：
+- `ChatHeader` 新增 `isGroupMode` 参数，群聊模式显示 `PrototypeGroupAvatar` 和"群聊"badge（tertiaryContainer 色）
+- 消息列表中每条消息已通过 `message.name` 显示不同角色名（群聊各角色）
+
+#### C2: 群聊历史聊天切换 ✅
+
+新增 `GroupChatHistorySheet`（ModalBottomSheet），通过 API 加载 `GroupSummary.chats` 列表，当前聊天高亮标识。点击切换调用 `bridge.openGroup(groupId, chatId)`。
+
+入口：群聊模式下 ChatHeader "历史对话"菜单项自动路由到内联 sheet（非 PastChatsScreen）。
+
+#### C3: 附件上传和展示 🔜
+
+待后续实现：需接入 Android 文件选择器 + ST 上传 API + 消息内嵌展示。AttachSheet 按钮目前仍显示"暂未接入"提示。
+
+#### C4: Author's Note 基础接入 ✅
+
+- JS adapter 新增 `authorsNote.get` / `authorsNote.set` 命令处理
+- `buildSnapshot()` metadata 扩展 `authorsNote` 字段
+- `ChatStore.authorsNote` 状态字段，通过 snapshot 自动同步
+- `AuthorsNoteDialog`：AlertDialog 显示说明文本 + 多行 OutlinedTextField，保存后通过 Bridge `authorsNote.set` → `ctx.saveChat()` 写回
+- AttachSheet "作者注"按钮连接到 `AuthorsNoteDialog`
+- CFG 和世界书待后续阶段
+
+#### C5: Slash commands ✅
+
+斜杠命令通过 `handleSend` 自然工作（文本注入 textarea → 点击发送 → ST 内部处理）。命令结果以正常消息形式通过 `MESSAGE_SENT` / `MESSAGE_RECEIVED` 事件同步到原生 UI。
+
+已知限制：ST 的 toastr 通知（命令错误、警告）在隐藏 WebView 中显示，原生端暂不可见。
+
+#### C6: 消息隐藏/取消隐藏 ✅
+
+- JS adapter 新增 `message.hide` / `message.unhide` 命令，通过 `import('./scripts/chats.js').hideChatMessageRange()` 调用 ST 原生隐藏机制（`is_system` 标志 + 保存 + DOM 刷新）
+- Kotlin 端使用已有的 `isSystem` 字段作为隐藏标识（`is_system: true` = 隐藏于 AI 上下文）
+- `visibleChatMessages` 不再过滤系统消息，所有消息均在原生 UI 中显示
+- `MessageActionSheet` 新增"从 AI 上下文中隐藏"/"取消隐藏"ListItem
+- `MessageBubble` 隐藏消息半透明（`alpha(0.5f)`）+ `HiddenMessageBadge`（VisibilityOff 图标 + "已隐藏"文字）
+
+#### 第二轮契约修正（审计跟进）
+
+审计复核发现第一轮修正中仍存在的问题：
+
+**修正 6：`import('./scripts/script.js')` 路径错误**
+- `script.js` 在 ST `public/` 根目录（`<script type="module" src="script.js">`），不在 `scripts/` 子目录
+- 所有 `import('./scripts/script.js')` 修正为 `import('./script.js')`
+- 影响：`handleNewChat`（`doNewChat`）和 `handleRegenerate`（群聊检测后的回退路径）
+
+**修正 7：保存错误检测降级为 best-effort**
+- `saveChatConditional()` 内部 try/catch（script.js:9325）吞掉所有异常，仅 `console.error`
+- adapter 的 `safeSave()` 改为直接调用 `ctx.saveChat()`，仅捕获 `saveChat` 不存在或 wrapper 级异常
+- 新增 `runtime.save` 命令，`SaveErrorBanner` 的重试按钮会触发保存而不是误用 `chat.reload`
+- `SaveErrorBanner` 保留但标记为 best-effort；ST 内部保存失败不会向 adapter 抛出
+
+**修正 8：`handleDeleteMessage` 改用 ST 导出的 `deleteMessage()`**
+- 之前直接 `chat.splice()` 跳过 DOM 删除、`deleteItemizedPromptForMessage`、`updateViewMessageIds`、`refreshSwipeButtons` 等运行时维护
+- 修正为优先检查 DOM 元素是否存在，存在时调用 `import('./script.js').deleteMessage(id, undefined, false)`
+- DOM 元素不存在时（消息在 lazy-render 窗口外）回退到直接 splice + `ctx.saveChat()` + 事件发射
+- ST `MESSAGE_DELETED` 事件参数是删除后的 `chat.length`，不是 deleted id；adapter 不再把它转发为 `message.deleted`，改为直接 snapshot 同步
+
+**修正 9：`handleEditMessage` 添加 `MESSAGE_EDITED` 事件 + DOM 更新**
+- 之前只发 `MESSAGE_UPDATED`，缺少 `MESSAGE_EDITED`（扩展依赖此事件）
+- 新增 `MESSAGE_EDITED` 事件发射（在修改文本后、保存前），扩展可在此回调中变换文本
+- 新增 DOM 更新：如果消息 DOM 元素存在，使用 `import('./script.js').messageFormatting()` 重新渲染 `.mes_text` / `.mes_bias`，并调用 `appendMediaToMessage()`、`addCopyToCodeBlocks()`
+- 已知限制：`messageEditDone(div)` 未导出，原生编辑仍无法完全复用 ST 内部编辑模式的所有 UI 状态副作用，reasoning 编辑等细节需后续单独补齐
+
+#### 文件变更汇总
+
+| 文件 | 变更类型 | 说明 |
+|---|---|---|
+| `assets/chat_runtime_adapter.js` | 修改 | `safeSave()` 修正为 `ctx.saveChat()`；新增 `runtime.save`；移除 `CHAT_SAVE_ERROR` 监听；`MESSAGE_DELETED` 改为 snapshot 同步；`message.hide/unhide` 改用 `hideChatMessageRange()`；`handleNewChat` 改用 `import('./script.js').doNewChat()`；`handleRegenerate` 群聊分流 `regenerateGroup()`；`handleDeleteMessage` 优先使用 `deleteMessage()`；`handleEditMessage` 增加 `MESSAGE_EDITED` + DOM 更新；新增 `authorsNote.get/set` 命令；snapshot metadata 增加 `authorsNote` |
+| `chat/ChatBridgeModels.kt` | 修改 | 移除 `isHidden` 字段（使用已有 `isSystem` 代替） |
+| `chat/ChatStore.kt` | 修改 | 新增 `authorsNote` 状态字段 |
+| `chat/ChatRuntimeBridge.kt` | 修改 | 新增 `hideMessage`、`unhideMessage`、`setAuthorsNote` 方法和 COMMAND_LABELS |
+| `chat/NativeChatScreen.kt` | 修改 | ChatHeader 群聊标识；MessageActionSheet hide/unhide（基于 `isSystem`）；HiddenMessageBadge；GroupChatHistorySheet；AuthorsNoteDialog；AttachSheet 作者注连接 |
+| `chat/ChatUiState.kt` | 修改 | `visibleChatMessages` 不再过滤 `isSystem` 消息 |
+
+### v0.6 历史对话页面（2026-05-29）
+
+实现阶段 B 第一项：聊天文件列表和历史聊天切换 UI（`PrototypePastChatsScreen`）。
+
+#### 功能
+
+- 全屏历史对话列表页，显示角色所有聊天存档
+- 当前活动聊天用左侧竖条 + primaryContainer 底色 + "进行中" badge 标识
+- 本地搜索过滤（按 lastMessage 和 fileName 匹配）
+- 操作 bottom sheet：打开、重命名、导出 JSONL、导出纯文本、删除
+- 删除当前活动聊天时自动新建聊天
+- 导出通过 FileProvider + Android share sheet 分享
+- FAB "新对话" 创建新聊天并进入
+- 空状态提示（无历史 / 搜索无结果）
+- 从角色详情页"历史对话"卡片入口进入
+
+#### 新增/变更文件汇总
+
+| 文件 | 变更类型 | 说明 |
+|---|---|---|
+| `ui/prototype/PrototypePastChatsScreen.kt` | **新增** | 历史对话列表页面（搜索、操作 sheet、重命名/删除对话框、导出分享） |
+| `ui/navigation/STNavGraph.kt` | 修改 | 新增 `PAST_CHATS` 路由和 `pastChats()` 辅助函数 |
+| `MainActivity.kt` | 修改 | 注册 PAST_CHATS 路由、角色详情页传入 `onOpenPastChats` 导航 |
+| `ui/prototype/PrototypeCharacterScreens.kt` | 修改 | 角色详情页新增"历史对话"入口卡片 |
+| `res/xml/file_provider_paths.xml` | 修改 | 新增 `cache-path` 用于聊天导出文件分享 |
+
+#### 消息复制、编辑、删除（2026-05-29）
+
+实现阶段 B 第二项：消息级操作（复制/编辑/删除）。
+
+- 长按消息气泡弹出 `MessageActionSheet`（ModalBottomSheet），含图标网格（复制/编辑/重写/翻译）+ 列表项（删除）
+- 复制：原生 `ClipboardManager` 复制消息文本
+- 编辑：`MessageEditBubble` 内联编辑模式（OutlinedTextField + 保存/取消/删除工具栏），通过 Bridge `message.edit` 命令同步 ST runtime（更新 `chat[].mes` + `swipes[]`，调用 `ctx.saveChat()` 持久化 — v0.7 修正为正确的 context API 名称）
+- 删除：`DeleteMessageDialog` 确认后通过 Bridge `message.delete` 命令（从 `chat[]` splice 并保存）
+- 最后一条 AI 消息的"更多"按钮（⋮）也打开操作 sheet
+
+| 文件 | 变更类型 | 说明 |
+|---|---|---|
+| `chat/NativeChatScreen.kt` | 修改 | 长按 `combinedClickable`、`MessageActionSheet`、`MessageEditBubble`、`DeleteMessageDialog`、`ActionGridItem` |
+| `chat/ChatRuntimeBridge.kt` | 修改 | 新增 `editMessage()`、`deleteMessageFromChat()` Bridge 命令 |
+| `assets/chat_runtime_adapter.js` | 修改 | 新增 `handleEditMessage`、`handleDeleteMessage` 命令处理（修改 chat 数组 + `ctx.saveChat()` + emit 事件） |
+
+#### 保存 integrity 错误处理 + Bridge 超时 + 崩溃恢复（2026-05-29）
+
+实现阶段 B 第 3-5 项。
+
+- **保存 integrity**：JS adapter 新增 `safeSave()` 调用 `ctx.saveChat()`（v0.7 修正为正确 API 名称）；由于 ST `saveChatConditional()` 内部吞掉保存异常，`save.error` 只能覆盖 wrapper 级失败；原生端 `SaveErrorBanner` 保留显示和重试入口，重试会调用 `runtime.save`
+- **Bridge 超时**：`ChatRuntimeBridge.dispatch()` 注册超时回调（`pendingCommands` map），按命令类型分级：默认 15s / 打开角色 30s / 生成相关 60s；收到 `bridge.result` 或 `bridge.error` 时取消超时
+- **崩溃恢复**：`ChatWebViewScreen` 新增 `onRenderProcessGone` 回调，触发 `RENDER_PROCESS_GONE` 错误页面；重试时用 `loadUrl(baseUrl)` 重启渲染进程
+
+| 文件 | 变更类型 | 说明 |
+|---|---|---|
+| `chat/ChatRuntimeBridge.kt` | 修改 | 超时追踪（`pendingCommands`、`registerTimeout`、`completePendingCommand`、`clearPendingCommands`）、`retrySave()`、`dismissSaveError()` |
+| `chat/ChatStore.kt` | 修改 | 新增 `saveError` 状态、`recordSaveError()`、`clearSaveError()` |
+| `chat/ChatBridgeModels.kt` | 修改 | 新增 `BridgeEvent.SaveError`、`save.error` 事件解析 |
+| `chat/NativeChatScreen.kt` | 修改 | 新增 `SaveErrorBanner` 组件 |
+| `assets/chat_runtime_adapter.js` | 修改 | 新增 `safeSave()` / `runtime.save`（v0.7 移除了不存在的 `CHAT_SAVE_ERROR` 事件监听，保存失败检测降级为 best-effort） |
+| `ui/webview/ChatWebViewScreen.kt` | 修改 | 新增 `onRenderProcessGone` 回调、`RENDER_PROCESS_GONE` 重试路径 |
+| `ui/webview/WebViewErrorPage.kt` | 修改 | 新增 `RENDER_PROCESS_GONE` 枚举值及对应错误页文案 |
 
 ### v0.5 界面审计收口（2026-05-29）
 
@@ -901,7 +1075,7 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
    - `generation.regenerate` / `generation.continue`：从 `window.Generate` 改为 `ctx.generate`（`getContext()` 上的 `generate` 属性，映射自 `Generate`）
    - `generation.stop`：优先使用 `ctx.stopGeneration`，回退到 DOM `#mes_stop`
    - `chat.openCharacter`：从 `ctx.selectCharacterById || window.selectCharacterById` 改为仅 `ctx.selectCharacterById`；`openCharacterChat` 同理
-   - `chat.new`：由于 `doNewChat` 是 ES module export 但不在 `getContext()` 上，改为 DOM 点击 `#option_start_new_chat`（ST 自身的新建聊天按钮）
+   - `chat.new`：`doNewChat` 是 ES module export 但不在 `getContext()` 上，通过 `import('./script.js').doNewChat()` 动态导入直接调用（v0.7 修正，之前的 DOM 点击方式会触发确认弹窗阻塞）
    - `chat.reload`：**新增实现**，调用 `ctx.reloadCurrentChat()`（返回 Promise，完成后发送 snapshot）
 3. **角色列表直接进入 Chat**：角色库入口新增 `onOpenChat` 回调，点击后直接导航到 Chat 页并打开该角色。v0.4b 后对应实现位于 `PrototypeCharacterLibraryScreen` 的角色卡对话按钮，`MainActivity` 将此回调连接到 `openCharacterChatFromCharacterManagement`。
 
@@ -977,7 +1151,7 @@ Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 
 1. **`ChatController` 和 `ChatBridgeEventHandler` 合并**：方案第 10 节建议分开，实现时合并到 `ChatRuntimeBridge` 中，因为 P0 阶段命令和事件处理紧密耦合，拆分反而增加复杂度。P1 如果逻辑膨胀再拆分。
 2. **Runtime WebView 作为 NativeChatScreen 的子组件**：方案建议 `ChatRuntimeWebViewHost` 独立管理生命周期，实现时嵌入 `NativeChatScreen` 的 1dp 隐藏宿主中，复用现有 `ChatWebViewScreen` 的服务启动和健康检查逻辑。
-3. **`chat.send` 和 `chat.new` 通过 DOM 操作**：`chat.send` 直接设置 `#send_textarea.value` 并 click `#send_but`；`chat.new` 点击 `#option_start_new_chat`。两者的目标函数（`sendTextareaMessage`、`doNewChat`）是 ES module export 但不在 `getContext()` 上，DOM 操作是唯一可靠的调用路径，但依赖 ST 前端 DOM 结构不变。
+3. **`chat.send` 通过 DOM 操作，`chat.new` 通过动态导入**：`chat.send` 直接设置 `#send_textarea.value` 并 click `#send_but`（`sendTextareaMessage` 不在 `getContext()` 上）；`chat.new` 通过 `import('./script.js').doNewChat()` 动态导入调用（v0.7 修正，避免 DOM 点击触发确认弹窗阻塞隐藏 WebView）。
 4. **其他命令统一走 `getContext()`**：`generation.stop`（`ctx.stopGeneration`）、`generation.regenerate` / `generation.continue`（`ctx.generate`）、`chat.reload`（`ctx.reloadCurrentChat`）、`chat.openCharacter`（`ctx.selectCharacterById` + `ctx.openCharacterChat`）全部通过 `SillyTavern.getContext()` 暴露的公开 API 调用，不依赖 `window` 全局变量。
 5. **Chat UI 字符串暂未国际化**：P0 使用英文硬编码字符串，后续统一添加到 `strings.xml` 和 `values-zh-rCN/strings.xml`。
 
@@ -993,20 +1167,20 @@ Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 
 #### 阶段 B：P1 收口
 
-1. 聊天文件列表和历史聊天切换 UI
-2. 消息复制、编辑、删除
-3. 保存 integrity 错误处理和用户提示
-4. Bridge 超时处理（命令超时提示和重试机制）
-5. Runtime 崩溃检测和自动恢复
+1. ~~聊天文件列表和历史聊天切换 UI~~ ✅ (`PrototypePastChatsScreen`)
+2. ~~消息复制、编辑、删除~~ ✅（长按消息操作 sheet + 内联编辑 + 删除确认）
+3. 保存 integrity 错误处理和用户提示 🔶（`runtime.save` + `SaveErrorBanner` 已有入口；ST 内部保存失败不会抛出，`save.error` 只能 best-effort）
+4. ~~Bridge 超时处理（命令超时提示和重试机制）~~ ✅（`pendingCommands` 超时追踪，按命令类型分级超时）
+5. ~~Runtime 崩溃检测和自动恢复~~ ✅（`onRenderProcessGone` + `RENDER_PROCESS_GONE` 错误页 + `loadUrl` 恢复）
 
 #### 阶段 C：P2 接续
 
-1. 群聊消息发送和停止（NativeChatScreen 内验证）
-2. 群聊历史聊天切换
-3. 附件上传和展示
-4. Author's Note、CFG、世界书基础接入
-5. Slash commands 结果和错误展示
-6. 消息隐藏/取消隐藏
+1. ~~群聊消息发送和停止（NativeChatScreen 内验证）~~ ✅ 群聊 send/stop 复用相同 Bridge 通道，regenerate 分流 `regenerateGroup()`，ChatHeader 增加群聊模式标识和群头像
+2. ~~群聊历史聊天切换~~ ✅ `GroupChatHistorySheet` 内联 bottom sheet，通过 API 加载群聊列表，`bridge.openGroup(groupId, chatId)` 切换
+3. 附件上传和展示 — 🔜 待接入文件选择器和 ST 上传 API
+4. ~~Author's Note 基础接入~~ ✅ adapter `authorsNote.get/set` 命令 + `AuthorsNoteDialog` + snapshot 同步；CFG 和世界书待后续
+5. ~~Slash commands 结果和错误展示~~ ✅ 斜杠命令通过 `handleSend` 自然工作，命令结果以消息形式展示；运行时 toastr 通知暂不可捕获
+6. ~~消息隐藏/取消隐藏~~ ✅ adapter `message.hide/unhide` 通过 `hideChatMessageRange()` 切换 `is_system` + Kotlin 端用 `isSystem` 标识 + action sheet 切换 + 气泡半透明
 
 #### 阶段 D：P3 高级能力
 

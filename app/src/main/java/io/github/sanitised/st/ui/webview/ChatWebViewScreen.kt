@@ -14,6 +14,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -243,6 +244,24 @@ fun ChatWebViewScreen(
                         )
                     }
                 }
+
+                override fun onRenderProcessGone(
+                    view: WebView?,
+                    detail: RenderProcessGoneDetail?
+                ): Boolean {
+                    val crashed = detail?.didCrash() == true
+                    logWebView(
+                        "webview: render-process-gone crashed=$crashed " +
+                            "priority=${detail?.rendererPriorityAtExit()}"
+                    )
+                    currentOnRuntimeReset.value?.invoke()
+                    WebViewNavigator.resetInjectionState()
+                    pageError = WebViewErrorState(
+                        kind = WebViewErrorKind.RENDER_PROCESS_GONE,
+                        detail = if (crashed) "渲染进程崩溃" else "渲染进程被回收"
+                    )
+                    return true
+                }
             }
         }
     }
@@ -334,13 +353,18 @@ fun ChatWebViewScreen(
                     error = error,
                     port = status.port,
                     onPrimaryAction = {
+                        val wasRenderGone = pageError?.kind == WebViewErrorKind.RENDER_PROCESS_GONE
                         pageError = null
                         if (status.state == NodeState.STOPPED || status.state == NodeState.ERROR) {
                             startRequested = true
                             onStartService()
                         } else {
                             retryNonce += 1
-                            webView.reload()
+                            if (wasRenderGone) {
+                                webView.loadUrl(baseUrl)
+                            } else {
+                                webView.reload()
+                            }
                         }
                     },
                     onShowLogs = onShowLogs,

@@ -302,6 +302,7 @@ fun PrototypeCharacterProfileScreen(
     onStartService: () -> Unit,
     onBack: () -> Unit,
     onOpenChat: (String?) -> Unit,
+    onOpenPastChats: () -> Unit = {},
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -413,6 +414,47 @@ fun PrototypeCharacterProfileScreen(
                     IconButton(onClick = { onShowMessage("分享角色功能开发中") }) {
                         Icon(Icons.Filled.Share, contentDescription = "分享")
                     }
+                }
+                if (serverRunning) {
+                    Surface(
+                        onClick = onOpenPastChats,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surfaceContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Forum,
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "历史对话",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    "查看和管理所有聊天存档",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
                 if (!serverRunning) {
                     PrototypeOfflineBlock(onStartService = onStartService)

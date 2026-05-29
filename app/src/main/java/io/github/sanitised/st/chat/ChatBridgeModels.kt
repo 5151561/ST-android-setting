@@ -85,6 +85,7 @@ sealed class BridgeEvent {
     data class GenerationStopped(val raw: JSONObject) : BridgeEvent()
     data class GenerationError(val message: String, val raw: JSONObject) : BridgeEvent()
     data class StreamToken(val messageId: Int, val token: String, val fullText: String) : BridgeEvent()
+    data class SaveError(val message: String, val raw: JSONObject) : BridgeEvent()
     data class CommandResult(val commandId: String, val payload: JSONObject) : BridgeEvent()
     data class CommandError(val commandId: String, val message: String) : BridgeEvent()
 
@@ -105,6 +106,7 @@ sealed class BridgeEvent {
                 "generation.ended" -> GenerationEnded(payload)
                 "generation.stopped" -> GenerationStopped(payload)
                 "generation.error" -> GenerationError(payload.optString("message", "unknown"), payload)
+                "save.error" -> SaveError(payload.optString("message", "unknown"), payload)
                 "stream.token" -> StreamToken(
                     messageId = payload.optInt("id", -1),
                     token = payload.optString("token", ""),

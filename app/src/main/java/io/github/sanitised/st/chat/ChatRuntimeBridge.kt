@@ -11,6 +11,12 @@ class ChatRuntimeBridge(
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
+    private val pendingCommands = mutableMapOf<String, PendingCommand>()
+
+    private class PendingCommand(
+        val name: String,
+        val timeoutRunnable: Runnable
+    )
 
     fun attach(webView: WebView) {
         this.webView = webView
@@ -21,11 +27,13 @@ class ChatRuntimeBridge(
         if (webView == null || this.webView == webView) {
             this.webView = null
             store.markRuntimeUnavailable()
+            clearPendingCommands()
         }
     }
 
     fun markRuntimeLoading(message: String? = null) {
         store.markRuntimeUnavailable(message)
+        clearPendingCommands()
     }
 
     fun onEvent(json: String) {
@@ -82,8 +90,15 @@ class ChatRuntimeBridge(
                     store.messages[idx] = store.messages[idx].copy(mes = event.fullText)
                 }
             }
-            is BridgeEvent.CommandResult -> {}
+            is BridgeEvent.SaveError -> {
+                store.recordSaveError(event.message)
+                Log.w(TAG, "Save error: ${event.message}")
+            }
+            is BridgeEvent.CommandResult -> {
+                completePendingCommand(event.commandId)
+            }
             is BridgeEvent.CommandError -> {
+                completePendingCommand(event.commandId)
                 store.recordCommandError(event.message)
                 Log.w(TAG, "Command error [${event.commandId}]: ${event.message}")
             }
@@ -138,6 +153,56 @@ class ChatRuntimeBridge(
         )
     }
 
+    fun editMessage(messageId: Int, newText: String) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "message.edit",
+                payload = JSONObject().put("id", messageId).put("text", newText)
+            )
+        )
+    }
+
+    fun deleteMessageFromChat(messageId: Int) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "message.delete",
+                payload = JSONObject().put("id", messageId)
+            )
+        )
+    }
+
+    fun hideMessage(messageId: Int) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "message.hide",
+                payload = JSONObject().put("id", messageId)
+            )
+        )
+    }
+
+    fun unhideMessage(messageId: Int) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "message.unhide",
+                payload = JSONObject().put("id", messageId)
+            )
+        )
+    }
+
+    fun setAuthorsNote(text: String) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "authorsNote.set",
+                payload = JSONObject().put("text", text)
+            )
+        )
+    }
+
     fun newChat() {
         dispatch(BridgeMessage(kind = "command", name = "chat.new"))
     }
@@ -147,10 +212,18 @@ class ChatRuntimeBridge(
     }
 
     fun requestSnapshot() {
-        dispatch(BridgeMessage(kind = "command", name = "runtime.getSnapshot"))
+        dispatch(BridgeMessage(kind = "command", name = "runtime.getSnapshot"), trackTimeout = false)
     }
 
-    private fun dispatch(message: BridgeMessage) {
+    fun dismissSaveError() {
+        store.clearSaveError()
+    }
+
+    fun retrySave() {
+        dispatch(BridgeMessage(kind = "command", name = "runtime.save"))
+    }
+
+    private fun dispatch(message: BridgeMessage, trackTimeout: Boolean = true) {
         mainHandler.post {
             val wv = webView
             if (wv == null) {
@@ -168,12 +241,64 @@ class ChatRuntimeBridge(
             wv.evaluateJavascript(js) { result ->
                 if (result != "true") {
                     store.markRuntimeUnavailable("聊天运行时正在重新连接")
+                    return@evaluateJavascript
+                }
+                if (trackTimeout) {
+                    registerTimeout(message.id, message.name)
                 }
             }
         }
     }
 
+    private fun registerTimeout(commandId: String, commandName: String) {
+        val timeoutMs = when {
+            commandName.startsWith("chat.open") -> OPEN_TIMEOUT_MS
+            commandName.startsWith("generation.") -> GENERATION_TIMEOUT_MS
+            else -> DEFAULT_TIMEOUT_MS
+        }
+        val runnable = Runnable {
+            pendingCommands.remove(commandId)
+            val label = COMMAND_LABELS[commandName] ?: commandName
+            store.recordCommandError("$label 超时，运行时可能无响应")
+            Log.w(TAG, "Command timeout [$commandId] $commandName after ${timeoutMs}ms")
+        }
+        pendingCommands[commandId] = PendingCommand(commandName, runnable)
+        mainHandler.postDelayed(runnable, timeoutMs)
+    }
+
+    private fun completePendingCommand(commandId: String) {
+        val pending = pendingCommands.remove(commandId) ?: return
+        mainHandler.removeCallbacks(pending.timeoutRunnable)
+    }
+
+    private fun clearPendingCommands() {
+        pendingCommands.values.forEach { mainHandler.removeCallbacks(it.timeoutRunnable) }
+        pendingCommands.clear()
+    }
+
     companion object {
         private const val TAG = "ChatRuntimeBridge"
+        private const val DEFAULT_TIMEOUT_MS = 15_000L
+        private const val OPEN_TIMEOUT_MS = 30_000L
+        private const val GENERATION_TIMEOUT_MS = 60_000L
+
+        private val COMMAND_LABELS = mapOf(
+            "chat.send" to "发送消息",
+            "chat.openCharacter" to "打开角色",
+            "chat.openGroup" to "打开群聊",
+            "runtime.save" to "保存聊天",
+            "chat.new" to "新建聊天",
+            "chat.reload" to "重载聊天",
+            "generation.stop" to "停止生成",
+            "generation.regenerate" to "重写",
+            "generation.continue" to "继续生成",
+            "message.edit" to "编辑消息",
+            "message.delete" to "删除消息",
+            "message.swipePrevious" to "切换 swipe",
+            "message.swipeNext" to "切换 swipe",
+            "message.hide" to "隐藏消息",
+            "message.unhide" to "取消隐藏消息",
+            "authorsNote.set" to "设置作者注"
+        )
     }
 }

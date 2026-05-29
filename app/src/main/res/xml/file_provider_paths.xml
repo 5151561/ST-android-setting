@@ -3,4 +3,7 @@
     <files-path
         name="update_apks"
         path="updates/" />
+    <cache-path
+        name="chat_exports"
+        path="chat_exports/" />
 </paths>

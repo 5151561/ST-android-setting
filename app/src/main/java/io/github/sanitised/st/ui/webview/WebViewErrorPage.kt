@@ -30,7 +30,8 @@ enum class WebViewErrorKind {
     SERVICE_STOPPED,
     SERVICE_ERROR,
     SERVER_UNAVAILABLE,
-    PAGE_LOAD_FAILED
+    PAGE_LOAD_FAILED,
+    RENDER_PROCESS_GONE
 }
 
 data class WebViewErrorState(
@@ -52,18 +53,21 @@ fun WebViewErrorPage(
         WebViewErrorKind.SERVICE_ERROR -> stringResource(R.string.webview_error_service_error_title)
         WebViewErrorKind.SERVER_UNAVAILABLE -> stringResource(R.string.webview_error_server_unavailable_title)
         WebViewErrorKind.PAGE_LOAD_FAILED -> stringResource(R.string.webview_error_page_failed_title)
+        WebViewErrorKind.RENDER_PROCESS_GONE -> "运行时进程异常"
     }
     val body = when (error.kind) {
         WebViewErrorKind.SERVICE_STOPPED -> stringResource(R.string.webview_error_service_stopped_body)
         WebViewErrorKind.SERVICE_ERROR -> error.detail ?: stringResource(R.string.webview_error_service_error_body)
         WebViewErrorKind.SERVER_UNAVAILABLE -> stringResource(R.string.webview_error_server_unavailable_body, port)
         WebViewErrorKind.PAGE_LOAD_FAILED -> error.detail ?: stringResource(R.string.webview_error_page_failed_body)
+        WebViewErrorKind.RENDER_PROCESS_GONE -> error.detail ?: "WebView 渲染进程异常终止，点击重试恢复聊天。"
     }
     val primaryLabel = when (error.kind) {
         WebViewErrorKind.SERVICE_STOPPED,
         WebViewErrorKind.SERVICE_ERROR -> stringResource(R.string.webview_start_service)
         WebViewErrorKind.SERVER_UNAVAILABLE,
-        WebViewErrorKind.PAGE_LOAD_FAILED -> stringResource(R.string.webview_retry)
+        WebViewErrorKind.PAGE_LOAD_FAILED,
+        WebViewErrorKind.RENDER_PROCESS_GONE -> stringResource(R.string.webview_retry)
     }
 
     Column(

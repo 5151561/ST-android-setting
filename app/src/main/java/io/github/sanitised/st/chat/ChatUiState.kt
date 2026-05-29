@@ -3,7 +3,7 @@ package io.github.sanitised.st.chat
 import io.github.sanitised.st.ui.webview.WebViewTarget
 
 internal fun visibleChatMessages(messages: List<ChatMessage>): List<ChatMessage> =
-    messages.filterNot { it.isSystem }
+    messages
 
 internal fun conversationDateLabel(messages: List<ChatMessage>): String? =
     visibleChatMessages(messages)

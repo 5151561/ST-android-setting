@@ -8,7 +8,9 @@ import org.junit.Test
 
 class ChatUiStateTest {
     @Test
-    fun visibleMessagesExcludeSystemMessages() {
+    fun visibleMessagesIncludeSystemMessages() {
+        // System messages (including user-hidden messages) are shown in the
+        // native UI with a visual indicator — they should NOT be filtered out.
         val visible = visibleChatMessages(
             listOf(
                 chatMessage(id = 0, isSystem = true, text = "system"),
@@ -16,19 +18,19 @@ class ChatUiStateTest {
             )
         )
 
-        assertEquals(listOf(1), visible.map { it.id })
+        assertEquals(listOf(0, 1), visible.map { it.id })
     }
 
     @Test
-    fun dateLabelUsesActualFirstVisibleSendDateOnly() {
+    fun dateLabelUsesFirstMessageSendDate() {
         val label = conversationDateLabel(
             listOf(
-                chatMessage(id = 0, isSystem = true, sendDate = "fake system date"),
+                chatMessage(id = 0, isSystem = true, sendDate = "May 25, 2026 10:00am"),
                 chatMessage(id = 1, sendDate = "May 26, 2026 12:00pm")
             )
         )
 
-        assertEquals("May 26, 2026 12:00pm", label)
+        assertEquals("May 25, 2026 10:00am", label)
         assertNull(conversationDateLabel(listOf(chatMessage(id = 2, sendDate = ""))))
     }
 

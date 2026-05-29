@@ -120,7 +120,10 @@
       chatFile: group ? (group.chat_id || '') : (character ? (character.chat || '') : ''),
       isGenerating: isRuntimeGenerating(),
       messages: chat.map(function (msg, i) { return serializeMessage(msg, i); }).filter(Boolean),
-      metadata: { integrity: chatMetadata.integrity || '' }
+      metadata: {
+        integrity: chatMetadata.integrity || '',
+        authorsNote: chatMetadata.authors_note || ''
+      }
     };
   }
 
@@ -226,8 +229,10 @@
       if (msg) postEvent('message.updated', serializeMessage(msg, index));
     });
 
-    es.on(ev.MESSAGE_DELETED, function (index) {
-      postEvent('message.deleted', { id: index });
+    es.on(ev.MESSAGE_DELETED, function () {
+      // ST emits the new chat length here, not the deleted message id.
+      // A snapshot is the only reliable generic sync path.
+      postSnapshot();
     });
 
     if (ev.STREAM_TOKEN_RECEIVED) {
@@ -252,6 +257,24 @@
 
     eventsBound = true;
     return true;
+  }
+
+  async function safeSave() {
+    // ctx.saveChat() maps to saveChatConditional() which catches its own
+    // errors internally (console.error only, no throw). The catch below only
+    // detects wrapper-level failures such as a missing or replaced save API.
+    var ctx = getContext();
+    if (!ctx || typeof ctx.saveChat !== 'function') {
+      postEvent('save.error', { message: 'saveChat not available' });
+      return false;
+    }
+    try {
+      await ctx.saveChat();
+      return true;
+    } catch (err) {
+      postEvent('save.error', { message: err && err.message ? err.message : String(err) });
+      return false;
+    }
   }
 
   var snapshotTimer = null;
@@ -281,6 +304,10 @@
             } else {
               postError(cmdId, 'Runtime not ready');
             }
+            break;
+
+          case 'runtime.save':
+            handleSave(cmdId);
             break;
 
           case 'chat.openCharacter':
@@ -323,6 +350,30 @@
             handleSwipe(payload, cmdId, 'right');
             break;
 
+          case 'message.edit':
+            handleEditMessage(payload, cmdId);
+            break;
+
+          case 'message.delete':
+            handleDeleteMessage(payload, cmdId);
+            break;
+
+          case 'message.hide':
+            handleHideMessage(payload, cmdId);
+            break;
+
+          case 'message.unhide':
+            handleUnhideMessage(payload, cmdId);
+            break;
+
+          case 'authorsNote.get':
+            handleGetAuthorsNote(cmdId);
+            break;
+
+          case 'authorsNote.set':
+            handleSetAuthorsNote(payload, cmdId);
+            break;
+
           default:
             postError(cmdId, 'Unknown command: ' + name);
         }
@@ -335,6 +386,16 @@
       return buildSnapshot();
     }
   };
+
+  async function handleSave(cmdId) {
+    var saved = await safeSave();
+    if (saved) {
+      postSnapshot();
+      postResult(cmdId, {});
+    } else {
+      postError(cmdId, 'saveChat not available');
+    }
+  }
 
   async function handleOpenCharacter(payload, cmdId) {
     try {
@@ -456,9 +517,31 @@
     }
   }
 
-  function handleRegenerate(cmdId) {
+  async function handleRegenerate(cmdId) {
     var ctx = getGenerationContext(cmdId);
-    if (ctx && typeof ctx.generate === 'function') {
+    if (!ctx) return;
+
+    // In group mode, ST uses regenerateGroup() which deletes the current
+    // round's AI responses before regenerating. ctx.generate('regenerate')
+    // does NOT handle this correctly for groups.
+    if (ctx.groupId) {
+      try {
+        var groupModule = await import('./scripts/group-chats.js');
+        if (typeof groupModule.regenerateGroup !== 'function') {
+          postError(cmdId, 'regenerateGroup not available');
+          return;
+        }
+        watchGenerationState();
+        await groupModule.regenerateGroup();
+        postSnapshot();
+        postResult(cmdId, {});
+      } catch (err) {
+        postError(cmdId, 'regenerateGroup failed: ' + (err && err.message ? err.message : err));
+      }
+      return;
+    }
+
+    if (typeof ctx.generate === 'function') {
       watchGenerationState();
       Promise.resolve(ctx.generate('regenerate')).then(function () {
         postSnapshot();
@@ -486,16 +569,18 @@
     }
   }
 
-  function handleNewChat(cmdId) {
-    // doNewChat is an ES module export but not on getContext().
-    // Trigger via the DOM button that ST's own UI uses.
-    var btn = document.getElementById('option_start_new_chat');
-    if (btn) {
-      btn.click();
+  async function handleNewChat(cmdId) {
+    try {
+      var scriptModule = await import('./script.js');
+      if (typeof scriptModule.doNewChat !== 'function') {
+        postError(cmdId, 'doNewChat not available');
+        return;
+      }
+      await scriptModule.doNewChat({ deleteCurrentChat: false });
+      postSnapshot();
       postResult(cmdId, {});
-      setTimeout(postSnapshot, 500);
-    } else {
-      postError(cmdId, 'New chat button not found');
+    } catch (err) {
+      postError(cmdId, 'newChat failed: ' + (err && err.message ? err.message : err));
     }
   }
 
@@ -532,6 +617,171 @@
     }).catch(function (err) {
       postError(cmdId, 'swipe failed: ' + (err && err.message ? err.message : err));
     });
+  }
+
+  async function handleEditMessage(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+      var chat = ctx.chat || [];
+      var messageId = Number(payload.id);
+      var newText = String(payload.text || '');
+      if (messageId < 0 || messageId >= chat.length) {
+        postError(cmdId, 'Invalid message index: ' + messageId);
+        return;
+      }
+      var msg = chat[messageId];
+      msg.mes = newText;
+      if (Array.isArray(msg.swipes) && msg.swipes.length > 0) {
+        var swipeIdx = msg.swipe_id || 0;
+        if (swipeIdx < msg.swipes.length) {
+          msg.swipes[swipeIdx] = newText;
+        }
+      }
+      // Emit MESSAGE_EDITED first (extensions may transform the text)
+      if (ctx.eventSource && ctx.eventTypes && ctx.eventTypes.MESSAGE_EDITED) {
+        await ctx.eventSource.emit(ctx.eventTypes.MESSAGE_EDITED, messageId);
+        // Re-read text in case an extension modified it
+        newText = msg.mes;
+      }
+      // Update DOM if the message element exists
+      var mesEl = document.querySelector('.mes[mesid="' + messageId + '"]');
+      if (mesEl) {
+        var mesText = mesEl.querySelector('.mes_text');
+        try {
+          var scriptModule = await import('./script.js');
+          if (mesText && typeof scriptModule.messageFormatting === 'function') {
+            mesText.innerHTML = scriptModule.messageFormatting(
+              newText, msg.name, msg.is_system, msg.is_user, messageId, {}, false
+            );
+          }
+          var mesBias = mesEl.querySelector('.mes_bias');
+          if (mesBias && msg.extra && msg.extra.bias != null && typeof scriptModule.messageFormatting === 'function') {
+            mesBias.innerHTML = scriptModule.messageFormatting(msg.extra.bias, '', false, false, -1, {}, false);
+          }
+          var jqMesEl = window.jQuery ? window.jQuery(mesEl) : null;
+          if (jqMesEl && typeof scriptModule.appendMediaToMessage === 'function') {
+            scriptModule.appendMediaToMessage(msg, jqMesEl);
+          }
+          if (jqMesEl && typeof scriptModule.addCopyToCodeBlocks === 'function') {
+            scriptModule.addCopyToCodeBlocks(jqMesEl);
+          }
+        } catch (_) { /* DOM update is best-effort */ }
+      }
+      await safeSave();
+      if (ctx.eventSource && ctx.eventTypes && ctx.eventTypes.MESSAGE_UPDATED) {
+        await ctx.eventSource.emit(ctx.eventTypes.MESSAGE_UPDATED, messageId);
+      }
+      postEvent('message.updated', serializeMessage(msg, messageId));
+      postResult(cmdId, {});
+    } catch (err) {
+      postError(cmdId, 'editMessage failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  async function handleDeleteMessage(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+      var chat = ctx.chat || [];
+      var messageId = Number(payload.id);
+      if (messageId < 0 || messageId >= chat.length) {
+        postError(cmdId, 'Invalid message index: ' + messageId);
+        return;
+      }
+      // Prefer ST's native deleteMessage which handles DOM removal,
+      // itemized prompts cleanup, mesid updates, and debounced save.
+      // It requires the DOM element to exist (returns early otherwise).
+      var mesEl = document.querySelector('.mes[mesid="' + messageId + '"]');
+      if (mesEl) {
+        var scriptModule = await import('./script.js');
+        if (typeof scriptModule.deleteMessage === 'function') {
+          await scriptModule.deleteMessage(messageId, undefined, false);
+          postEvent('message.deleted', { id: messageId });
+          postSnapshot();
+          postResult(cmdId, {});
+          return;
+        }
+      }
+      // Fallback: direct splice when DOM element is not rendered
+      // (e.g. message outside lazy-render window).
+      chat.splice(messageId, 1);
+      if (ctx.chatMetadata) ctx.chatMetadata.tainted = true;
+      await safeSave();
+      if (ctx.eventSource && ctx.eventTypes && ctx.eventTypes.MESSAGE_DELETED) {
+        await ctx.eventSource.emit(ctx.eventTypes.MESSAGE_DELETED, chat.length);
+      }
+      postEvent('message.deleted', { id: messageId });
+      postSnapshot();
+      postResult(cmdId, {});
+    } catch (err) {
+      postError(cmdId, 'deleteMessage failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  async function handleHideMessage(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+      var chat = ctx.chat || [];
+      var messageId = Number(payload.id);
+      if (messageId < 0 || messageId >= chat.length) {
+        postError(cmdId, 'Invalid message index: ' + messageId);
+        return;
+      }
+      // ST hides messages by toggling is_system. Use the canonical function
+      // from chats.js which also refreshes swipe buttons and saves.
+      var chatsModule = await import('./scripts/chats.js');
+      await chatsModule.hideChatMessageRange(messageId, messageId, false);
+      postEvent('message.updated', serializeMessage(chat[messageId], messageId));
+      postResult(cmdId, {});
+    } catch (err) {
+      postError(cmdId, 'hideMessage failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  async function handleUnhideMessage(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+      var chat = ctx.chat || [];
+      var messageId = Number(payload.id);
+      if (messageId < 0 || messageId >= chat.length) {
+        postError(cmdId, 'Invalid message index: ' + messageId);
+        return;
+      }
+      var chatsModule = await import('./scripts/chats.js');
+      await chatsModule.hideChatMessageRange(messageId, messageId, true);
+      postEvent('message.updated', serializeMessage(chat[messageId], messageId));
+      postResult(cmdId, {});
+    } catch (err) {
+      postError(cmdId, 'unhideMessage failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  function handleGetAuthorsNote(cmdId) {
+    var ctx = getContext();
+    if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+    var metadata = ctx.chatMetadata || {};
+    postResult(cmdId, {
+      text: metadata.authors_note || '',
+      position: metadata.authors_note_position || 'after',
+      depth: Number(metadata.authors_note_depth) || 4
+    });
+  }
+
+  async function handleSetAuthorsNote(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+      if (!ctx.chatMetadata) ctx.chatMetadata = {};
+      ctx.chatMetadata.authors_note = payload.text || '';
+      await safeSave();
+      postSnapshot();
+      postResult(cmdId, {});
+    } catch (err) {
+      postError(cmdId, 'setAuthorsNote failed: ' + (err && err.message ? err.message : err));
+    }
   }
 
   // --- Initialization ---

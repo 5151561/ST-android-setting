@@ -19,6 +19,8 @@ class ChatStore {
     var mode by mutableStateOf("character")
     var isGenerating by mutableStateOf(false)
     var runtimeError by mutableStateOf<String?>(null)
+    var saveError by mutableStateOf<String?>(null)
+    var authorsNote by mutableStateOf("")
     val messages = mutableStateListOf<ChatMessage>()
 
     fun applySnapshot(snapshot: ChatSnapshot) {
@@ -29,6 +31,7 @@ class ChatStore {
         avatarUrl = snapshot.avatarUrl
         chatFile = snapshot.chatFile
         isGenerating = snapshot.isGenerating
+        authorsNote = snapshot.metadata.optString("authorsNote", "")
         messages.clear()
         messages.addAll(snapshot.messages)
     }
@@ -52,6 +55,14 @@ class ChatStore {
 
     fun recordCommandError(message: String) {
         runtimeError = message
+    }
+
+    fun recordSaveError(message: String) {
+        saveError = message
+    }
+
+    fun clearSaveError() {
+        saveError = null
     }
 
     fun addMessage(message: ChatMessage) {
@@ -83,6 +94,8 @@ class ChatStore {
         mode = "character"
         isGenerating = false
         runtimeError = null
+        saveError = null
+        authorsNote = ""
         messages.clear()
     }
 }

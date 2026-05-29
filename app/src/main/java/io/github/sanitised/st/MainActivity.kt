@@ -94,6 +94,7 @@ import io.github.sanitised.st.ui.prototype.PrototypeCharacterLibraryScreen
 import io.github.sanitised.st.ui.prototype.PrototypeCharacterProfileScreen
 import io.github.sanitised.st.ui.prototype.PrototypeChatListScreen
 import io.github.sanitised.st.ui.prototype.PrototypeGroupChatScreen
+import io.github.sanitised.st.ui.prototype.PrototypePastChatsScreen
 import io.github.sanitised.st.ui.prototype.PrototypeDrawerState
 import io.github.sanitised.st.ui.prototype.PrototypeMeScreen
 import io.github.sanitised.st.ui.prototype.PrototypeMemoryScreen
@@ -702,6 +703,12 @@ class MainActivity : ComponentActivity() {
                                         pendingWebViewTarget = WebViewTarget.CHAT
                                         if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME)
                                     },
+                                    onOpenPastChats = {
+                                        val avatar = chatStore.avatarUrl
+                                        if (avatar.isNotBlank()) {
+                                            navController.navigate(STRoutes.pastChats(avatar))
+                                        }
+                                    },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
@@ -747,7 +754,6 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
                                 if (avatar != null) {
-                                    // CharacterDetailScreen remains compiled for advanced management; this route shows the prototype CharEdit layout.
                                     PrototypeCharacterProfileScreen(
                                         status = statusState.value,
                                         baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
@@ -756,6 +762,9 @@ class MainActivity : ComponentActivity() {
                                         onBack = { navController.popBackStack() },
                                         onOpenChat = { chatFile ->
                                             openCharacterChatFromCharacterManagement(avatar, chatFile)
+                                        },
+                                        onOpenPastChats = {
+                                            navController.navigate(STRoutes.pastChats(avatar))
                                         },
                                         onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                     )
@@ -776,6 +785,33 @@ class MainActivity : ComponentActivity() {
                                         onBack = { navController.popBackStack() },
                                         onOpenChat = { chatFile ->
                                             openCharacterChatFromCharacterManagement(avatar, chatFile)
+                                        },
+                                        onOpenPastChats = {
+                                            navController.navigate(STRoutes.pastChats(avatar))
+                                        },
+                                        onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                    )
+                                }
+                            }
+
+                            composable(
+                                route = STRoutes.PAST_CHATS,
+                                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
+                            ) { backStackEntry ->
+                                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
+                                if (avatar != null) {
+                                    PrototypePastChatsScreen(
+                                        status = statusState.value,
+                                        baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                        avatar = avatar,
+                                        currentChatFile = chatStore.chatFile,
+                                        onBack = { navController.popBackStack() },
+                                        onOpenChat = { chatFile ->
+                                            openCharacterChatFromCharacterManagement(avatar, chatFile)
+                                        },
+                                        onNewChat = {
+                                            chatBridge.newChat()
+                                            openCharacterChatFromCharacterManagement(avatar, null)
                                         },
                                         onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                     )

@@ -30,8 +30,10 @@ object STRoutes {
     const val QUICK_REPLIES = "settings/quick-replies"
     const val APPEARANCE = "settings/appearance"
     const val PROVIDER_DETAIL = "api-connections/detail/{providerId}"
+    const val PAST_CHATS = "characters/chats/{avatar}"
 
     fun characterDetail(avatar: String): String = "characters/detail/${Uri.encode(avatar)}"
     fun characterEdit(avatar: String): String = "characters/edit/${Uri.encode(avatar)}"
     fun providerDetail(providerId: String): String = "api-connections/detail/${Uri.encode(providerId)}"
+    fun pastChats(avatar: String): String = "characters/chats/${Uri.encode(avatar)}"
 }
