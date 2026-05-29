@@ -338,6 +338,8 @@ class MainActivity : ComponentActivity() {
             }
             val statusState = remember { mutableStateOf(NodeStatus(NodeState.STOPPED, "Idle")) }
             val autoOpenBrowserTriggeredForCurrentRun = rememberSaveable { mutableStateOf(false) }
+            val tavernReadyForAutoOpen = remember { mutableStateOf(false) }
+            val wasReadyToAutoOpen = remember { mutableStateOf(false) }
             val stdoutState = remember { mutableStateOf("") }
             val stderrState = remember { mutableStateOf("") }
             val serviceState = remember { mutableStateOf("") }
@@ -365,6 +367,43 @@ class MainActivity : ComponentActivity() {
                 } else {
                     connectedCount = 0
                 }
+            }
+            LaunchedEffect(statusState.value.state, statusState.value.port) {
+                if (statusState.value.state != NodeState.RUNNING) {
+                    tavernReadyForAutoOpen.value = false
+                    return@LaunchedEffect
+                }
+                tavernReadyForAutoOpen.value = false
+                val client = io.github.sanitised.st.api.TavernCoreClient(
+                    SillyTavernUrl.localWebUrl(statusState.value.port)
+                )
+                val deadline = System.currentTimeMillis() + 60_000L
+                while (
+                    statusState.value.state == NodeState.RUNNING &&
+                    !tavernReadyForAutoOpen.value &&
+                    System.currentTimeMillis() < deadline
+                ) {
+                    val ok = withContext(Dispatchers.IO) {
+                        client.healthCheck().ok
+                    }
+                    if (ok) {
+                        tavernReadyForAutoOpen.value = true
+                        break
+                    }
+                    delay(1000)
+                }
+            }
+            val readyToAutoOpen = statusState.value.state == NodeState.RUNNING && tavernReadyForAutoOpen.value
+            LaunchedEffect(readyToAutoOpen, viewModel.autoOpenBrowserWhenReady.value) {
+                val justBecameReady = readyToAutoOpen && !wasReadyToAutoOpen.value
+                if (
+                    viewModel.autoOpenBrowserWhenReady.value && justBecameReady &&
+                    !autoOpenBrowserTriggeredForCurrentRun.value
+                ) {
+                    openSillyTavernInBrowser(statusState.value.port)
+                    autoOpenBrowserTriggeredForCurrentRun.value = true
+                }
+                wasReadyToAutoOpen.value = readyToAutoOpen
             }
 
             val listener = remember {
