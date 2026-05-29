@@ -112,6 +112,7 @@ fun STNavigationScaffold(
         CompositionLocalProvider(LocalSTOpenDrawer provides openDrawer) {
             ModalNavigationDrawer(
                 drawerState = drawerState,
+                gesturesEnabled = showNavigation,
                 drawerContent = {
                     STDrawerSheet(
                         drawerItems = drawerItems,

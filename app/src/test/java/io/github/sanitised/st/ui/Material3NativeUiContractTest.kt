@@ -51,4 +51,23 @@ class Material3NativeUiContractTest {
         assertTrue(bottomBarFile.contains("NavigationRailItem("))
         assertFalse(bottomBarFile.contains("clickable { onNavigate"))
     }
+
+    @Test
+    fun hiddenNavigationDisablesDrawerGestures() {
+        val bottomBarFile = File("src/main/java/io/github/sanitised/st/ui/navigation/STBottomBar.kt").readText()
+
+        assertTrue(bottomBarFile.contains("ModalNavigationDrawer("))
+        assertTrue(bottomBarFile.contains("gesturesEnabled = showNavigation"))
+    }
+
+    @Test
+    fun mainActivityAutoOpensBrowserWhenServiceBecomesReadyAndPreferenceIsEnabled() {
+        val mainActivityFile = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+
+        assertTrue(mainActivityFile.contains("val tavernReadyForAutoOpen = remember { mutableStateOf(false) }"))
+        assertTrue(mainActivityFile.contains("client.healthCheck().ok"))
+        assertTrue(mainActivityFile.contains("viewModel.autoOpenBrowserWhenReady.value && justBecameReady"))
+        assertTrue(mainActivityFile.contains("openSillyTavernInBrowser(statusState.value.port)"))
+        assertTrue(mainActivityFile.contains("autoOpenBrowserTriggeredForCurrentRun.value = true"))
+    }
 }
