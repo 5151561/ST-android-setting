@@ -105,6 +105,7 @@ import io.github.sanitised.st.ui.prototype.PrototypeExtensionsScreen
 import io.github.sanitised.st.ui.prototype.PrototypeAuthorNoteCFGScreen
 import io.github.sanitised.st.ui.prototype.PrototypeQuickReplyScreen
 import io.github.sanitised.st.ui.prototype.PrototypeAppearanceScreen
+import io.github.sanitised.st.ui.prototype.PrototypeGroupChatScreen
 import io.github.sanitised.st.ui.prototype.configuredApiConnectionProviderCount
 import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
 import io.github.sanitised.st.ui.components.STConfirmDialog
@@ -296,7 +297,8 @@ class MainActivity : ComponentActivity() {
                 STRoutes.PRESETS,
                 STRoutes.CONNECTIONS,
                 STRoutes.CHAT_BACKUPS,
-                STRoutes.GROUP_CHAT -> STRoutes.SETTINGS
+                STRoutes.GROUP_CHAT,
+                STRoutes.GROUP_CHAT_DETAIL -> STRoutes.SETTINGS
                 STRoutes.LOGS,
                 STRoutes.CONFIG,
                 STRoutes.LEGAL,
@@ -598,8 +600,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val openGroupChat: (String, String?) -> Unit = { groupId, chatId ->
-                pendingWebViewTarget = WebViewTarget.GroupChat(groupId, chatId)
-                navController.navigate(STRoutes.CHAT) {
+                navController.navigate(STRoutes.groupChatDetail(groupId, chatId)) {
                     launchSingleTop = true
                 }
             }
@@ -890,12 +891,28 @@ class MainActivity : ComponentActivity() {
                                         navigateMainTab(STRoutes.HOME)
                                     }
                                 }
+                                PrototypeGroupChatScreen(
+                                    status = statusState.value,
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onOpenGroupChat = openGroupChat,
+                                    onStartService = { startNode() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                )
+                            }
+
+                            composable(
+                                route = STRoutes.GROUP_CHAT_DETAIL,
+                                arguments = listOf(
+                                    navArgument("groupId") { type = NavType.StringType },
+                                    navArgument("chatId") {
+                                        type = NavType.StringType
+                                        defaultValue = ""
+                                    }
+                                )
+                            ) {
+                                BackHandler { navController.popBackStack() }
                                 GroupChatScreen(
-                                    onBack = {
-                                        if (!navController.popBackStack()) {
-                                            navigateMainTab(STRoutes.HOME)
-                                        }
-                                    },
+                                    onBack = { navController.popBackStack() },
                                     onNavigateToSettings = { navController.navigate("group-chat/settings") },
                                     onNavigateToMembers = { navController.navigate("group-chat/members") },
                                     onNavigateToNewGroup = { navController.navigate("group-chat/new") }

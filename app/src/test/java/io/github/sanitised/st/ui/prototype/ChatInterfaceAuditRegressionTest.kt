@@ -112,6 +112,39 @@ class ChatInterfaceAuditRegressionTest {
     }
 
     @Test
+    fun drawerGroupChatRouteShowsGroupListBeforeOpeningSpecificGroupChat() {
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val groupRouteBlock = mainActivity
+            .substringAfter("composable(STRoutes.GROUP_CHAT) {")
+            .substringBefore("route = STRoutes.GROUP_CHAT_DETAIL")
+        val groupListSource = File("src/main/java/io/github/sanitised/st/ui/prototype/PrototypeGroupChatScreen.kt").readText()
+
+        assertTrue(groupRouteBlock.contains("PrototypeGroupChatScreen("))
+        assertTrue(groupRouteBlock.contains("onOpenGroupChat = openGroupChat"))
+        assertFalse(Regex("""(?<!Prototype)GroupChatScreen\(""").containsMatchIn(groupRouteBlock))
+        assertTrue(groupListSource.contains("onOpenGroupChat(group.id, group.chatId.takeIf { it.isNotBlank() })"))
+    }
+
+    @Test
+    fun groupListSelectionOpensGroupChatDetailInsteadOfGenericChatRoute() {
+        val routes = File("src/main/java/io/github/sanitised/st/ui/navigation/STNavGraph.kt").readText()
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val openGroupChatBlock = mainActivity
+            .substringAfter("val openGroupChat: (String, String?) -> Unit = { groupId, chatId ->")
+            .substringBefore("val dynamicDrawerItems")
+        val groupDetailRouteBlock = mainActivity
+            .substringAfter("route = STRoutes.GROUP_CHAT_DETAIL")
+            .substringBefore("composable(\"group-chat/settings\")")
+
+        assertTrue(routes.contains("const val GROUP_CHAT_DETAIL"))
+        assertTrue(routes.contains("fun groupChatDetail(groupId: String, chatId: String?)"))
+        assertTrue(openGroupChatBlock.contains("navController.navigate(STRoutes.groupChatDetail(groupId, chatId))"))
+        assertFalse(openGroupChatBlock.contains("pendingWebViewTarget = WebViewTarget.GroupChat"))
+        assertFalse(openGroupChatBlock.contains("navController.navigate(STRoutes.CHAT)"))
+        assertTrue(groupDetailRouteBlock.contains("GroupChatScreen("))
+    }
+
+    @Test
     fun defaultChatNavigationClearsPreviousNativeMessages() {
         val source = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
 

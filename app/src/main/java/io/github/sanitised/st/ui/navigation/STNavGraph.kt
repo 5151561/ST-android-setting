@@ -16,6 +16,7 @@ object STRoutes {
     const val CONNECTIONS = "api-connections"
     const val CHAT_BACKUPS = "memory"
     const val GROUP_CHAT = "group-chat"
+    const val GROUP_CHAT_DETAIL = "group-chat/detail/{groupId}?chatId={chatId}"
     const val SETTINGS = "me"
 
     const val LOGS = "settings/logs"
@@ -36,4 +37,6 @@ object STRoutes {
     fun characterEdit(avatar: String): String = "characters/edit/${Uri.encode(avatar)}"
     fun providerDetail(providerId: String): String = "api-connections/detail/${Uri.encode(providerId)}"
     fun pastChats(avatar: String): String = "characters/chats/${Uri.encode(avatar)}"
+    fun groupChatDetail(groupId: String, chatId: String?): String =
+        "group-chat/detail/${Uri.encode(groupId)}?chatId=${Uri.encode(chatId.orEmpty())}"
 }
