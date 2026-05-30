@@ -93,7 +93,6 @@ import io.github.sanitised.st.ui.prototype.PrototypeCharacterCreateScreen
 import io.github.sanitised.st.ui.prototype.PrototypeCharacterLibraryScreen
 import io.github.sanitised.st.ui.prototype.PrototypeCharacterProfileScreen
 import io.github.sanitised.st.ui.prototype.PrototypeChatListScreen
-import io.github.sanitised.st.ui.prototype.PrototypeGroupChatScreen
 import io.github.sanitised.st.ui.prototype.PrototypePastChatsScreen
 import io.github.sanitised.st.ui.prototype.PrototypeDrawerState
 import io.github.sanitised.st.ui.prototype.PrototypeMeScreen
@@ -111,9 +110,7 @@ import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STDialogButtonStyle
 import io.github.sanitised.st.ui.theme.STAppTheme
-import io.github.sanitised.st.chat.ChatRuntimeBridge
-import io.github.sanitised.st.chat.ChatStore
-import io.github.sanitised.st.chat.NativeChatScreen
+import io.github.sanitised.st.chat.*
 import io.github.sanitised.st.ui.webview.ChatWebViewScreen
 import io.github.sanitised.st.ui.webview.WebViewTarget
 import kotlinx.coroutines.Dispatchers
@@ -888,13 +885,42 @@ class MainActivity : ComponentActivity() {
                             }
 
                             composable(STRoutes.GROUP_CHAT) {
+                                BackHandler {
+                                    if (!navController.popBackStack()) {
+                                        navigateMainTab(STRoutes.HOME)
+                                    }
+                                }
+                                GroupChatScreen(
+                                    onBack = {
+                                        if (!navController.popBackStack()) {
+                                            navigateMainTab(STRoutes.HOME)
+                                        }
+                                    },
+                                    onNavigateToSettings = { navController.navigate("group-chat/settings") },
+                                    onNavigateToMembers = { navController.navigate("group-chat/members") },
+                                    onNavigateToNewGroup = { navController.navigate("group-chat/new") }
+                                )
+                            }
+
+                            composable("group-chat/settings") {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeGroupChatScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onOpenGroupChat = openGroupChat,
-                                    onStartService = { startNode() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                GroupSettingsScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+
+                            composable("group-chat/members") {
+                                BackHandler { navController.popBackStack() }
+                                GroupMembersScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+
+                            composable("group-chat/new") {
+                                BackHandler { navController.popBackStack() }
+                                NewGroupScreen(
+                                    onClose = { navController.popBackStack() },
+                                    onCreate = { _, _, _ -> navController.popBackStack() }
                                 )
                             }
 
