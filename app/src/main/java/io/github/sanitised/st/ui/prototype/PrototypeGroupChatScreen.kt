@@ -76,6 +76,7 @@ fun PrototypeGroupChatScreen(
     onOpenGroupChat: (String, String?) -> Unit,
     onStartService: () -> Unit,
     onShowMessage: (String) -> Unit,
+    onNavigateToNewGroup: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val openDrawer = LocalSTOpenDrawer.current
@@ -252,7 +253,7 @@ fun PrototypeGroupChatScreen(
             onStartService = onStartService,
             onOpenDrawer = openDrawer,
             onRefresh = { refreshGroups() },
-            onCreate = { isCreating = true },
+            onCreate = onNavigateToNewGroup,
             onOpenGroupChat = onOpenGroupChat,
             modifier = modifier
         )

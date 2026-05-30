@@ -1,5 +1,6 @@
 package io.github.sanitised.st.chat
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -48,11 +50,20 @@ fun GroupMembersScreen(
         )
     }
     var requestedSpeakerName by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     // 重新校准 queue 指数
     fun recalibrateQueue() {
         activeMembers.forEachIndexed { index, member ->
             activeMembers[index] = member.copy(queue = index + 1)
+        }
+    }
+
+    // 点名提示横幅几秒后自动消失，避免常驻
+    LaunchedEffect(requestedSpeakerName) {
+        if (requestedSpeakerName != null) {
+            kotlinx.coroutines.delay(2500)
+            requestedSpeakerName = null
         }
     }
 
@@ -73,7 +84,10 @@ fun GroupMembersScreen(
                     )
                 },
                 actions = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        Toast.makeText(context, "成员设置已保存", Toast.LENGTH_SHORT).show()
+                        onBack()
+                    }) {
                         Icon(Icons.Filled.Done, contentDescription = "完成", tint = MaterialTheme.colorScheme.primary)
                     }
                 },

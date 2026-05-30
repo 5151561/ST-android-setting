@@ -8,13 +8,16 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -26,8 +29,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -79,7 +85,8 @@ data class DemoGroupMessage(
     val mesId: Int,
     val time: String,
     val text: String,
-    val swipes: Pair<Int, Int>? = null // (current_index, total)
+    val swipes: Pair<Int, Int>? = null, // (current_index, total)
+    val swipeTexts: List<String>? = null // 各 swipe 版本文本，与 swipes.first 对应
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -126,47 +133,47 @@ fun GroupChatScreen(
             DemoGroupMessage("assistant", "eleanor", 2, "21:01", "*她从帆布包里抽出一沓纸，边角还沾着雨。*\n\n带了。说实话……我写了三个版本的结尾，自己都拿不准。要不一会儿读给你们听，帮我挑一个？"),
             DemoGroupMessage("assistant", "kael", 3, "21:02", "*指尖在桌沿轻轻敲出节拍。*\n\n结尾啊，得像一首歌的最后一个音——可以不响亮，但要让人记很久。读吧，我听着。"),
             DemoGroupMessage("user", null, 4, "21:03", "我也想听。Aria，第一杯可可先给 Eleanor，她现在最需要点勇气。"),
-            DemoGroupMessage("assistant", "aria", 5, "21:03", "*她把最满的那杯推到 Eleanor 面前，又顺手点了一支小蜡烛。*\n\n给。慢慢读，没人催你。", swipes = Pair(0, 2))
+            DemoGroupMessage(
+                "assistant", "aria", 5, "21:03",
+                "*她把最满的那杯推到 Eleanor 面前，又顺手点了一支小蜡烛。*\n\n给。慢慢读，没人催你。",
+                swipes = Pair(0, 2),
+                swipeTexts = listOf(
+                    "*她把最满的那杯推到 Eleanor 面前，又顺手点了一支小蜡烛。*\n\n给。慢慢读，没人催你。",
+                    "*她把杯子轻轻搁在 Eleanor 手边，指尖在桌沿点了点。*\n\n别紧张，就当念给老朋友听。我们都在。"
+                )
+            )
         )
     }
 
-    var typingSpeakerId by remember { mutableStateOf<String?>(null) } // "eleanor" for testing
+    var typingSpeakerId by remember { mutableStateOf<String?>(null) }
     var isAutoModeRunning by remember { mutableStateOf(false) }
-    var autoSecondsLeft by remember { mutableStateOf(5) }
+    var autoSecondsLeft by remember { mutableStateOf(groupState.value.autoDelay) }
     var showSpeakerSheet by remember { mutableStateOf(false) }
-    
+    var showConversationSwitcher by remember { mutableStateOf(false) }
+
+    // 自动接龙/点名时的"下一位发言者"：取第一位未静音成员（demo 近似自然顺序）
+    val autoNextSpeaker = membersList.firstOrNull { !it.muted } ?: membersList.firstOrNull()
+
     val lazyListState = rememberLazyListState()
 
-    // 模拟自动接龙效果
+    // 自动接龙：只负责倒计时，结束后把发言交给下面统一的 typingSpeakerId 流程，避免重复追加。
     LaunchedEffect(isAutoModeRunning) {
         if (isAutoModeRunning) {
-            autoSecondsLeft = 5
+            autoSecondsLeft = groupState.value.autoDelay
             while (autoSecondsLeft > 0) {
                 kotlinx.coroutines.delay(1000)
                 autoSecondsLeft--
             }
             isAutoModeRunning = false
-            typingSpeakerId = "eleanor"
-            kotlinx.coroutines.delay(2500)
-            typingSpeakerId = null
-            threadMessages.add(
-                DemoGroupMessage(
-                    role = "assistant",
-                    speaker = "eleanor",
-                    mesId = threadMessages.size,
-                    time = "21:04",
-                    text = "*把稿子在桌上磕了磕，清了清嗓子。*\n\n那我开始读了啊……\"第一章。当夜幕降临在雾气昭昭的泰晤士河畔，她知道自己已无退路。\""
-                )
-            )
+            typingSpeakerId = autoNextSpeaker?.id
         }
     }
 
-    // DEMO_PLACEHOLDER: 模拟点名发言后的打字动效及自动回复逻辑，防止 TypingRow 卡死。
+    // 统一的"打字动效 → 追加回复"流程：手动点名、随机、自动接龙都汇集到这里，保证只追加一条。
     LaunchedEffect(typingSpeakerId) {
         val speaker = typingSpeakerId
         if (speaker != null) {
             kotlinx.coroutines.delay(2000)
-            typingSpeakerId = null
             val replyText = when (speaker) {
                 "aria" -> "*端着新鲜出炉的华夫饼走过来，在桌上放下一小碟蜂蜜。*\n\n那今天的可可多加些鲜奶油，算我请客！"
                 "eleanor" -> "*轻轻翻开泛黄的手稿，眼神明亮。*\n\n多谢你的勇气。那我就先读一小段……\"第一章。伦敦的钟声敲响了十二下。\""
@@ -182,6 +189,7 @@ fun GroupChatScreen(
                     text = replyText
                 )
             )
+            typingSpeakerId = null
         }
     }
 
@@ -192,16 +200,18 @@ fun GroupChatScreen(
                 group = groupState.value,
                 members = membersList,
                 onBack = onBack,
-                onHeaderClick = onNavigateToSettings,
+                onHeaderClick = { showConversationSwitcher = true },
                 onMembersIconClick = onNavigateToMembers,
-                onNavigateToNewGroup = onNavigateToNewGroup
+                onNavigateToNewGroup = onNavigateToNewGroup,
+                onOpenSettings = onNavigateToSettings,
+                onMemberClick = { id -> typingSpeakerId = id }
             )
 
-            // 2. 自动回复横幅 (AutoMode Banner)
-            if (isAutoModeRunning) {
+            // 2. 自动回复横幅 (AutoMode Banner) —— 显示与实际发言一致的下一位
+            if (isAutoModeRunning && autoNextSpeaker != null) {
                 AutoModeBanner(
-                    nextSpeakerName = "Kael",
-                    nextSpeakerGrad = listOf(Color(0xFFC8E5B7), Color(0xFF3D6B3A)),
+                    nextSpeakerName = autoNextSpeaker.name,
+                    nextSpeakerGrad = autoNextSpeaker.avatarGrad,
                     seconds = autoSecondsLeft,
                     onPause = { isAutoModeRunning = false }
                 )
@@ -229,9 +239,28 @@ fun GroupChatScreen(
                                     msg = msg,
                                     member = member,
                                     isLast = isLast,
-                                    onSwipeLeft = { /* DEMO_PLACEHOLDER */ },
-                                    onSwipeRight = { /* DEMO_PLACEHOLDER */ },
-                                    onRegenerate = { typingSpeakerId = member.id },
+                                    onSwipeLeft = {
+                                        val i = threadMessages.indexOf(msg)
+                                        val sw = msg.swipes
+                                        if (i >= 0 && sw != null && sw.first > 0) {
+                                            threadMessages[i] = msg.copy(swipes = Pair(sw.first - 1, sw.second))
+                                        }
+                                    },
+                                    onSwipeRight = {
+                                        val i = threadMessages.indexOf(msg)
+                                        val sw = msg.swipes
+                                        if (i >= 0 && sw != null && sw.first < sw.second - 1) {
+                                            threadMessages[i] = msg.copy(swipes = Pair(sw.first + 1, sw.second))
+                                        }
+                                    },
+                                    // 重写：丢弃当前这条，重新生成一条
+                                    onRegenerate = {
+                                        if (threadMessages.isNotEmpty()) {
+                                            threadMessages.removeAt(threadMessages.lastIndex)
+                                        }
+                                        typingSpeakerId = member.id
+                                    },
+                                    // 继续：让同一角色接着往下说一条
                                     onContinue = { typingSpeakerId = member.id },
                                     onMore = { showSpeakerSheet = true }
                                 )
@@ -296,6 +325,18 @@ fun GroupChatScreen(
                     showSpeakerSheet = false
                     isAutoModeRunning = true
                 }
+            )
+        }
+
+        // 7. 切换对话下拉面板 (ConversationSwitcher) —— 点群名触发
+        if (showConversationSwitcher) {
+            ConversationSwitcherSheet(
+                group = groupState.value,
+                members = membersList,
+                onDismiss = { showConversationSwitcher = false },
+                onSelectConversation = { showConversationSwitcher = false },
+                onNewConversation = { showConversationSwitcher = false },
+                onManageAll = { showConversationSwitcher = false }
             )
         }
     }
@@ -439,7 +480,9 @@ fun GroupChatHeader(
     onBack: () -> Unit,
     onHeaderClick: () -> Unit,
     onMembersIconClick: () -> Unit,
-    onNavigateToNewGroup: () -> Unit
+    onNavigateToNewGroup: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onMemberClick: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -517,7 +560,7 @@ fun GroupChatHeader(
                         leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) },
                         onClick = {
                             menuExpanded = false
-                            onHeaderClick()
+                            onOpenSettings()
                         }
                     )
                 }
@@ -528,7 +571,7 @@ fun GroupChatHeader(
         MemberStrip(
             members = members,
             onAddMemberClick = onMembersIconClick,
-            onMemberClick = { /* DEMO_PLACEHOLDER */ }
+            onMemberClick = onMemberClick
         )
         
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
@@ -614,12 +657,23 @@ fun MemberStrip(
             }
         }
         
-        // 快捷添加按钮
+        // 快捷添加按钮（虚线圆圈，对齐设计稿 dashed circle）
+        val dashColor = MaterialTheme.colorScheme.outlineVariant
         Box(
             modifier = Modifier
                 .size(44.dp)
+                .clip(CircleShape)
                 .clickable { onAddMemberClick() }
-                .border(2.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
+                .drawBehind {
+                    drawCircle(
+                        color = dashColor,
+                        radius = size.minDimension / 2f - 1.dp.toPx(),
+                        style = Stroke(
+                            width = 2.dp.toPx(),
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
+                        )
+                    )
+                },
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -755,20 +809,26 @@ fun GroupMesAssistant(
                 )
             }
             
-            // 文本气泡
+            // 文本气泡 —— 仅左侧一条 accent 强调竖条（随圆角裁剪），对齐设计稿 border-left
+            val bubbleShape = RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)
             Box(
                 modifier = Modifier
                     .widthIn(max = (LocalConfiguration.current.screenWidthDp * 0.92f).dp)
-                    .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
+                    .clip(bubbleShape)
                     .background(MaterialTheme.colorScheme.surfaceContainer)
-                    .border(
-                        width = 2.dp,
-                        brush = Brush.verticalGradient(listOf(member.accent, member.accent.copy(alpha = 0.5f))),
-                        shape = RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)
-                    )
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
-                GText(text = msg.text)
+                // 左侧强调条
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .width(2.dp)
+                        .fillMaxHeight()
+                        .background(member.accent)
+                )
+                Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    val displayText = msg.swipeTexts?.getOrNull(msg.swipes?.first ?: 0) ?: msg.text
+                    GText(text = displayText)
+                }
             }
             
             // 最后一发 Swipes 动作面板
@@ -871,23 +931,32 @@ fun TypingRow(member: DemoGroupMember) {
         }
         
         Spacer(modifier = Modifier.width(10.dp))
-        
-        Row(
+
+        val typingShape = RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)
+        Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
+                .clip(typingShape)
                 .background(MaterialTheme.colorScheme.surfaceContainer)
-                .border(1.dp, member.accent.copy(alpha = 0.4f), RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(2.dp)
+                    .fillMaxHeight()
+                    .background(member.accent)
+            )
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
             Text(
                 text = member.name,
                 style = MaterialTheme.typography.labelMedium,
                 color = member.accent,
                 fontWeight = FontWeight.Bold
             )
-            
+
             // 3点跳动动画
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 val infiniteTransition = rememberInfiniteTransition()
@@ -917,6 +986,7 @@ fun TypingRow(member: DemoGroupMember) {
                             .background(MaterialTheme.colorScheme.onSurfaceVariant)
                     )
                 }
+            }
             }
         }
     }
@@ -1087,41 +1157,46 @@ fun GroupComposer(
                         .heightIn(min = 44.dp)
                         .clip(RoundedCornerShape(22.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
+                    BasicTextField(
                         value = textValue,
                         onValueChange = {
                             textValue = it
                             composerHint = null
                         },
-                        placeholder = { Text("发条消息，或 @ 点名某位角色", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedBorderColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent
-                        ),
                         modifier = Modifier.weight(1f),
                         maxLines = 4,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface)
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        decorationBox = { innerTextField ->
+                            if (textValue.isEmpty()) {
+                                Text(
+                                    "发条消息，或 @ 点名某位角色",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                            innerTextField()
+                        }
                     )
-                    
-                    IconButton(
-                        onClick = {
-                            textValue = if (textValue.endsWith("@") || textValue.endsWith("@ ")) textValue else "$textValue @"
-                            composerHint = "输入角色名即可点名接话"
-                        },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AlternateEmail,
-                            contentDescription = "点名",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
+
+                    Icon(
+                        imageVector = Icons.Filled.AlternateEmail,
+                        contentDescription = "点名某位角色",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .clickable {
+                                if (!textValue.endsWith("@")) {
+                                    textValue = if (textValue.isEmpty() || textValue.endsWith(" ")) "$textValue@" else "$textValue @"
+                                }
+                                composerHint = "输入角色名即可点名接话"
+                            }
+                    )
                 }
                 
                 // 发送按钮
@@ -1384,5 +1459,326 @@ private fun getStrategyActionLabel(id: String): String {
         "list" -> "自动 · 列表顺序"
         "pooled" -> "自动 · 池化顺序"
         else -> getStrategyLabel(id)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 切换对话弹层数据模型
+// ─────────────────────────────────────────────────────────────
+// DEMO_PLACEHOLDER: 群聊历史对话/检查点/分支的静态模拟数据，对接 ST 后需替换为 /api/chats 列表。
+enum class DemoConvKind { CHAT, CHECKPOINT, BRANCH }
+
+data class DemoConversation(
+    val id: String,
+    val title: String,
+    val kind: DemoConvKind,
+    val messageCount: Int,
+    val preview: String,
+    val timeInfo: String,
+    val active: Boolean = false
+)
+
+// ─────────────────────────────────────────────────────────────
+// ConversationSwitcherSheet — 点群名后从顶部下拉的「切换对话」面板
+// ─────────────────────────────────────────────────────────────
+@Composable
+fun ConversationSwitcherSheet(
+    group: DemoGroup,
+    members: List<DemoGroupMember>,
+    onDismiss: () -> Unit,
+    onSelectConversation: (String) -> Unit,
+    onNewConversation: () -> Unit,
+    onManageAll: () -> Unit
+) {
+    // DEMO_PLACEHOLDER: 历史对话与检查点/分支模拟数据。
+    val conversations = remember {
+        listOf(
+            DemoConversation("rainynight", "雨夜小聚", DemoConvKind.CHAT, 48, "Eleanor：带了。说实话我写了三个版本的结尾…", "今天 21:03 · 36 KB", active = true),
+            DemoConversation("boardgame", "周末桌游夜", DemoConvKind.CHAT, 132, "Kael：这把我赌 Aria 在虚张声势。", "3 天前 · 94 KB"),
+            DemoConversation("bookshop", "深夜书店打烊后", DemoConvKind.CHAT, 76, "你：所以那本书到底是谁落下的？", "上周 · 58 KB"),
+            DemoConversation("firstmeet", "初次见面", DemoConvKind.CHAT, 24, "Aria：欢迎光临～三位是一起的吗？", "142 天前 · 17 KB")
+        )
+    }
+    val checkpoints = remember {
+        listOf(
+            DemoConversation("cp-reading", "结尾朗读 · 检查点", DemoConvKind.CHECKPOINT, 41, "从 Eleanor 读第二版结尾那刻保存", "今天 21:02 · 31 KB"),
+            DemoConversation("branch-rain", "如果当晚没下雨", DemoConvKind.BRANCH, 19, "岔开的支线：改约在天台", "今天 20:40 · 14 KB")
+        )
+    }
+
+    var query by remember { mutableStateOf("") }
+    fun matches(c: DemoConversation) =
+        query.isBlank() || c.title.contains(query, true) || c.preview.contains(query, true)
+    val filteredConvs = conversations.filter { matches(it) }
+    val filteredChecks = checkpoints.filter { matches(it) }
+
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp
+    val scrimSource = remember { MutableInteractionSource() }
+    val panelSource = remember { MutableInteractionSource() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(interactionSource = scrimSource, indication = null) { onDismiss() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .heightIn(max = (screenHeightDp * 0.86f).dp)
+                .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                // 拦截面板内的点击，避免穿透到遮罩
+                .clickable(interactionSource = panelSource, indication = null) {}
+                .padding(top = 8.dp, bottom = 10.dp)
+        ) {
+            // 顶部标题行
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                GroupAvatar(ids = group.members, members = members, size = 40.dp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "切换对话",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "${group.name} · ${conversations.size + checkpoints.size} 个存档",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.ExpandLess, contentDescription = "收起", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            // 搜索框
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                    .heightIn(min = 40.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                BasicTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { inner ->
+                        if (query.isEmpty()) {
+                            Text(
+                                "搜索这个群的聊天内容…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                        inner()
+                    }
+                )
+            }
+
+            // 可滚动列表
+            Column(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                if (filteredConvs.isNotEmpty()) {
+                    ConvSectionLabel("全部对话")
+                    filteredConvs.forEach { c ->
+                        ConversationRow(c = c, onClick = { onSelectConversation(c.id) })
+                    }
+                }
+                if (filteredChecks.isNotEmpty()) {
+                    ConvSectionLabel("检查点与分支")
+                    filteredChecks.forEach { c ->
+                        ConversationRow(c = c, onClick = { onSelectConversation(c.id) })
+                    }
+                }
+                if (filteredConvs.isEmpty() && filteredChecks.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("没有匹配的对话", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
+
+            // 底部操作
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onNewConversation,
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Icon(Icons.Filled.AddComment, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("新对话", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = onManageAll,
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)
+                ) {
+                    Icon(Icons.Filled.History, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("管理全部", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConvSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 2.dp)
+    )
+}
+
+@Composable
+private fun ConversationRow(c: DemoConversation, onClick: () -> Unit) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val iconBg = if (c.active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
+    val icon = when (c.kind) {
+        DemoConvKind.CHAT -> Icons.Filled.Forum
+        DemoConvKind.CHECKPOINT -> Icons.Filled.Flag
+        DemoConvKind.BRANCH -> Icons.Filled.ForkRight
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (c.active) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent)
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // 当前对话左侧主色竖条
+        if (c.active) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .background(iconBg),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (c.active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = c.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (c.active) {
+                    Surface(
+                        shape = RoundedCornerShape(9.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        Text(
+                            text = "进行中",
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                Text(
+                    text = "${c.messageCount} 条",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = c.preview,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 1.dp)
+            )
+            Text(
+                text = c.timeInfo,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                modifier = Modifier.padding(top = 1.dp)
+            )
+        }
+        if (c.active) {
+            Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = "当前对话",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+        } else {
+            Box {
+                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "对话操作", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(text = { Text("重命名") }, onClick = { menuExpanded = false })
+                    DropdownMenuItem(text = { Text("导出") }, onClick = { menuExpanded = false })
+                    DropdownMenuItem(
+                        text = { Text("删除", color = MaterialTheme.colorScheme.error) },
+                        onClick = { menuExpanded = false }
+                    )
+                }
+            }
+        }
     }
 }

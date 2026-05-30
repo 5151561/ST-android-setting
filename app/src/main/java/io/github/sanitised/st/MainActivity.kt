@@ -896,7 +896,8 @@ class MainActivity : ComponentActivity() {
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onOpenGroupChat = openGroupChat,
                                     onStartService = { startNode() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
+                                    onNavigateToNewGroup = { navController.navigate("group-chat/new") }
                                 )
                             }
 
