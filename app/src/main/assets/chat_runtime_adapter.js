@@ -122,7 +122,11 @@
       messages: chat.map(function (msg, i) { return serializeMessage(msg, i); }).filter(Boolean),
       metadata: {
         integrity: chatMetadata.integrity || '',
-        authorsNote: chatMetadata.authors_note || ''
+        authorsNote: chatMetadata.authors_note || '',
+        cfgScale: Number(chatMetadata.cfg_guidance_scale) || 1.0,
+        cfgNegativePrompt: chatMetadata.cfg_negative_prompt || '',
+        cfgPositivePrompt: chatMetadata.cfg_positive_prompt || '',
+        worldInfo: chatMetadata.world_info || ''
       }
     };
   }
@@ -138,6 +142,7 @@
   var appReady = false;
   var lastGenerationState = false;
   var generationWatchTimer = null;
+  var pendingSendAttachments = [];
 
   function syncGenerationState() {
     var generating = isRuntimeGenerating();
@@ -212,7 +217,12 @@
       var c = getContext();
       var chat = c && c.chat ? c.chat : [];
       var msg = chat[index];
-      if (msg) postEvent('message.added', serializeMessage(msg, index));
+      if (msg) {
+        if (attachPendingAttachmentsToMessage(msg)) {
+          safeSave().then(function () { throttledSnapshot(); });
+        }
+        postEvent('message.added', serializeMessage(msg, index));
+      }
     });
 
     es.on(ev.MESSAGE_RECEIVED, function (index) {
@@ -374,6 +384,18 @@
             handleSetAuthorsNote(payload, cmdId);
             break;
 
+          case 'cfg.get':
+            handleGetCfg(cmdId);
+            break;
+
+          case 'cfg.set':
+            handleSetCfg(payload, cmdId);
+            break;
+
+          case 'worldInfo.get':
+            handleGetWorldInfo(cmdId);
+            break;
+
           default:
             postError(cmdId, 'Unknown command: ' + name);
         }
@@ -490,6 +512,7 @@
     var sendBtn = document.getElementById('send_but');
     if (!textarea || !sendBtn) { postError(cmdId, 'Send UI not found'); return; }
 
+    pendingSendAttachments = normalizePendingAttachments(payload.attachments);
     textarea.value = text;
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
     setTimeout(function () {
@@ -498,6 +521,37 @@
       postResult(cmdId, {});
       setTimeout(postSnapshot, 300);
     }, 50);
+  }
+
+  function normalizePendingAttachments(attachments) {
+    if (!Array.isArray(attachments)) return [];
+    return attachments.map(function (item) {
+      return {
+        url: item && (item.url || item.path) ? String(item.url || item.path) : '',
+        name: item && item.name ? String(item.name) : '',
+        size: item && item.size != null ? Number(item.size) || 0 : 0,
+        isMedia: !!(item && item.isMedia)
+      };
+    }).filter(function (item) { return item.url; });
+  }
+
+  function attachPendingAttachmentsToMessage(msg) {
+    if (!pendingSendAttachments.length || !msg) return false;
+    msg.extra = msg.extra || {};
+    var media = pendingSendAttachments.filter(function (item) { return item.isMedia; });
+    var files = pendingSendAttachments.filter(function (item) { return !item.isMedia; });
+    if (media.length) {
+      msg.extra.media = (Array.isArray(msg.extra.media) ? msg.extra.media : []).concat(media.map(function (item) {
+        return { url: item.url, path: item.url, type: 'image/*', title: item.name, name: item.name, size: item.size };
+      }));
+    }
+    if (files.length) {
+      msg.extra.files = (Array.isArray(msg.extra.files) ? msg.extra.files : []).concat(files.map(function (item) {
+        return { url: item.url, path: item.url, name: item.name, size: item.size };
+      }));
+    }
+    pendingSendAttachments = [];
+    return media.length > 0 || files.length > 0;
   }
 
   function handleStop(cmdId) {
@@ -782,6 +836,40 @@
     } catch (err) {
       postError(cmdId, 'setAuthorsNote failed: ' + (err && err.message ? err.message : err));
     }
+  }
+
+  function handleGetCfg(cmdId) {
+    var ctx = getContext();
+    if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+    var metadata = ctx.chatMetadata || {};
+    postResult(cmdId, {
+      scale: Number(metadata.cfg_guidance_scale) || 1.0,
+      negativePrompt: metadata.cfg_negative_prompt || '',
+      positivePrompt: metadata.cfg_positive_prompt || ''
+    });
+  }
+
+  async function handleSetCfg(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+      if (!ctx.chatMetadata) ctx.chatMetadata = {};
+      ctx.chatMetadata.cfg_guidance_scale = Number(payload.scale) || 1.0;
+      ctx.chatMetadata.cfg_negative_prompt = payload.negativePrompt || '';
+      ctx.chatMetadata.cfg_positive_prompt = payload.positivePrompt || '';
+      await safeSave();
+      postSnapshot();
+      postResult(cmdId, {});
+    } catch (err) {
+      postError(cmdId, 'setCfg failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  function handleGetWorldInfo(cmdId) {
+    var ctx = getContext();
+    if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+    var metadata = ctx.chatMetadata || {};
+    postResult(cmdId, { name: metadata.world_info || '' });
   }
 
   // --- Initialization ---

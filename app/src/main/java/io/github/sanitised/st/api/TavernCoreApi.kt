@@ -297,6 +297,8 @@ interface TavernCoreApi {
     suspend fun getWorldInfo(name: String): WorldInfoBook
     suspend fun saveWorldInfo(book: WorldInfoBook)
     suspend fun deleteWorldInfo(name: String)
+    suspend fun uploadFile(name: String, base64Data: String): String
+    suspend fun deleteFile(path: String)
     suspend fun listPersonas(): List<PersonaProfile>
     suspend fun savePersona(request: PersonaSaveRequest)
     suspend fun uploadPersonaAvatar(fileName: String, bytes: ByteArray, overwriteName: String? = null): String
@@ -561,6 +563,28 @@ class TavernCoreClient(
             postJson(
                 path = "api/worldinfo/delete",
                 json = jsonObject("name" to name)
+            )
+        }
+    }
+
+    override suspend fun uploadFile(name: String, base64Data: String): String {
+        return withContext(Dispatchers.IO) {
+            val body = postJson(
+                path = "api/files/upload",
+                json = jsonObject("name" to name, "data" to base64Data)
+            )
+            val map = (yaml.load<Any?>(body) as? Map<*, *>) ?: emptyMap<Any?, Any?>()
+            map.stringValue("path")
+                .ifBlank { map.stringValue("url") }
+                .ifBlank { map.stringValue("file") }
+        }
+    }
+
+    override suspend fun deleteFile(path: String) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                path = "api/files/delete",
+                json = jsonObject("path" to path)
             )
         }
     }

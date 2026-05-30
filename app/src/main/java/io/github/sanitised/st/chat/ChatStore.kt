@@ -11,6 +11,13 @@ enum class RuntimeState {
     ERROR
 }
 
+data class PendingAttachment(
+    val url: String,
+    val name: String,
+    val size: Long,
+    val isMedia: Boolean
+)
+
 class ChatStore {
     var runtimeState by mutableStateOf(RuntimeState.NOT_READY)
     var characterName by mutableStateOf("")
@@ -21,7 +28,12 @@ class ChatStore {
     var runtimeError by mutableStateOf<String?>(null)
     var saveError by mutableStateOf<String?>(null)
     var authorsNote by mutableStateOf("")
+    var cfgScale by mutableStateOf(1.0f)
+    var cfgNegativePrompt by mutableStateOf("")
+    var cfgPositivePrompt by mutableStateOf("")
+    var worldInfoName by mutableStateOf("")
     val messages = mutableStateListOf<ChatMessage>()
+    val pendingAttachments = mutableStateListOf<PendingAttachment>()
 
     fun applySnapshot(snapshot: ChatSnapshot) {
         runtimeState = RuntimeState.READY
@@ -32,8 +44,24 @@ class ChatStore {
         chatFile = snapshot.chatFile
         isGenerating = snapshot.isGenerating
         authorsNote = snapshot.metadata.optString("authorsNote", "")
+        cfgScale = snapshot.metadata.optDouble("cfgScale", 1.0).toFloat()
+        cfgNegativePrompt = snapshot.metadata.optString("cfgNegativePrompt", "")
+        cfgPositivePrompt = snapshot.metadata.optString("cfgPositivePrompt", "")
+        worldInfoName = snapshot.metadata.optString("worldInfo", "")
         messages.clear()
         messages.addAll(snapshot.messages)
+    }
+
+    fun addPendingAttachment(attachment: PendingAttachment) {
+        pendingAttachments.add(attachment)
+    }
+
+    fun removePendingAttachment(attachment: PendingAttachment) {
+        pendingAttachments.remove(attachment)
+    }
+
+    fun clearPendingAttachments() {
+        pendingAttachments.clear()
     }
 
     fun markRuntimeReady() {
@@ -96,6 +124,11 @@ class ChatStore {
         runtimeError = null
         saveError = null
         authorsNote = ""
+        cfgScale = 1.0f
+        cfgNegativePrompt = ""
+        cfgPositivePrompt = ""
+        worldInfoName = ""
         messages.clear()
+        pendingAttachments.clear()
     }
 }

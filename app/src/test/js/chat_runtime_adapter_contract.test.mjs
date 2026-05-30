@@ -36,3 +36,24 @@ test('migration doc does not claim save integrity has a guaranteed save.error pa
   assert.doesNotMatch(migrationDoc, /保存 integrity 错误处理（`save\.error` JS 事件 \+ `SaveErrorBanner` 原生 UI \+ `safeSave\(\)`/);
   assert.doesNotMatch(migrationDoc, /保存 integrity 错误处理和用户提示~~ ✅（`save\.error` 事件 \+ `SaveErrorBanner`/);
 });
+
+test('chat send contract carries pending attachments into the adapter', () => {
+  const sendMessage = bridge.match(/fun sendMessage\(text: String\) \{[\s\S]*?\n    \}/)?.[0] ?? '';
+
+  assert.match(sendMessage, /pendingAttachments/);
+  assert.match(sendMessage, /attachments/);
+  assert.match(adapter, /payload\.attachments/);
+  assert.match(adapter, /extra\.media/);
+  assert.match(adapter, /extra\.files/);
+  assert.match(adapter, /MESSAGE_SENT/);
+});
+
+test('adapter exposes cfg and world info bridge commands', () => {
+  assert.match(adapter, /case 'cfg\.get':\s*\n\s*handleGetCfg\(cmdId\);/);
+  assert.match(adapter, /case 'cfg\.set':\s*\n\s*handleSetCfg\(payload, cmdId\);/);
+  assert.match(adapter, /case 'worldInfo\.get':\s*\n\s*handleGetWorldInfo\(cmdId\);/);
+  assert.match(adapter, /cfg_guidance_scale/);
+  assert.match(adapter, /cfg_negative_prompt/);
+  assert.match(adapter, /cfg_positive_prompt/);
+  assert.match(adapter, /world_info/);
+});

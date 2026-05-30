@@ -230,6 +230,33 @@ class TavernCoreClientTest {
     }
 
     @Test
+    fun fileUploadAndDeleteUseSillyTavernFileEndpoints() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"path":"/user/files/notes.pdf"}""")
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true}"""))
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val uploadedPath = client.uploadFile(name = "notes.pdf", base64Data = "cGRm")
+        client.deleteFile(uploadedPath)
+
+        assertCsrfRequest()
+        val uploadRequest = server.takeRequest()
+        assertEquals("/api/files/upload", uploadRequest.path)
+        val uploadBody = uploadRequest.body.readUtf8()
+        assertTrue(uploadBody.contains("\"name\":\"notes.pdf\""))
+        assertTrue(uploadBody.contains("\"data\":\"cGRm\""))
+        assertEquals("/user/files/notes.pdf", uploadedPath)
+        val deleteRequest = server.takeRequest()
+        assertEquals("/api/files/delete", deleteRequest.path)
+        assertTrue(deleteRequest.body.readUtf8().contains("\"path\":\"/user/files/notes.pdf\""))
+    }
+
+    @Test
     fun personaListAndSaveMergeAvatarApiWithPowerUserSettings() = runBlocking {
         enqueueCsrf()
         server.enqueue(MockResponse().setResponseCode(200).setBody("""["default.png","writer.png"]"""))

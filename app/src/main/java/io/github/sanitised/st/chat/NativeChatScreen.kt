@@ -3,6 +3,12 @@ package io.github.sanitised.st.chat
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -34,6 +40,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -43,8 +50,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lightbulb
@@ -55,6 +65,7 @@ import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SentimentSatisfied
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Visibility
@@ -73,6 +84,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -82,28 +94,37 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.ThemeMode
 import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.api.WorldInfoBook
+import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.prototype.PrototypeAssistPill
 import io.github.sanitised.st.ui.prototype.PrototypeAvatar
 import io.github.sanitised.st.ui.prototype.PrototypeGroupAvatar
 import io.github.sanitised.st.ui.webview.ChatWebViewScreen
 import io.github.sanitised.st.ui.webview.WebViewTarget
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -121,12 +142,35 @@ fun NativeChatScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var selectedMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var editingMessageId by rememberSaveable { mutableStateOf(-1) }
     var editText by rememberSaveable { mutableStateOf("") }
     var deletingMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var showGroupChatsSheet by remember { mutableStateOf(false) }
     var showAuthorsNoteDialog by remember { mutableStateOf(false) }
+    var showCfgDialog by remember { mutableStateOf(false) }
+    var showWorldInfoSheet by remember { mutableStateOf(false) }
+
+    fun uploadAttachment(uri: Uri, isMedia: Boolean) {
+        scope.launch {
+            uploadPickedAttachment(context, status.port, uri, isMedia)
+                .onSuccess { attachment ->
+                    store.addPendingAttachment(attachment)
+                    onShowMessage("已添加 ${attachment.name}")
+                }
+                .onFailure { error ->
+                    onShowMessage(error.message ?: "附件上传失败")
+                }
+        }
+    }
+
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { uploadAttachment(it, false) }
+    }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { uploadAttachment(it, true) }
+    }
 
     LaunchedEffect(status.state) {
         if (status.state != NodeState.RUNNING) {
@@ -191,6 +235,8 @@ fun NativeChatScreen(
                     bridge.reloadChat()
                     onShowMessage("已请求重新同步当前聊天")
                 },
+                onOpenCfg = { showCfgDialog = true },
+                onOpenWorldInfo = { showWorldInfoSheet = true },
                 onOpenPastChats = if (isGroupMode) {
                     { showGroupChatsSheet = true }
                 } else {
@@ -217,6 +263,7 @@ fun NativeChatScreen(
                     MessageList(
                         messages = store.messages,
                         characterName = visibleCharacterName,
+                        port = status.port,
                         editingMessageId = editingMessageId,
                         editText = editText,
                         onEditTextChange = { editText = it },
@@ -252,14 +299,17 @@ fun NativeChatScreen(
             ChatInputBar(
                 isGenerating = store.isGenerating,
                 runtimeReady = readyForTarget,
+                pendingAttachments = store.pendingAttachments,
                 onSend = { text -> bridge.sendMessage(text) },
                 onStop = { bridge.stopGeneration() },
                 onVoiceInput = { onShowMessage("语音输入暂未接入") },
+                onRemovePendingAttachment = { attachment -> store.removePendingAttachment(attachment) },
                 onAttachmentAction = { label ->
-                    if (label == "作者注") {
-                        showAuthorsNoteDialog = true
-                    } else {
-                        onShowMessage("$label 功能暂未接入原生聊天运行时")
+                    when (label) {
+                        "附件" -> filePicker.launch("*/*")
+                        "图片" -> imagePicker.launch("image/*")
+                        "作者注" -> showAuthorsNoteDialog = true
+                        else -> onShowMessage("$label 功能暂未接入原生聊天运行时")
                     }
                 }
             )
@@ -344,6 +394,28 @@ fun NativeChatScreen(
             }
         )
     }
+
+    if (showCfgDialog) {
+        CfgScaleDialog(
+            scale = store.cfgScale,
+            negativePrompt = store.cfgNegativePrompt,
+            positivePrompt = store.cfgPositivePrompt,
+            onDismiss = { showCfgDialog = false },
+            onSave = { scale, negativePrompt, positivePrompt ->
+                bridge.setCfg(scale, negativePrompt, positivePrompt)
+                showCfgDialog = false
+                onShowMessage("CFG 引导已保存")
+            }
+        )
+    }
+
+    if (showWorldInfoSheet) {
+        WorldInfoSheet(
+            port = status.port,
+            currentWorldInfoName = store.worldInfoName,
+            onDismiss = { showWorldInfoSheet = false }
+        )
+    }
 }
 
 private fun targetMatchesStore(target: WebViewTarget, store: ChatStore): Boolean {
@@ -407,6 +479,21 @@ private fun normalizeChatFile(value: String?): String {
         .lowercase()
 }
 
+internal fun attachmentDisplayUrl(port: Int, path: String): String {
+    val trimmed = path.trim()
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed
+    val normalized = trimmed.removePrefix("/")
+    return "http://127.0.0.1:$port/$normalized"
+}
+
+internal fun attachmentSizeLabel(size: Long): String {
+    if (size <= 0L) return "0 B"
+    if (size < 1024L) return "$size B"
+    val kb = size / 1024.0
+    if (kb < 1024.0) return String.format(Locale.US, "%.1f KB", kb)
+    return String.format(Locale.US, "%.1f MB", kb / 1024.0)
+}
+
 @Composable
 private fun ChatHeader(
     characterName: String,
@@ -420,6 +507,8 @@ private fun ChatHeader(
     onBack: () -> Unit,
     onSearch: () -> Unit,
     onReloadChat: () -> Unit,
+    onOpenCfg: () -> Unit,
+    onOpenWorldInfo: () -> Unit,
     onOpenPastChats: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
@@ -521,6 +610,16 @@ private fun ChatHeader(
                         )
                     }
                     DropdownMenuItem(
+                        text = { Text("CFG 引导") },
+                        leadingIcon = { Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        onClick = { menuExpanded = false; onOpenCfg() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("世界书") },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        onClick = { menuExpanded = false; onOpenWorldInfo() }
+                    )
+                    DropdownMenuItem(
                         text = { Text("重新同步") },
                         leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(20.dp)) },
                         onClick = { menuExpanded = false; onReloadChat() }
@@ -569,6 +668,7 @@ private fun ChatLoadingView(
 private fun MessageList(
     messages: List<ChatMessage>,
     characterName: String,
+    port: Int,
     editingMessageId: Int,
     editText: String,
     onEditTextChange: (String) -> Unit,
@@ -625,6 +725,7 @@ private fun MessageList(
                 MessageBubble(
                     message = message,
                     characterName = characterName,
+                    port = port,
                     lastAssistant = !message.isUser && visibleMessages.lastOrNull()?.id == message.id,
                     maxWidth = if (message.isUser) screenWidth * 0.82f else screenWidth * 0.92f,
                     onSwipePrevious = onSwipePrevious,
@@ -643,6 +744,7 @@ private fun MessageList(
 private fun MessageBubble(
     message: ChatMessage,
     characterName: String,
+    port: Int,
     lastAssistant: Boolean,
     maxWidth: androidx.compose.ui.unit.Dp,
     onSwipePrevious: (Int) -> Unit,
@@ -681,6 +783,12 @@ private fun MessageBubble(
                     HiddenMessageBadge(modifier = Modifier.padding(bottom = 4.dp))
                 }
                 Text(text = message.mes, style = MaterialTheme.typography.bodyMedium, color = textColor)
+                MessageAttachments(
+                    media = message.mediaAttachments,
+                    files = message.fileAttachments,
+                    port = port,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         } else {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -715,6 +823,12 @@ private fun MessageBubble(
                             .padding(horizontal = 14.dp, vertical = 12.dp)
                     ) {
                         Text(text = message.mes, style = MaterialTheme.typography.bodyMedium, color = textColor)
+                        MessageAttachments(
+                            media = message.mediaAttachments,
+                            files = message.fileAttachments,
+                            port = port,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                     if (lastAssistant) {
                         AssistantMessageControls(
@@ -729,6 +843,82 @@ private fun MessageBubble(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageAttachments(
+    media: List<MediaAttachment>,
+    files: List<FileAttachment>,
+    port: Int,
+    modifier: Modifier = Modifier
+) {
+    if (media.isEmpty() && files.isEmpty()) return
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        media.forEach { item ->
+            AsyncImage(
+                model = attachmentDisplayUrl(port, item.url),
+                contentDescription = item.title.ifBlank { "图片附件" },
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            )
+        }
+        files.forEach { item ->
+            MessageFileCard(
+                file = item,
+                displayUrl = attachmentDisplayUrl(port, item.url)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MessageFileCard(
+    file: FileAttachment,
+    displayUrl: String,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    Surface(
+        onClick = {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(displayUrl)))
+            }
+        },
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurface
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                Icons.Filled.Description,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = file.name.ifBlank { file.url.substringAfterLast('/') },
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = attachmentSizeLabel(file.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -1169,19 +1359,26 @@ private fun ChatQuickStrip(
 private fun ChatInputBar(
     isGenerating: Boolean,
     runtimeReady: Boolean,
+    pendingAttachments: List<PendingAttachment>,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
     onVoiceInput: () -> Unit,
+    onRemovePendingAttachment: (PendingAttachment) -> Unit,
     onAttachmentAction: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var text by rememberSaveable { mutableStateOf("") }
     var showAttach by rememberSaveable { mutableStateOf(false) }
+    val hasPendingAttachments = pendingAttachments.isNotEmpty()
 
     Column(modifier = modifier.fillMaxWidth()) {
         if (showAttach) {
             AttachSheet(onAction = onAttachmentAction)
         }
+        PendingAttachmentStrip(
+            attachments = pendingAttachments,
+            onRemove = onRemovePendingAttachment
+        )
         Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
             Row(
                 modifier = Modifier
@@ -1224,8 +1421,8 @@ private fun ChatInputBar(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
                         onSend = {
-                            val msg = text.trim()
-                            if (msg.isNotEmpty() && runtimeReady && !isGenerating) {
+                            val msg = text.trim().ifBlank { "[附件]" }
+                            if ((text.isNotBlank() || hasPendingAttachments) && runtimeReady && !isGenerating) {
                                 onSend(msg)
                                 text = ""
                             }
@@ -1235,13 +1432,14 @@ private fun ChatInputBar(
                 Spacer(modifier = Modifier.width(8.dp))
                 ChatSendButton(
                     text = text,
+                    hasPendingAttachments = hasPendingAttachments,
                     isGenerating = isGenerating,
                     runtimeReady = runtimeReady,
                     onStop = onStop,
                     onVoiceInput = onVoiceInput,
                     onSend = {
-                        val msg = text.trim()
-                        if (msg.isNotEmpty()) {
+                        val msg = text.trim().ifBlank { "[附件]" }
+                        if (text.isNotBlank() || hasPendingAttachments) {
                             onSend(msg)
                             text = ""
                         }
@@ -1255,6 +1453,7 @@ private fun ChatInputBar(
 @Composable
 private fun ChatSendButton(
     text: String,
+    hasPendingAttachments: Boolean,
     isGenerating: Boolean,
     runtimeReady: Boolean,
     onStop: () -> Unit,
@@ -1273,7 +1472,7 @@ private fun ChatSendButton(
             Icon(Icons.Filled.Close, contentDescription = "停止生成")
         }
 
-        text.isBlank() -> IconButton(
+        text.isBlank() && !hasPendingAttachments -> IconButton(
             onClick = onVoiceInput,
             enabled = runtimeReady,
             modifier = Modifier.size(48.dp)
@@ -1297,6 +1496,62 @@ private fun ChatSendButton(
             )
         ) {
             Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
+        }
+    }
+}
+
+@Composable
+private fun PendingAttachmentStrip(
+    attachments: List<PendingAttachment>,
+    onRemove: (PendingAttachment) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (attachments.isEmpty()) return
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        attachments.forEach { attachment ->
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ) {
+                Row(
+                    modifier = Modifier
+                        .widthIn(max = 220.dp)
+                        .padding(start = 10.dp, top = 6.dp, end = 4.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = if (attachment.isMedia) Icons.Filled.Image else Icons.Filled.AttachFile,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                        Text(
+                            text = attachment.name.ifBlank { attachment.url.substringAfterLast('/') },
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = attachmentSizeLabel(attachment.size),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = { onRemove(attachment) }, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Filled.Close, contentDescription = "移除附件", modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
         }
     }
 }
@@ -1349,6 +1604,58 @@ private fun AttachSheet(
             }
         }
     }
+}
+
+private data class PickedAttachmentFile(
+    val name: String,
+    val size: Long,
+    val bytes: ByteArray
+)
+
+private suspend fun uploadPickedAttachment(
+    context: Context,
+    port: Int,
+    uri: Uri,
+    isMedia: Boolean
+): Result<PendingAttachment> = runCatching {
+    if (port <= 0) error("SillyTavern 服务尚未运行")
+    val file = withContext(Dispatchers.IO) { readPickedAttachmentFile(context, uri) }
+    val base64 = Base64.encodeToString(file.bytes, Base64.NO_WRAP)
+    val uploadedPath = TavernCoreClient(baseUrl = "http://127.0.0.1:$port/")
+        .uploadFile(name = file.name, base64Data = base64)
+    PendingAttachment(
+        url = uploadedPath,
+        name = file.name,
+        size = file.size,
+        isMedia = isMedia
+    )
+}
+
+private fun readPickedAttachmentFile(context: Context, uri: Uri): PickedAttachmentFile {
+    val resolver = context.contentResolver
+    var name = uri.lastPathSegment
+        ?.substringAfterLast('/')
+        ?.ifBlank { null }
+        ?: "attachment"
+    var size = 0L
+
+    resolver.query(uri, null, null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex >= 0) {
+                name = cursor.getString(nameIndex).orEmpty().ifBlank { name }
+            }
+            val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (sizeIndex >= 0) {
+                size = cursor.getLong(sizeIndex)
+            }
+        }
+    }
+
+    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+        ?: error("无法读取附件内容")
+    if (size <= 0L) size = bytes.size.toLong()
+    return PickedAttachmentFile(name = name, size = size, bytes = bytes)
 }
 
 @Composable
@@ -1502,6 +1809,295 @@ private fun GroupChatHistorySheet(
                                 )
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CfgScaleDialog(
+    scale: Float,
+    negativePrompt: String,
+    positivePrompt: String,
+    onDismiss: () -> Unit,
+    onSave: (Float, String, String) -> Unit
+) {
+    var localScale by rememberSaveable(scale) { mutableStateOf(scale.coerceIn(1.0f, 3.0f)) }
+    var localNegative by rememberSaveable(negativePrompt) { mutableStateOf(negativePrompt) }
+    var localPositive by rememberSaveable(positivePrompt) { mutableStateOf(positivePrompt) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("CFG 引导") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Scale",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.1f", localScale),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Slider(
+                    value = localScale,
+                    onValueChange = { localScale = it },
+                    valueRange = 1.0f..3.0f,
+                    steps = 19
+                )
+                OutlinedTextField(
+                    value = localNegative,
+                    onValueChange = { localNegative = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("负面提示词") },
+                    minLines = 2,
+                    maxLines = 5,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                OutlinedTextField(
+                    value = localPositive,
+                    onValueChange = { localPositive = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("正面提示词") },
+                    minLines = 2,
+                    maxLines = 5,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(localScale, localNegative, localPositive) }) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WorldInfoSheet(
+    port: Int,
+    currentWorldInfoName: String,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+    val scope = rememberCoroutineScope()
+    var worlds by remember { mutableStateOf<List<WorldInfoSummary>>(emptyList()) }
+    var expandedName by remember { mutableStateOf<String?>(null) }
+    var expandedBook by remember { mutableStateOf<WorldInfoBook?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var loadingBookName by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(port) {
+        loading = true
+        error = null
+        runCatching {
+            if (port <= 0) throw IllegalStateException("SillyTavern 服务尚未运行")
+            TavernCoreClient(baseUrl = "http://127.0.0.1:$port/").listWorldInfos()
+        }.onSuccess { list ->
+            worlds = list
+        }.onFailure { e ->
+            error = e.message ?: "加载世界书失败"
+        }
+        loading = false
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.MenuBook,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "世界书",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (currentWorldInfoName.isNotBlank()) {
+                    Text(
+                        text = "· 当前 $currentWorldInfoName",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            when {
+                loading -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+                error != null -> Text(
+                    text = error!!,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(16.dp)
+                )
+                worlds.isEmpty() -> Text(
+                    text = "暂无世界书",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
+                )
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    items(worlds, key = { it.name }) { world ->
+                        val isCurrent = currentWorldInfoName == world.name || currentWorldInfoName == world.id
+                        val isExpanded = expandedName == world.name
+                        Surface(
+                            onClick = {
+                                if (isExpanded) {
+                                    expandedName = null
+                                    expandedBook = null
+                                } else {
+                                    expandedName = world.name
+                                    expandedBook = null
+                                    loadingBookName = world.name
+                                    scope.launch {
+                                        runCatching {
+                                            TavernCoreClient(baseUrl = "http://127.0.0.1:$port/")
+                                                .getWorldInfo(world.name)
+                                        }.onSuccess { book ->
+                                            expandedBook = book
+                                        }.onFailure { e ->
+                                            error = e.message ?: "加载世界书条目失败"
+                                        }
+                                        loadingBookName = null
+                                    }
+                                }
+                            },
+                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            Column {
+                                ListItem(
+                                    headlineContent = {
+                                        Text(
+                                            text = world.name,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    supportingContent = if (world.id != world.name && world.id.isNotBlank()) {
+                                        { Text(world.id, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                    } else null,
+                                    leadingContent = {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.MenuBook,
+                                            contentDescription = null,
+                                            tint = if (isCurrent) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    trailingContent = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (isCurrent) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                                ) {
+                                                    Text(
+                                                        text = "当前",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                            }
+                                            Icon(
+                                                imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                )
+                                if (isExpanded) {
+                                    when {
+                                        loadingBookName == world.name -> Box(
+                                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                                        }
+                                        expandedBook != null -> WorldInfoEntriesPreview(expandedBook!!)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorldInfoEntriesPreview(book: WorldInfoBook) {
+    Column(
+        modifier = Modifier.padding(start = 52.dp, end = 12.dp, bottom = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (book.entries.isEmpty()) {
+            Text(
+                text = "没有条目",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            book.entries.take(12).forEach { entry ->
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                        Text(
+                            text = entry.keys.joinToString(", ").ifBlank { "无关键词" },
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = entry.comment.ifBlank { "无备注" },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }

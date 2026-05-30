@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.webkit.WebView
+import org.json.JSONArray
 import org.json.JSONObject
 
 class ChatRuntimeBridge(
@@ -106,7 +107,25 @@ class ChatRuntimeBridge(
     }
 
     fun sendMessage(text: String) {
-        dispatch(BridgeMessage(kind = "command", name = "chat.send", payload = JSONObject().put("text", text)))
+        val payload = JSONObject().put("text", text)
+        if (store.pendingAttachments.isNotEmpty()) {
+            payload.put(
+                "attachments",
+                JSONArray().apply {
+                    store.pendingAttachments.forEach { attachment ->
+                        put(
+                            JSONObject()
+                                .put("url", attachment.url)
+                                .put("name", attachment.name)
+                                .put("size", attachment.size)
+                                .put("isMedia", attachment.isMedia)
+                        )
+                    }
+                }
+            )
+        }
+        dispatch(BridgeMessage(kind = "command", name = "chat.send", payload = payload))
+        store.clearPendingAttachments()
     }
 
     fun stopGeneration() {
@@ -199,6 +218,19 @@ class ChatRuntimeBridge(
                 kind = "command",
                 name = "authorsNote.set",
                 payload = JSONObject().put("text", text)
+            )
+        )
+    }
+
+    fun setCfg(scale: Float, negativePrompt: String, positivePrompt: String) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "cfg.set",
+                payload = JSONObject()
+                    .put("scale", scale.toDouble())
+                    .put("negativePrompt", negativePrompt)
+                    .put("positivePrompt", positivePrompt)
             )
         )
     }
@@ -298,7 +330,8 @@ class ChatRuntimeBridge(
             "message.swipeNext" to "切换 swipe",
             "message.hide" to "隐藏消息",
             "message.unhide" to "取消隐藏消息",
-            "authorsNote.set" to "设置作者注"
+            "authorsNote.set" to "设置作者注",
+            "cfg.set" to "设置 CFG"
         )
     }
 }

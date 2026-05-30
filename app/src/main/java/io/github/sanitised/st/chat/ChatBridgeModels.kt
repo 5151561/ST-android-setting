@@ -48,6 +48,50 @@ data class ChatMessage(
     }
 }
 
+data class MediaAttachment(
+    val url: String,
+    val type: String,
+    val title: String
+)
+
+data class FileAttachment(
+    val url: String,
+    val name: String,
+    val size: Long
+)
+
+val ChatMessage.mediaAttachments: List<MediaAttachment>
+    get() = extra.optJSONArray("media").parseObjectsNotNull { item ->
+        val url = item.attachmentUrl()
+        if (url.isBlank()) return@parseObjectsNotNull null
+        MediaAttachment(
+            url = url,
+            type = item.optString("type", ""),
+            title = item.optString("title").ifBlank { item.optString("name") }
+        )
+    }
+
+val ChatMessage.fileAttachments: List<FileAttachment>
+    get() = extra.optJSONArray("files").parseObjectsNotNull { item ->
+        val url = item.attachmentUrl()
+        if (url.isBlank()) return@parseObjectsNotNull null
+        FileAttachment(
+            url = url,
+            name = item.optString("name").ifBlank { item.optString("title") },
+            size = item.optLong("size", 0L)
+        )
+    }
+
+private fun JSONObject.attachmentUrl(): String =
+    optString("url").ifBlank { optString("path") }
+
+private inline fun <T> JSONArray?.parseObjectsNotNull(transform: (JSONObject) -> T?): List<T> {
+    if (this == null) return emptyList()
+    return (0 until length()).mapNotNull { index ->
+        optJSONObject(index)?.let(transform)
+    }
+}
+
 data class ChatSnapshot(
     val mode: String,
     val avatarUrl: String,
