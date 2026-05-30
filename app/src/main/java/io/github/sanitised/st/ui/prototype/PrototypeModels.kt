@@ -1,5 +1,6 @@
 package io.github.sanitised.st.ui.prototype
 
+import androidx.compose.runtime.Immutable
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.CharacterDetail
@@ -11,6 +12,7 @@ enum class PrototypeChatKind {
     GROUP
 }
 
+@Immutable
 data class PrototypeChatItem(
     val id: String,
     val characterId: String,
@@ -23,6 +25,7 @@ data class PrototypeChatItem(
     val kind: PrototypeChatKind = PrototypeChatKind.DIRECT
 )
 
+@Immutable
 data class PrototypeCharacterCard(
     val id: String,
     val name: String,
@@ -34,6 +37,7 @@ data class PrototypeCharacterCard(
     val gradient: List<Long>
 )
 
+@Immutable
 data class PrototypeDrawerState(
     val personaName: String,
     val personaInitial: String,

@@ -130,8 +130,11 @@ fun PrototypeGroupChatScreen(
         refreshGroups()
     }
 
+    val availableChars = remember(characters, selectedChars) {
+        characters.filter { char -> selectedChars.none { it.id == char.id } }
+    }
+
     if (showAddDialog) {
-        val availableChars = characters.filter { char -> selectedChars.none { it.id == char.id } }
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
             title = { Text("添加群聊成员") },
