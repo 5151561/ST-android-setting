@@ -1,5 +1,6 @@
 package io.github.sanitised.st.api
 
+import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -19,6 +20,7 @@ data class CoreHealth(
     val version: String? = null
 )
 
+@Immutable
 data class CharacterSummary(
     val id: String,
     val name: String,
@@ -33,6 +35,7 @@ data class CharacterSummary(
     val characterVersion: String = ""
 )
 
+@Immutable
 data class CharacterDetail(
     val id: String,
     val name: String,
@@ -118,6 +121,7 @@ data class CharacterExportFile(
     val bytes: ByteArray
 )
 
+@Immutable
 data class STTag(
     val id: String,
     val name: String,
@@ -133,6 +137,7 @@ data class STTagSettings(
     val rawSettings: Map<String, Any?> = emptyMap()
 )
 
+@Immutable
 data class SettingsSnapshot(
     val name: String,
     val date: Long,
@@ -227,6 +232,7 @@ data class ChatBackupSummary(
     val lastMessageAt: String = ""
 )
 
+@Immutable
 data class ChatSummary(
     val id: String,
     val characterId: String,
@@ -236,6 +242,7 @@ data class ChatSummary(
     val isPinned: Boolean = false
 )
 
+@Immutable
 data class GroupSummary(
     val id: String,
     val name: String,

@@ -657,11 +657,12 @@ private fun PrototypeCharacterCardView(
 
 @Composable
 private fun CharacterHero(card: PrototypeCharacterCard) {
+    val gradientColors = remember(card.gradient) { card.gradient.map { Color(it) } }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(220.dp)
-            .background(Brush.linearGradient(card.gradient.map { Color(it) }))
+            .background(Brush.linearGradient(gradientColors))
     ) {
         val density = LocalDensity.current
         val heightPx = remember { with(density) { 220.dp.toPx() } }

@@ -75,7 +75,7 @@ android {
             resValue("string", "app_name", "ST dev")
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             if (releaseSigningAvailable) {
                 signingConfig = signingConfigs.getByName("release")
             }
