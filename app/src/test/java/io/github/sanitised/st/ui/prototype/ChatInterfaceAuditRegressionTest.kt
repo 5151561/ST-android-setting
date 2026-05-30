@@ -103,12 +103,13 @@ class ChatInterfaceAuditRegressionTest {
     }
 
     @Test
-    fun groupCreateDoesNotInventLocalChatIdAndPersistsBehaviorOptions() {
+    fun groupListUsesDedicatedNewGroupRouteWithoutLegacyInlineCreateView() {
         val source = File("src/main/java/io/github/sanitised/st/ui/prototype/PrototypeGroupChatScreen.kt").readText()
 
-        assertFalse(source.contains("LocalDateTime.now()"))
-        assertTrue(source.contains("allowSelfResponses = allowSelfResponses"))
-        assertTrue(source.contains("activationStrategy = when"))
+        assertFalse(source.contains("GroupCreateView"))
+        assertFalse(source.contains("isCreating"))
+        assertFalse(source.contains("GroupCreateRequest"))
+        assertTrue(source.contains("onCreate = onNavigateToNewGroup"))
     }
 
     @Test
