@@ -20,6 +20,12 @@ data class CoreHealth(
     val version: String? = null
 )
 
+data class ConnectionTestResult(
+    val success: Boolean,
+    val models: List<String> = emptyList(),
+    val errorMessage: String? = null
+)
+
 @Immutable
 data class CharacterSummary(
     val id: String,
@@ -311,6 +317,7 @@ interface TavernCoreApi {
     suspend fun getSettings(): Map<String, Any?>
     suspend fun saveSettings(settings: Map<String, Any?>)
     suspend fun fetchModels(providerId: String): List<String>
+    suspend fun testConnection(providerId: String): ConnectionTestResult
     suspend fun getPresetLibrary(): PresetLibrary
     suspend fun savePreset(apiId: String, name: String, presetJson: String)
     suspend fun selectPreset(apiId: String, name: String)
@@ -783,6 +790,49 @@ class TavernCoreClient(
                     id
                 }.distinct().sorted()
             }.getOrElse { emptyList() }
+        }
+    }
+
+    override suspend fun testConnection(providerId: String): ConnectionTestResult {
+        return withContext(Dispatchers.IO) {
+            val endpoint = when (providerId) {
+                "openrouter" -> "api/openrouter/models"
+                "koboldcpp", "kobold" -> "api/backends/text-completions/models"
+                else -> "api/backends/chat-completions/models"
+            }
+            try {
+                val body = postJson(endpoint, "{}")
+                val parsed = yaml.load<Any?>(body)
+                val hasError = parsed is Map<*, *> && parsed["error"] == true
+                if (hasError) {
+                    val msg = (parsed as? Map<*, *>)?.get("message")?.toString()
+                    return@withContext ConnectionTestResult(
+                        success = false,
+                        errorMessage = msg ?: "API 返回错误"
+                    )
+                }
+                val list = when (parsed) {
+                    is List<*> -> parsed
+                    is Map<*, *> -> parsed["data"] as? List<*> ?: emptyList<Any?>()
+                    else -> emptyList<Any?>()
+                }
+                val models = list.mapNotNull { item ->
+                    val map = item as? Map<*, *> ?: return@mapNotNull null
+                    map.stringValue("id").takeIf { it.isNotBlank() }
+                        ?: map.stringValue("name").takeIf { it.isNotBlank() }
+                }.distinct().sorted()
+                ConnectionTestResult(success = true, models = models)
+            } catch (e: Exception) {
+                val msg = e.message?.let { raw ->
+                    when {
+                        "401" in raw || "403" in raw -> "密钥无效或权限不足"
+                        "timeout" in raw.lowercase() -> "连接超时，请检查网络"
+                        "connect" in raw.lowercase() -> "无法连接到服务端点"
+                        else -> raw.take(120)
+                    }
+                } ?: "连接失败"
+                ConnectionTestResult(success = false, errorMessage = msg)
+            }
         }
     }
 

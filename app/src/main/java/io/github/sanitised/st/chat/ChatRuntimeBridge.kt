@@ -51,6 +51,8 @@ class ChatRuntimeBridge(
             is BridgeEvent.RuntimeReady -> {
                 store.markRuntimeReady()
                 requestSnapshot()
+                loadQuickReplies()
+                loadExtensions()
             }
             is BridgeEvent.RuntimeError -> {
                 store.markRuntimeError(event.message)
@@ -60,6 +62,7 @@ class ChatRuntimeBridge(
             }
             is BridgeEvent.ChatChanged -> {
                 requestSnapshot()
+                loadQuickReplies()
             }
             is BridgeEvent.MessageAdded -> {
                 store.addMessage(event.message)
@@ -95,11 +98,24 @@ class ChatRuntimeBridge(
                 store.recordSaveError(event.message)
                 Log.w(TAG, "Save error: ${event.message}")
             }
+            is BridgeEvent.Toast -> {
+                store.pushToast(event.type, event.title, event.message)
+            }
             is BridgeEvent.CommandResult -> {
-                completePendingCommand(event.commandId)
+                val pending = completePendingCommand(event.commandId)
+                when (pending?.name) {
+                    "quickReply.list" -> applyQuickReplyResult(event.payload)
+                    "extensions.list" -> applyExtensionsResult(event.payload)
+                    "itemizedPrompt.get" -> applyItemizedPromptResult(event.payload)
+                    "dataBank.list" -> store.applyDataBank(DataBankAttachments.fromJson(event.payload))
+                }
             }
             is BridgeEvent.CommandError -> {
-                completePendingCommand(event.commandId)
+                val pending = completePendingCommand(event.commandId)
+                when (pending?.name) {
+                    "itemizedPrompt.get" -> store.recordItemizedPromptError(event.message)
+                    "dataBank.list" -> store.clearDataBank()
+                }
                 store.recordCommandError(event.message)
                 Log.w(TAG, "Command error [${event.commandId}]: ${event.message}")
             }
@@ -243,6 +259,66 @@ class ChatRuntimeBridge(
         dispatch(BridgeMessage(kind = "command", name = "chat.reload"))
     }
 
+    fun loadQuickReplies() {
+        dispatch(BridgeMessage(kind = "command", name = "quickReply.list"))
+    }
+
+    fun loadExtensions() {
+        dispatch(BridgeMessage(kind = "command", name = "extensions.list"))
+    }
+
+    fun loadItemizedPrompt(messageId: Int) {
+        store.beginItemizedPromptLoad()
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "itemizedPrompt.get",
+                payload = JSONObject().put("id", messageId)
+            )
+        )
+    }
+
+    fun loadDataBank() {
+        store.beginDataBankLoad()
+        dispatch(BridgeMessage(kind = "command", name = "dataBank.list"))
+    }
+
+    fun executeQuickReply(setName: String, label: String) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "quickReply.execute",
+                payload = JSONObject().put("setName", setName).put("label", label)
+            )
+        )
+    }
+
+    fun createCheckpoint(messageId: Int, name: String?) {
+        val payload = JSONObject().put("id", messageId)
+        if (!name.isNullOrBlank()) payload.put("name", name)
+        dispatch(BridgeMessage(kind = "command", name = "chat.createCheckpoint", payload = payload))
+    }
+
+    fun createBranch(messageId: Int) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "chat.createBranch",
+                payload = JSONObject().put("id", messageId)
+            )
+        )
+    }
+
+    fun openCheckpoint(name: String) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "chat.openCheckpoint",
+                payload = JSONObject().put("name", name)
+            )
+        )
+    }
+
     fun requestSnapshot() {
         dispatch(BridgeMessage(kind = "command", name = "runtime.getSnapshot"), trackTimeout = false)
     }
@@ -298,9 +374,42 @@ class ChatRuntimeBridge(
         mainHandler.postDelayed(runnable, timeoutMs)
     }
 
-    private fun completePendingCommand(commandId: String) {
-        val pending = pendingCommands.remove(commandId) ?: return
+    private fun completePendingCommand(commandId: String): PendingCommand? {
+        val pending = pendingCommands.remove(commandId) ?: return null
         mainHandler.removeCallbacks(pending.timeoutRunnable)
+        return pending
+    }
+
+    private fun applyQuickReplyResult(payload: JSONObject) {
+        val items = payload.optJSONArray("items")?.let { arr ->
+            (0 until arr.length()).mapNotNull { idx ->
+                val obj = arr.optJSONObject(idx) ?: return@mapNotNull null
+                val label = obj.optString("label")
+                if (label.isBlank()) return@mapNotNull null
+                QuickReplyItem(
+                    setName = obj.optString("setName"),
+                    label = label,
+                    icon = obj.optString("icon"),
+                    message = obj.optString("message")
+                )
+            }
+        } ?: emptyList()
+        store.setQuickReplies(items)
+    }
+
+    private fun applyExtensionsResult(payload: JSONObject) {
+        val names = payload.optJSONArray("names")?.let { arr ->
+            (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
+        } ?: emptyList()
+        store.setLoadedExtensions(names)
+    }
+
+    private fun applyItemizedPromptResult(payload: JSONObject) {
+        if (!payload.optBoolean("available", false)) {
+            store.applyItemizedPrompt(null)
+            return
+        }
+        store.applyItemizedPrompt(ItemizedPrompt.fromJson(payload))
     }
 
     private fun clearPendingCommands() {
@@ -331,7 +440,15 @@ class ChatRuntimeBridge(
             "message.hide" to "隐藏消息",
             "message.unhide" to "取消隐藏消息",
             "authorsNote.set" to "设置作者注",
-            "cfg.set" to "设置 CFG"
+            "cfg.set" to "设置 CFG",
+            "quickReply.list" to "加载快捷回复",
+            "quickReply.execute" to "执行快捷回复",
+            "extensions.list" to "加载扩展列表",
+            "itemizedPrompt.get" to "加载提示词分析",
+            "dataBank.list" to "加载数据银行",
+            "chat.createCheckpoint" to "创建存档点",
+            "chat.createBranch" to "创建分支",
+            "chat.openCheckpoint" to "打开存档点"
         )
     }
 }

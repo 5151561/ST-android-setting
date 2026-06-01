@@ -60,6 +60,85 @@ data class FileAttachment(
     val size: Long
 )
 
+data class ToolInvocation(
+    val id: String,
+    val displayName: String,
+    val name: String,
+    val parameters: String,
+    val result: String
+)
+
+data class ItemizedPromptComponent(
+    val name: String,
+    val tokens: Int
+)
+
+data class ItemizedPrompt(
+    val mesId: Int,
+    val total: Int,
+    val components: List<ItemizedPromptComponent>,
+    val presetName: String,
+    val modelUsed: String,
+    val apiUsed: String,
+    val tokenizer: String
+) {
+    companion object {
+        fun fromJson(json: JSONObject): ItemizedPrompt = ItemizedPrompt(
+            mesId = json.optInt("mesId", -1),
+            total = json.optInt("total", 0),
+            components = json.optJSONArray("components")?.let { arr ->
+                (0 until arr.length()).mapNotNull { idx ->
+                    val obj = arr.optJSONObject(idx) ?: return@mapNotNull null
+                    val name = obj.optString("name")
+                    if (name.isBlank()) return@mapNotNull null
+                    ItemizedPromptComponent(name = name, tokens = obj.optInt("tokens", 0))
+                }
+            } ?: emptyList(),
+            presetName = json.optString("presetName", ""),
+            modelUsed = json.optString("modelUsed", ""),
+            apiUsed = json.optString("apiUsed", ""),
+            tokenizer = json.optString("tokenizer", "")
+        )
+    }
+}
+
+data class DataBankAttachment(
+    val url: String,
+    val name: String,
+    val size: Long,
+    val created: Long
+) {
+    companion object {
+        fun fromJson(json: JSONObject): DataBankAttachment = DataBankAttachment(
+            url = json.optString("url"),
+            name = json.optString("name"),
+            size = json.optLong("size", 0L),
+            created = json.optLong("created", 0L)
+        )
+    }
+}
+
+data class DataBankAttachments(
+    val global: List<DataBankAttachment>,
+    val character: List<DataBankAttachment>,
+    val chat: List<DataBankAttachment>
+) {
+    companion object {
+        private fun parseList(json: JSONObject, key: String): List<DataBankAttachment> =
+            json.optJSONArray(key)?.let { arr ->
+                (0 until arr.length()).mapNotNull { idx ->
+                    arr.optJSONObject(idx)?.let { DataBankAttachment.fromJson(it) }
+                }
+            } ?: emptyList()
+
+        fun fromJson(json: JSONObject): DataBankAttachments = DataBankAttachments(
+            global = parseList(json, "global"),
+            character = parseList(json, "character"),
+            chat = parseList(json, "chat")
+        )
+    }
+}
+
 val ChatMessage.mediaAttachments: List<MediaAttachment>
     get() = extra.optJSONArray("media").parseObjectsNotNull { item ->
         val url = item.attachmentUrl()
@@ -79,6 +158,40 @@ val ChatMessage.fileAttachments: List<FileAttachment>
             url = url,
             name = item.optString("name").ifBlank { item.optString("title") },
             size = item.optLong("size", 0L)
+        )
+    }
+
+val ChatMessage.reasoning: String?
+    get() = extra.optString("reasoning").takeIf { it.isNotBlank() }
+
+val ChatMessage.bookmarkLink: String?
+    get() = extra.optString("bookmark_link").takeIf { it.isNotBlank() }
+
+val ChatMessage.branches: List<String>
+    get() = extra.optJSONArray("branches")?.let { arr ->
+        (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
+    } ?: emptyList()
+
+val ChatMessage.toolInvocations: List<ToolInvocation>
+    get() = extra.optJSONArray("tool_invocations").parseObjectsNotNull { item ->
+        val params = when (val raw = item.opt("parameters")) {
+            null, JSONObject.NULL -> ""
+            is JSONObject -> raw.toString(2)
+            is JSONArray -> raw.toString(2)
+            else -> raw.toString()
+        }
+        val result = when (val raw = item.opt("result")) {
+            null, JSONObject.NULL -> ""
+            is JSONObject -> raw.toString(2)
+            is JSONArray -> raw.toString(2)
+            else -> raw.toString()
+        }
+        ToolInvocation(
+            id = item.optString("id"),
+            displayName = item.optString("displayName").ifBlank { item.optString("name") },
+            name = item.optString("name"),
+            parameters = params,
+            result = result
         )
     }
 
@@ -130,6 +243,7 @@ sealed class BridgeEvent {
     data class GenerationError(val message: String, val raw: JSONObject) : BridgeEvent()
     data class StreamToken(val messageId: Int, val token: String, val fullText: String) : BridgeEvent()
     data class SaveError(val message: String, val raw: JSONObject) : BridgeEvent()
+    data class Toast(val type: String, val title: String, val message: String) : BridgeEvent()
     data class CommandResult(val commandId: String, val payload: JSONObject) : BridgeEvent()
     data class CommandError(val commandId: String, val message: String) : BridgeEvent()
 
@@ -151,6 +265,11 @@ sealed class BridgeEvent {
                 "generation.stopped" -> GenerationStopped(payload)
                 "generation.error" -> GenerationError(payload.optString("message", "unknown"), payload)
                 "save.error" -> SaveError(payload.optString("message", "unknown"), payload)
+                "runtime.toast" -> Toast(
+                    type = payload.optString("type", "info"),
+                    title = payload.optString("title", ""),
+                    message = payload.optString("message", "")
+                )
                 "stream.token" -> StreamToken(
                     messageId = payload.optInt("id", -1),
                     token = payload.optString("token", ""),

@@ -9,8 +9,10 @@ import android.provider.OpenableColumns
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -44,8 +46,14 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -69,7 +77,15 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -123,6 +139,7 @@ import io.github.sanitised.st.ui.webview.ChatWebViewScreen
 import io.github.sanitised.st.ui.webview.WebViewTarget
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -151,6 +168,10 @@ fun NativeChatScreen(
     var showAuthorsNoteDialog by remember { mutableStateOf(false) }
     var showCfgDialog by remember { mutableStateOf(false) }
     var showWorldInfoSheet by remember { mutableStateOf(false) }
+    var checkpointMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var branchListMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var showItemizedSheet by remember { mutableStateOf(false) }
+    var showDataBankSheet by remember { mutableStateOf(false) }
 
     fun uploadAttachment(uri: Uri, isMedia: Boolean) {
         scope.launch {
@@ -237,6 +258,10 @@ fun NativeChatScreen(
                 },
                 onOpenCfg = { showCfgDialog = true },
                 onOpenWorldInfo = { showWorldInfoSheet = true },
+                onOpenDataBank = {
+                    bridge.loadDataBank()
+                    showDataBankSheet = true
+                },
                 onOpenPastChats = if (isGroupMode) {
                     { showGroupChatsSheet = true }
                 } else {
@@ -294,6 +319,11 @@ fun NativeChatScreen(
                     onRegenerate = { bridge.regenerate() },
                     onUnavailableAction = { label -> onShowMessage("$label 功能暂未接入原生聊天运行时") }
                 )
+                QuickReplyStrip(
+                    items = store.quickReplies,
+                    enabled = readyForTarget && !store.isGenerating,
+                    onExecute = { item -> bridge.executeQuickReply(item.setName, item.label) }
+                )
             }
 
             ChatInputBar(
@@ -314,6 +344,14 @@ fun NativeChatScreen(
                 }
             )
         }
+
+        RuntimeToastHost(
+            toast = store.latestToast,
+            onDismiss = { store.clearToast() },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+        )
     }
 
     if (selectedMessage != null) {
@@ -344,6 +382,24 @@ fun NativeChatScreen(
                     bridge.hideMessage(message.id)
                     onShowMessage("消息已隐藏（不会被 AI 看到）")
                 }
+                selectedMessage = null
+            },
+            onCreateCheckpoint = {
+                checkpointMessage = message
+                selectedMessage = null
+            },
+            onCreateBranch = {
+                bridge.createBranch(message.id)
+                onShowMessage("正在创建分支…")
+                selectedMessage = null
+            },
+            onViewBranches = {
+                branchListMessage = message
+                selectedMessage = null
+            },
+            onItemizedPrompt = {
+                bridge.loadItemizedPrompt(message.id)
+                showItemizedSheet = true
                 selectedMessage = null
             },
             onDelete = {
@@ -414,6 +470,56 @@ fun NativeChatScreen(
             port = status.port,
             currentWorldInfoName = store.worldInfoName,
             onDismiss = { showWorldInfoSheet = false }
+        )
+    }
+
+    if (checkpointMessage != null) {
+        val message = checkpointMessage!!
+        CheckpointDialog(
+            onDismiss = { checkpointMessage = null },
+            onConfirm = { name ->
+                bridge.createCheckpoint(message.id, name.ifBlank { null })
+                checkpointMessage = null
+                onShowMessage("正在创建存档点…")
+            }
+        )
+    }
+
+    if (branchListMessage != null) {
+        val message = branchListMessage!!
+        BranchListSheet(
+            bookmarkLink = message.bookmarkLink,
+            branches = message.branches,
+            onDismiss = { branchListMessage = null },
+            onOpen = { name ->
+                branchListMessage = null
+                bridge.openCheckpoint(name)
+                onShowMessage("正在打开 $name…")
+            }
+        )
+    }
+
+    if (showItemizedSheet) {
+        ItemizedPromptSheet(
+            prompt = store.itemizedPrompt,
+            loading = store.itemizedPromptLoading,
+            error = store.itemizedPromptError,
+            onDismiss = {
+                showItemizedSheet = false
+                store.clearItemizedPrompt()
+            }
+        )
+    }
+
+    if (showDataBankSheet) {
+        DataBankSheet(
+            attachments = store.dataBank,
+            loading = store.dataBankLoading,
+            port = status.port,
+            onDismiss = {
+                showDataBankSheet = false
+                store.clearDataBank()
+            }
         )
     }
 }
@@ -509,6 +615,7 @@ private fun ChatHeader(
     onReloadChat: () -> Unit,
     onOpenCfg: () -> Unit,
     onOpenWorldInfo: () -> Unit,
+    onOpenDataBank: () -> Unit,
     onOpenPastChats: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
@@ -618,6 +725,11 @@ private fun ChatHeader(
                         text = { Text("世界书") },
                         leadingIcon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(20.dp)) },
                         onClick = { menuExpanded = false; onOpenWorldInfo() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("数据银行") },
+                        leadingIcon = { Icon(Icons.Filled.Inventory2, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        onClick = { menuExpanded = false; onOpenDataBank() }
                     )
                     DropdownMenuItem(
                         text = { Text("重新同步") },
@@ -764,7 +876,9 @@ private fun MessageBubble(
         bottomStart = 18.dp,
         bottomEnd = 18.dp
     )
-    val hiddenAlpha = if (message.isSystem) 0.5f else 1f
+    val isToolMessage = message.toolInvocations.isNotEmpty()
+    val showHiddenStyle = message.isSystem && !isToolMessage
+    val hiddenAlpha = if (showHiddenStyle) 0.5f else 1f
 
     Box(modifier = modifier.fillMaxWidth().alpha(hiddenAlpha), contentAlignment = alignment) {
         if (isUser) {
@@ -779,7 +893,7 @@ private fun MessageBubble(
                     .background(bubbleColor)
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
-                if (message.isSystem) {
+                if (showHiddenStyle) {
                     HiddenMessageBadge(modifier = Modifier.padding(bottom = 4.dp))
                 }
                 Text(text = message.mes, style = MaterialTheme.typography.bodyMedium, color = textColor)
@@ -806,7 +920,7 @@ private fun MessageBubble(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
                         )
-                        if (message.isSystem) {
+                        if (showHiddenStyle) {
                             Spacer(modifier = Modifier.width(6.dp))
                             HiddenMessageBadge()
                         }
@@ -822,12 +936,29 @@ private fun MessageBubble(
                             .background(bubbleColor)
                             .padding(horizontal = 14.dp, vertical = 12.dp)
                     ) {
-                        Text(text = message.mes, style = MaterialTheme.typography.bodyMedium, color = textColor)
+                        if (isToolMessage) {
+                            ToolCallGroup(tools = message.toolInvocations)
+                        } else {
+                            message.reasoning?.let { reasoning ->
+                                ReasoningSection(
+                                    reasoning = reasoning,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            }
+                            Text(text = message.mes, style = MaterialTheme.typography.bodyMedium, color = textColor)
+                        }
                         MessageAttachments(
                             media = message.mediaAttachments,
                             files = message.fileAttachments,
                             port = port,
                             modifier = Modifier.padding(top = 8.dp)
+                        )
+                        BubbleMeta(
+                            hasBookmark = message.bookmarkLink != null,
+                            branchCount = message.branches.size,
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .padding(top = 4.dp)
                         )
                     }
                     if (lastAssistant) {
@@ -920,6 +1051,193 @@ private fun MessageFileCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ReasoningSection(
+    reasoning: String,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { expanded = !expanded }
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                Icons.Filled.Psychology,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "思考过程",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (expanded) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest
+            ) {
+                Text(
+                    text = reasoning,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BubbleMeta(
+    hasBookmark: Boolean,
+    branchCount: Int,
+    modifier: Modifier = Modifier
+) {
+    if (!hasBookmark && branchCount <= 0) return
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        if (hasBookmark) {
+            Icon(
+                Icons.Filled.Bookmark,
+                contentDescription = "存档点",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+        if (branchCount > 0) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.AccountTree,
+                        contentDescription = "分支",
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = branchCount.toString(),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolCallGroup(tools: List<ToolInvocation>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        tools.forEachIndexed { index, tool ->
+            ToolCallCard(tool = tool, defaultExpanded = index == 0)
+        }
+    }
+}
+
+@Composable
+private fun ToolCallCard(
+    tool: ToolInvocation,
+    defaultExpanded: Boolean
+) {
+    var expanded by remember { mutableStateOf(defaultExpanded) }
+    val running = tool.result.isBlank()
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Build,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = tool.displayName.ifBlank { tool.name }.ifBlank { "工具调用" },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (running) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(
+                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (expanded && tool.parameters.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "参数",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = tool.parameters,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "结果",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = if (running) "执行中…" else tool.result,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (running) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 2.dp)
+            )
         }
     }
 }
@@ -1105,9 +1423,14 @@ private fun MessageActionSheet(
     onEdit: () -> Unit,
     onRegenerate: () -> Unit,
     onHideToggle: () -> Unit,
+    onCreateCheckpoint: () -> Unit,
+    onCreateBranch: () -> Unit,
+    onViewBranches: () -> Unit,
+    onItemizedPrompt: () -> Unit,
     onDelete: () -> Unit,
     onUnavailableAction: (String) -> Unit
 ) {
+    val branchCount = message.branches.size
     val sheetState = rememberModalBottomSheetState()
 
     ModalBottomSheet(
@@ -1190,6 +1513,98 @@ private fun MessageActionSheet(
                         )
                     }
                 )
+            }
+
+            Surface(
+                onClick = onCreateCheckpoint,
+                color = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                ListItem(
+                    headlineContent = { Text("创建存档点") },
+                    supportingContent = {
+                        Text("为当前消息保存一个快照", style = MaterialTheme.typography.bodySmall)
+                    },
+                    leadingContent = {
+                        Icon(
+                            Icons.Filled.BookmarkAdd,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                )
+            }
+
+            Surface(
+                onClick = onCreateBranch,
+                color = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                ListItem(
+                    headlineContent = { Text("创建分支") },
+                    supportingContent = {
+                        Text("从此消息开启新的聊天线", style = MaterialTheme.typography.bodySmall)
+                    },
+                    leadingContent = {
+                        Icon(
+                            Icons.Filled.AccountTree,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                )
+            }
+
+            if (branchCount > 0) {
+                Surface(
+                    onClick = onViewBranches,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    ListItem(
+                        headlineContent = { Text("查看分支") },
+                        leadingContent = {
+                            Icon(
+                                Icons.Filled.FolderOpen,
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        },
+                        trailingContent = {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                            ) {
+                                Text(
+                                    text = branchCount.toString(),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    )
+                }
+            }
+
+            if (!message.isUser) {
+                Surface(
+                    onClick = onItemizedPrompt,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    ListItem(
+                        headlineContent = { Text("提示词分析") },
+                        supportingContent = {
+                            Text("查看本条生成的 token 构成", style = MaterialTheme.typography.bodySmall)
+                        },
+                        leadingContent = {
+                            Icon(
+                                Icons.Filled.Analytics,
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    )
+                }
             }
 
             Surface(
@@ -1318,6 +1733,83 @@ private fun SaveErrorBanner(
 }
 
 @Composable
+private fun RuntimeToastHost(
+    toast: RuntimeToast?,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (toast == null) return
+    LaunchedEffect(toast.seq) {
+        delay(4000)
+        onDismiss()
+    }
+    val container: androidx.compose.ui.graphics.Color
+    val content: androidx.compose.ui.graphics.Color
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    when (toast.type) {
+        "error" -> {
+            container = MaterialTheme.colorScheme.errorContainer
+            content = MaterialTheme.colorScheme.onErrorContainer
+            icon = Icons.Filled.Error
+        }
+        "warning" -> {
+            container = MaterialTheme.colorScheme.tertiaryContainer
+            content = MaterialTheme.colorScheme.onTertiaryContainer
+            icon = Icons.Filled.Warning
+        }
+        "success" -> {
+            container = MaterialTheme.colorScheme.secondaryContainer
+            content = MaterialTheme.colorScheme.onSecondaryContainer
+            icon = Icons.Filled.CheckCircle
+        }
+        else -> {
+            container = MaterialTheme.colorScheme.primaryContainer
+            content = MaterialTheme.colorScheme.onPrimaryContainer
+            icon = Icons.Filled.Info
+        }
+    }
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = container,
+        contentColor = content,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                if (toast.title.isNotBlank()) {
+                    Text(
+                        text = toast.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (toast.message.isNotBlank()) {
+                    Text(
+                        text = toast.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = "关闭", modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
 private fun ChatQuickStrip(
     runtimeReady: Boolean,
     onContinue: () -> Unit,
@@ -1351,6 +1843,43 @@ private fun ChatQuickStrip(
                 modifier = Modifier,
                 enabled = item.enabled
             )
+        }
+    }
+}
+
+@Composable
+private fun QuickReplyStrip(
+    items: List<QuickReplyItem>,
+    enabled: Boolean,
+    onExecute: (QuickReplyItem) -> Unit
+) {
+    if (items.isEmpty()) return
+    Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items.forEach { item ->
+                    AssistChip(
+                        onClick = { if (enabled) onExecute(item) },
+                        enabled = enabled,
+                        label = {
+                            Text(
+                                text = item.label.ifBlank { item.message.take(12) },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 120.dp)
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors()
+                    )
+                }
+            }
         }
     }
 }
@@ -2098,6 +2627,438 @@ private fun WorldInfoEntriesPreview(book: WorldInfoBook) {
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckpointDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Filled.BookmarkAdd, contentDescription = null) },
+        title = { Text("创建存档点") },
+        text = {
+            Column {
+                Text(
+                    text = "为当前消息创建一个聊天存档快照，之后可随时回到这里。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("存档点名称（留空自动命名）") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(name.trim()) }) {
+                Text("创建")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BranchListSheet(
+    bookmarkLink: String?,
+    branches: List<String>,
+    onDismiss: () -> Unit,
+    onOpen: (String) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Filled.AccountTree,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "分支列表",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Text(
+                text = "点击任意分支或存档点以打开对应聊天线",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                if (bookmarkLink != null) {
+                    item(key = "checkpoint:$bookmarkLink") {
+                        BranchRow(
+                            name = bookmarkLink,
+                            isBookmark = true,
+                            onClick = { onOpen(bookmarkLink) }
+                        )
+                    }
+                }
+                items(branches, key = { "branch:$it" }) { branch ->
+                    BranchRow(
+                        name = branch,
+                        isBookmark = false,
+                        onClick = { onOpen(branch) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BranchRow(
+    name: String,
+    isBookmark: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        ListItem(
+            headlineContent = {
+                Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
+            supportingContent = if (isBookmark) {
+                { Text("存档点", style = MaterialTheme.typography.bodySmall) }
+            } else {
+                { Text("分支", style = MaterialTheme.typography.bodySmall) }
+            },
+            leadingContent = {
+                Icon(
+                    if (isBookmark) Icons.Filled.Bookmark else Icons.Filled.AccountTree,
+                    contentDescription = null,
+                    tint = if (isBookmark) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            },
+            trailingContent = {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ItemizedPromptSheet(
+    prompt: ItemizedPrompt?,
+    loading: Boolean,
+    error: String?,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Analytics,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "提示词分析",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (prompt != null) {
+                    Text(
+                        text = "· 消息 #${prompt.mesId}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            when {
+                loading -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator() }
+                error != null -> Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
+                )
+                prompt != null -> {
+                    val maxTokens = prompt.components.maxOfOrNull { it.tokens }?.coerceAtLeast(1) ?: 1
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        item(key = "total") {
+                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                Row(verticalAlignment = Alignment.Bottom) {
+                                    Text(
+                                        text = prompt.total.toString(),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "总 token 数",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                        items(prompt.components, key = { it.name }) { comp ->
+                            ItemizedComponentRow(
+                                name = comp.name,
+                                tokens = comp.tokens,
+                                fraction = comp.tokens.toFloat() / maxTokens
+                            )
+                        }
+                        item(key = "meta") {
+                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                                HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp))
+                                if (prompt.presetName.isNotBlank() || prompt.modelUsed.isNotBlank()) {
+                                    Text(
+                                        text = "预设 ${prompt.presetName.ifBlank { "—" }} · 模型 ${prompt.modelUsed.ifBlank { "—" }}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (prompt.apiUsed.isNotBlank() || prompt.tokenizer.isNotBlank()) {
+                                    Text(
+                                        text = "API ${prompt.apiUsed.ifBlank { "—" }} · 分词器 ${prompt.tokenizer.ifBlank { "—" }}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ItemizedComponentRow(
+    name: String,
+    tokens: Int,
+    fraction: Float
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.width(72.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
+        Text(
+            text = tokens.toString(),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(48.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DataBankSheet(
+    attachments: DataBankAttachments?,
+    loading: Boolean,
+    port: Int,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState()
+    var tab by remember { mutableStateOf(0) }
+    val tabs = listOf("全局", "角色", "当前聊天")
+    val current = when (tab) {
+        0 -> attachments?.global
+        1 -> attachments?.character
+        else -> attachments?.chat
+    } ?: emptyList()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Inventory2,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "数据银行",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                tabs.forEachIndexed { index, label ->
+                    val count = when (index) {
+                        0 -> attachments?.global?.size ?: 0
+                        1 -> attachments?.character?.size ?: 0
+                        else -> attachments?.chat?.size ?: 0
+                    }
+                    AssistChip(
+                        onClick = { tab = index },
+                        label = { Text(if (count > 0) "$label ($count)" else label) },
+                        colors = if (tab == index) {
+                            AssistChipDefaults.assistChipColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        } else {
+                            AssistChipDefaults.assistChipColors()
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            when {
+                loading -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator() }
+                current.isEmpty() -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "这个范围还没有文件",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
+                    items(current, key = { it.url }) { file ->
+                        Surface(
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(attachmentDisplayUrl(port, file.url)))
+                                    )
+                                }
+                            },
+                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        file.name.ifBlank { file.url.substringAfterLast('/') },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        attachmentSizeLabel(file.size),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                },
+                                leadingContent = {
+                                    Icon(
+                                        Icons.Filled.Description,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
             }

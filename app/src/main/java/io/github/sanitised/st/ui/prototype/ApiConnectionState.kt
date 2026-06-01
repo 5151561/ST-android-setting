@@ -3,6 +3,13 @@ package io.github.sanitised.st.ui.prototype
 import io.github.sanitised.st.api.SecretProviderState
 import java.util.Locale
 
+internal enum class ConnectionVerifyStatus {
+    NOT_VERIFIED,
+    TESTING,
+    SUCCESS,
+    FAILED
+}
+
 internal data class ApiConnectionProviderDefinition(
     val id: String,
     val label: String,

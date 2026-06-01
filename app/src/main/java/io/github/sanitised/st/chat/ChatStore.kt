@@ -18,6 +18,20 @@ data class PendingAttachment(
     val isMedia: Boolean
 )
 
+data class RuntimeToast(
+    val seq: Long,
+    val type: String,
+    val title: String,
+    val message: String
+)
+
+data class QuickReplyItem(
+    val setName: String,
+    val label: String,
+    val icon: String,
+    val message: String
+)
+
 class ChatStore {
     var runtimeState by mutableStateOf(RuntimeState.NOT_READY)
     var characterName by mutableStateOf("")
@@ -32,8 +46,17 @@ class ChatStore {
     var cfgNegativePrompt by mutableStateOf("")
     var cfgPositivePrompt by mutableStateOf("")
     var worldInfoName by mutableStateOf("")
+    var latestToast by mutableStateOf<RuntimeToast?>(null)
+    private var toastSeq = 0L
+    var itemizedPrompt by mutableStateOf<ItemizedPrompt?>(null)
+    var itemizedPromptLoading by mutableStateOf(false)
+    var itemizedPromptError by mutableStateOf<String?>(null)
+    var dataBank by mutableStateOf<DataBankAttachments?>(null)
+    var dataBankLoading by mutableStateOf(false)
     val messages = mutableStateListOf<ChatMessage>()
     val pendingAttachments = mutableStateListOf<PendingAttachment>()
+    val quickReplies = mutableStateListOf<QuickReplyItem>()
+    val loadedExtensions = mutableStateListOf<String>()
 
     fun applySnapshot(snapshot: ChatSnapshot) {
         runtimeState = RuntimeState.READY
@@ -93,6 +116,63 @@ class ChatStore {
         saveError = null
     }
 
+    fun pushToast(type: String, title: String, message: String) {
+        if (title.isBlank() && message.isBlank()) return
+        toastSeq += 1
+        latestToast = RuntimeToast(seq = toastSeq, type = type, title = title, message = message)
+    }
+
+    fun clearToast() {
+        latestToast = null
+    }
+
+    fun setQuickReplies(items: List<QuickReplyItem>) {
+        quickReplies.clear()
+        quickReplies.addAll(items)
+    }
+
+    fun setLoadedExtensions(names: List<String>) {
+        loadedExtensions.clear()
+        loadedExtensions.addAll(names)
+    }
+
+    fun beginItemizedPromptLoad() {
+        itemizedPromptLoading = true
+        itemizedPromptError = null
+        itemizedPrompt = null
+    }
+
+    fun applyItemizedPrompt(prompt: ItemizedPrompt?) {
+        itemizedPromptLoading = false
+        itemizedPrompt = prompt
+        itemizedPromptError = if (prompt == null) "该消息没有提示词分析数据（仅本会话生成过的消息可用）" else null
+    }
+
+    fun recordItemizedPromptError(message: String) {
+        itemizedPromptLoading = false
+        itemizedPromptError = message
+    }
+
+    fun clearItemizedPrompt() {
+        itemizedPrompt = null
+        itemizedPromptLoading = false
+        itemizedPromptError = null
+    }
+
+    fun beginDataBankLoad() {
+        dataBankLoading = true
+    }
+
+    fun applyDataBank(attachments: DataBankAttachments) {
+        dataBankLoading = false
+        dataBank = attachments
+    }
+
+    fun clearDataBank() {
+        dataBank = null
+        dataBankLoading = false
+    }
+
     fun addMessage(message: ChatMessage) {
         upsertMessage(message)
     }
@@ -128,7 +208,15 @@ class ChatStore {
         cfgNegativePrompt = ""
         cfgPositivePrompt = ""
         worldInfoName = ""
+        latestToast = null
+        itemizedPrompt = null
+        itemizedPromptLoading = false
+        itemizedPromptError = null
+        dataBank = null
+        dataBankLoading = false
         messages.clear()
         pendingAttachments.clear()
+        quickReplies.clear()
+        loadedExtensions.clear()
     }
 }

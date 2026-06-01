@@ -1,8 +1,8 @@
 # SillyTavern Chat 原生界面迁移方案
 
-版本：0.8
-日期：2026-05-29
-状态：**P0 已收口 + P1 基本可用（保存错误检测 best-effort）+ P2 常用能力部分落地**（已对照 SillyTavern 源码审查 + 原生界面逐屏审计，当前已合入本地 `main`）
+版本：0.12
+日期：2026-05-31
+状态：**P0 已收口 + P1 基本可用（保存错误检测 best-effort）+ P2 全部落地 + P3 阶段 A+B+C 已落地（logprobs 因 ST 未导出阻塞、TTS/翻译/生图后续专项）**（已对照 SillyTavern 源码审查 + 原生界面逐屏审计，当前已合入本地 `main`）
 适用范围：ST-android 下一阶段 Chat 原生化、JS Bridge、SillyTavern 运行时复用、API 对接
 
 ## 1. 背景和目标
@@ -646,7 +646,7 @@ P1 起，编辑和删除也应通过 Bridge 调用 ST 前端函数，确保：
 | ~~`ChatBridgeEventHandler`~~ | 已合并到 `ChatRuntimeBridge` |
 | `ChatApiService` | 聊天文件列表、导入导出、搜索、最近聊天等 API |
 | `MessageRenderer` | Markdown、reasoning、media、files、swipe、tool calls 展示 |
-| `AttachmentService` | Android 文件选择、上传、预览、删除 |
+| `AttachmentService` | Android 文件选择、上传、预览、删除（当前内联在 `NativeChatScreen` 中，使用 `TavernCoreClient.uploadFile()` + `PendingAttachment`） |
 
 ## 11. 迁移优先级
 
@@ -671,33 +671,36 @@ P1 起，编辑和删除也应通过 Bridge 调用 ST 前端函数，确保：
 6. 🔶 基础 swipe 展示与切换（`ChatRuntimeBridge.swipePrevious()` / `swipeNext()` Bridge 已通，NativeChatScreen 已有 swipe 按钮；需真机验证长链路）。
 7. ✅ Bridge 超时追踪（`pendingCommands` + 分级超时 15/30/60s）、runtime 崩溃恢复（`onRenderProcessGone` + `RENDER_PROCESS_GONE` 错误页 + `loadUrl` 自动恢复）。
 
-### P2：接近 SillyTavern 核心体验 — 🔶 常用能力部分落地
+### P2：接近 SillyTavern 核心体验 — 🔶 核心能力已落地
 
 1. 🔶 群聊打开、发送、停止、历史切换。
    - ✅ 群聊列表和创建（`PrototypeGroupChatScreen` + `TavernCoreClient.createGroup` 含 `activationStrategy`/`allowSelfResponses`/`generationMode`）
    - ✅ 打开群聊导航（`WebViewTarget.GroupChat` + `ChatRuntimeBridge.openGroup()`）
    - ✅ 群聊 NativeChatScreen 中消息按 `message.name` 区分成员；发送/停止复用同一 Bridge 通道；regenerate 分流 `regenerateGroup()`
    - 🔶 群聊长链路仍需真机验证
-2. ⬜ 附件上传和展示，保留 `extra.files`、`extra.media`。
-3. 🔶 Author's Note、CFG、世界书基础接入。
+2. ✅ 附件上传和展示，保留 `extra.files`、`extra.media`。
+   - ✅ Android 文件/图片选择器（`ActivityResultContracts.GetContent`）、`TavernCoreClient.uploadFile()` HTTP 上传、`PendingAttachmentStrip` 预览条、`MessageBubble` 内嵌 `AsyncImage`（Coil）和 `MessageFileCard` 渲染
+3. ✅ Author's Note、CFG、世界书基础接入。
    - ✅ Author's Note 已通过 `authorsNote.get/set`、`AuthorsNoteDialog`、snapshot metadata 同步落地
-   - ⬜ CFG 和世界书仍待接入 Chat 原生入口
+   - ✅ CFG 已通过 `cfg.get/set`、`CfgScaleDialog`（Slider + 正/负提示词）、snapshot metadata 同步落地
+   - ✅ 世界书已通过 `worldInfo.get`、`WorldInfoSheet`（只读浏览 + 当前绑定高亮）、snapshot metadata 同步落地
 4. 🔶 Slash commands 的结果和错误展示。
    - ✅ slash command 文本可通过 `chat.send` 进入 ST 原生处理链路，正常结果按消息同步
-   - ⬜ ST toastr 错误/警告仍在隐藏 WebView 内，原生端暂不可见
+   - ✅ ST toastr 通知（命令错误/警告/成功）通过 adapter 包裹 `toastr.error/warning/info/success` 转发 `runtime.toast`，原生端 `RuntimeToastHost` 按类型着色展示
 5. ✅ 消息隐藏/取消隐藏（通过 `hideChatMessageRange()` 切换 `is_system`，原生端用 `isSystem` 视觉标识）。
-6. ⬜ 文件嵌入到提示词上下文。
+6. ✅ 文件嵌入到提示词上下文（无需额外开发：ST `appendFileContent()` 在 `Generate()` 期间自动从 `extra.files` 读取文件内容拼入提示词，整个过程在隐藏 WebView 内完成；v0.9 附件上传已正确写入 `extra.files`）。
 
-### P3：高级能力
+### P3：高级能力 — 🔶 阶段 A+B+C 已落地
 
-1. ⬜ 扩展系统兼容策略。
-2. ⬜ Quick Replies。
-3. ⬜ TTS、翻译、生图。
-4. ⬜ logprobs。
-5. ⬜ checkpoint、branch。
-6. ⬜ tool calls 渲染。
-7. ⬜ itemized prompts。
-8. ⬜ Data Bank。
+1. 🔶 扩展系统兼容策略（`extensions.list` 命令读取已加载扩展名到 `ChatStore.loadedExtensions`；toastr 通道已覆盖扩展提示；扩展 UI 面板原生化未做）。
+2. ✅ Quick Replies（`quickReply.list/execute` + `QuickReplyStrip` 输入栏上方水平滚动 chip，runtime ready / chat changed 时刷新）。
+3. ⬜ TTS、翻译、生图（后续专项处理）。
+4. ⛔ logprobs（**阻塞**：ST `logprobs.js` 的 `state` 为模块私有 const，未 export/不在 getContext/window，干净 bridge 读不到；需上游改动，保持 submodule 原封不动故不做）。
+5. ✅ checkpoint、branch（`chat.createCheckpoint`/`createBranch`/`openCheckpoint` → `createNewBookmark`/`branchChat`；`BubbleMeta` 标识、`MessageActionSheet` 新增项、`CheckpointDialog`、`BranchListSheet`）。
+6. ✅ tool calls 渲染（系统消息 `extra.tool_invocations` → `ToolCallGroup`/`ToolCallCard`，参数折叠 + 结果展示 + 执行中状态）。
+7. ✅ itemized prompts（`itemizedPrompt.get` → `itemizedParams()`；`MessageActionSheet` "提示词分析"入口 + `ItemizedPromptSheet` token 构成进度条 + 元信息）。
+8. ✅ Data Bank（`dataBank.list` → `getDataBankAttachmentsForSource`；ChatHeader "数据银行"菜单 + `DataBankSheet` 全局/角色/聊天三 Tab 只读浏览，点击 Intent 打开。**改为聊天内 sheet 入口**，因为附件清单只在前端运行时、独立 Tools 屏幕无 WebView）。
+9. ✅ Reasoning/Thinking 展示（`extra.reasoning` → `ReasoningSection` 可折叠区，`STREAM_REASONING_DONE` 流式刷新）。
 
 ### P4：可选的完整原生生成链路
 
@@ -797,8 +800,8 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
 1. 可以打开群聊。
 2. 可以发送群聊消息并触发群成员回复。
 3. 可以保存和切换群聊历史。
-4. 可以上传并展示图片或文件附件。
-5. Author's Note 至少有基础接入；CFG、世界书仍保留后续入口。
+4. 可以上传并展示图片或文件附件。（✅ 文件/图片选择器 + HTTP 上传 + 预览条 + 消息内渲染）
+5. Author's Note、CFG、世界书均有基础接入。（✅ 对话框/Sheet + Bridge 命令 + snapshot 同步）
 6. Slash command 不会破坏普通发送。
 
 ## 14. 推荐迁移路线
@@ -809,18 +812,189 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
 2. ✅ 再做原生 Chat 只读镜像，确保 snapshot 和事件能稳定同步。
 3. ✅ 接管原生输入栏：发送、停止、生成状态。
 4. ✅ 补重生成、继续、新建、历史聊天切换。（Bridge 与 UI 已落地；群聊历史通过内联 sheet 切换）
-5. 🔶 补编辑、删除、swipe、附件。（编辑/删除/swipe/隐藏已落地；附件上传和展示待做）
-6. 🔶 补群聊、Author's Note、世界书和扩展相关能力。（群聊打开/发送/历史切换与 Author's Note 基础接入已落地；CFG、世界书和扩展细节待后续）
+5. ✅ 补编辑、删除、swipe、附件。（编辑/删除/swipe/隐藏/附件上传和展示均已落地）
+6. 🔶 补群聊、Author's Note、世界书和扩展相关能力。（群聊打开/发送/历史切换、Author's Note、CFG、世界书基础接入已落地；扩展细节和 toastr 原生提示待后续）
 7. ⬜ 最后再评估是否抽离部分生成链路到原生端。
 
 阶段性目标应该是”原生 UI 体验明显改善，但聊天语义仍和原版 ST 一致”。在没有契约测试前，不建议重写提示词组装和生成请求。
 
-> **v0.7 进度说明**：步骤 1-4 已基本完成。步骤 5-6 已覆盖常用聊天动作、群聊基础和 Author's Note，主要欠缺是附件、CFG、世界书、扩展/toastr 原生提示，以及真机上的长链路验证。
+> **v0.9 进度说明**：步骤 1-5 已完成。步骤 6 已覆盖群聊基础、Author's Note、CFG、世界书，主要欠缺是扩展/toastr 原生提示，以及真机上的长链路验证。
 
 ## 15. 实现进度
 
-日期：2026-05-29（v0.8 文档收口 + v0.7 阶段 C P2 接续 + adapter 契约修正）
-状态：**P0 基础框架落地 + P1 基本可用（保存错误检测 best-effort）+ P2 常用能力部分落地（附件、CFG、世界书仍待做）**
+日期：2026-05-31（v0.12 P3 阶段 C + v0.11 P3 阶段 B + v0.10 P3 阶段 A + v0.9 P2 附件/CFG/世界书收口 + v0.8 文档收口 + v0.7 阶段 C P2 接续 + adapter 契约修正）
+状态：**P0 基础框架落地 + P1 基本可用（保存错误检测 best-effort）+ P2 全部落地 + P3 阶段 A+B+C 已落地**
+
+### v0.12 P3 阶段 C：Itemized Prompts + Data Bank（logprobs 阻塞）（2026-05-31）
+
+完成 P3 阶段 C 的可行项。调研发现两处与原计划假设的偏差，已按用户决策处理。
+
+#### 调研偏差与决策
+
+- **C1 logprobs ⛔ 阻塞**：`logprobs.js` 的 `state`（含 `messageLogprobs` Map）是模块私有 `const`，未 export、不在 `getContext()` 或 `window`。唯一读取路径是改 ST 源码加 export，违反 CLAUDE.md「submodule 原封不动打包」。决定跳过，仅文档记录。
+- **C3 Data Bank**：原计划「Tools 独立屏幕 + API 管理」不可行——`/api/files/*` 只有 upload/delete/verify 无 list，附件清单存前端运行时（`extension_settings.attachments` / `chat_metadata.attachments` / `character_attachments`），只能经 bridge 读。改为**聊天内 sheet 入口**（ChatHeader 菜单），复用现有 bridge。
+
+#### C2：Itemized Prompts ✅
+
+- **adapter**：新增 `itemizedPrompt.get`，`import('./scripts/itemized-prompts.js')` 读 live `itemizedPrompts` 数组（script.js 与该模块共享同一 ES binding），`findItemizedPromptSet()` 定位 + `itemizedParams()` 计算，归一化为 `{available,total,components[],presetName,modelUsed,apiUsed,tokenizer}`（OAI / 非 OAI 字段差异在 adapter 内抹平）。
+- **ChatBridgeModels**：`ItemizedPrompt` + `ItemizedPromptComponent` 数据类与解析。
+- **ChatStore**：`itemizedPrompt`/`itemizedPromptLoading`/`itemizedPromptError` + `beginItemizedPromptLoad`/`applyItemizedPrompt`/`recordItemizedPromptError`/`clearItemizedPrompt`。
+- **ChatRuntimeBridge**：`loadItemizedPrompt(messageId)`，结果按 `pending.name` 路由；`available=false` 时提示「仅本会话生成过的消息可用」。
+- **NativeChatScreen**：`MessageActionSheet` 新增"提示词分析"（仅 AI 消息）；`ItemizedPromptSheet`（总 token 数 + 各组件 token 进度条 + 预设/模型/API/分词器元信息）。
+
+#### C3：Data Bank ✅
+
+- **adapter**：新增 `dataBank.list`，`import('./scripts/chats.js').getDataBankAttachmentsForSource('global'|'character'|'chat')`，归一化 `{url,name,size,created}`。
+- **ChatBridgeModels**：`DataBankAttachment` + `DataBankAttachments`（三源）数据类与解析。
+- **ChatStore**：`dataBank`/`dataBankLoading` + `beginDataBankLoad`/`applyDataBank`/`clearDataBank`。
+- **ChatRuntimeBridge**：`loadDataBank()`，结果/错误按命令名路由。
+- **NativeChatScreen**：ChatHeader DropdownMenu 新增"数据银行"；`DataBankSheet`（全局/角色/当前聊天三 Tab + 计数 chip，文件列表只读，点击 `ACTION_VIEW` Intent 打开）。
+
+#### 单元测试
+
+`ChatBridgeModelsTest` 新增 2 项：`ItemizedPrompt` 组件/元信息解析（含空名过滤）、`DataBankAttachments` 三源解析。当前共 15 项全绿。
+
+> **注意（JVM 签名冲突）**：`var itemizedPrompt` / `var dataBank` 的 Compose 自动 setter（`setItemizedPrompt`/`setDataBank`）会与同名方法冲突，故 store 方法命名为 `applyItemizedPrompt`/`applyDataBank`/`recordItemizedPromptError`。
+
+#### 文件变更汇总
+
+| 文件 | 变更 |
+|---|---|
+| `assets/chat_runtime_adapter.js` | `itemizedPrompt.get`、`dataBank.list` 命令与 handler |
+| `chat/ChatBridgeModels.kt` | `ItemizedPrompt`/`ItemizedPromptComponent`、`DataBankAttachment`/`DataBankAttachments` |
+| `chat/ChatStore.kt` | itemizedPrompt/dataBank 状态 + loading/error + apply/record/clear |
+| `chat/ChatRuntimeBridge.kt` | `loadItemizedPrompt`/`loadDataBank`、结果与错误按命令名路由 |
+| `chat/NativeChatScreen.kt` | `ItemizedPromptSheet`/`ItemizedComponentRow`、`DataBankSheet`、ActionSheet"提示词分析"、ChatHeader"数据银行" |
+| `test/.../ChatBridgeModelsTest.kt` | ItemizedPrompt/DataBank 解析测试 |
+
+### v0.11 P3 阶段 B：Quick Replies + Checkpoint/Branch + 扩展列表（2026-05-31）
+
+完成 P3 阶段 B 三项功能，设计严格对照 `docs/P3-ui-design-spec.md` 与设计稿 JSX（`chat.jsx` QuickReplyStrip / `sheets.jsx` MessageActionSheet/CheckpointDialog/BranchListSheet）。
+
+#### B1：Quick Replies ✅
+
+- **adapter**：新增 `quickReply.list`（读 `window.quickReplyApi.settings` 的 config/chatConfig/charConfig setList，过滤 `isVisible`/`!isHidden`，匹配 ST `ButtonUi.renderBar` 逻辑）和 `quickReply.execute`（优先 `api.executeQuickReply(setName,label)`，回退 `executeQuickReplyByName`）。扩展未加载时返回空列表而非报错。
+- **ChatStore**：新增 `QuickReplyItem(setName,label,icon,message)` + `quickReplies` 列表 + `setQuickReplies()`。
+- **ChatRuntimeBridge**：`loadQuickReplies()`/`executeQuickReply()`；`CommandResult` 按 `pending.name == "quickReply.list"` 路由到 `applyQuickReplyResult()`（`completePendingCommand` 改为返回 `PendingCommand?`）；在 `RuntimeReady` 和 `ChatChanged` 时刷新（避免每次 snapshot 都刷）。
+- **NativeChatScreen**：新增 `QuickReplyStrip`，位于 `ChatQuickStrip` 下方、输入栏上方，水平滚动 `AssistChip`，空列表隐藏，生成中/未就绪置灰。
+
+#### B2：Checkpoint / Branch ✅
+
+- **adapter**：新增 `chat.createCheckpoint`（`import('./scripts/bookmarks.js').createNewBookmark(mesId,{forceName})`，写 `extra.bookmark_link`，不导航）、`chat.createBranch`（`branchChat(mesId)`，写 `extra.branches` 并自动导航到新分支）、`chat.openCheckpoint`（按文件名 `openCharacterChat`/`openGroupChat`）。
+- **ChatBridgeModels**：新增 `ChatMessage.bookmarkLink`（`extra.bookmark_link`）和 `branches`（`extra.branches`）扩展属性。
+- **ChatRuntimeBridge**：`createCheckpoint()`/`createBranch()`/`openCheckpoint()`。
+- **NativeChatScreen**：AI 气泡内 `BubbleMeta`（🔖 书签 + 分支数量 badge）；`MessageActionSheet` 新增"创建存档点"/"创建分支"/"查看分支（数量）"；`CheckpointDialog`（命名输入，留空自动命名）；`BranchListSheet`（列出 bookmark_link + branches，点击 `openCheckpoint` 打开）。
+
+#### B3：扩展系统兼容（最小化通道）🔶
+
+- **adapter**：新增 `extensions.list`（`import('./scripts/extensions.js').extensionNames`）。
+- **ChatStore**：新增 `loadedExtensions` 列表 + `setLoadedExtensions()`。
+- **ChatRuntimeBridge**：`loadExtensions()` 在 `RuntimeReady` 时调用，结果路由到 `applyExtensionsResult()`。
+- 数据已就绪，只读展示 UI（Tools/Settings 入口）留待后续；扩展产生的消息内容通过 `extra` 字段在 MessageBubble 中自然展示，扩展提示通过 A1 toastr 通道展示。
+
+#### 单元测试
+
+`ChatBridgeModelsTest` 新增 4 项：`bookmarkLink` 解析与空值、`branches` 解析与缺省空列表。当前共 13 项全绿。
+
+#### 文件变更汇总
+
+| 文件 | 变更 |
+|---|---|
+| `assets/chat_runtime_adapter.js` | `quickReply.list/execute`、`chat.createCheckpoint/createBranch/openCheckpoint`、`extensions.list` 命令与 handler |
+| `chat/ChatBridgeModels.kt` | `bookmarkLink`/`branches` 扩展属性 |
+| `chat/ChatStore.kt` | `QuickReplyItem` + `quickReplies`、`loadedExtensions` + setters |
+| `chat/ChatRuntimeBridge.kt` | QR/checkpoint/branch/extensions 命令、`CommandResult` 结果路由、`completePendingCommand` 返回值、ready/changed 时刷新 |
+| `chat/NativeChatScreen.kt` | `QuickReplyStrip`、`BubbleMeta`、`MessageActionSheet` 新增项、`CheckpointDialog`、`BranchListSheet`/`BranchRow` |
+| `test/.../ChatBridgeModelsTest.kt` | bookmarkLink/branches 解析测试 |
+
+### v0.10 P3 阶段 A：Toast 捕获 + Reasoning + Tool Calls（2026-05-31）
+
+完成 P3 阶段 A 三项高感知价值功能，并收口两项 P2 遗留。设计严格对照 `docs/P3-ui-design-spec.md` 与设计稿 JSX。
+
+#### A1：Toastr 通知捕获（P2 遗留 🔶→✅）
+
+- **adapter**：新增 `tryWrapToastr()`，包裹 `window.toastr` 的 `error/warning/info/success` 四个方法，在原调用后发 `runtime.toast` 事件（`{type,title,message}`，含 `stripHtml()` 去标签）；在 `tryBindEvents()` 末尾调用一次。未用 `toastr.subscribe()`（拿不到 type）。
+- **ChatBridgeModels**：新增 `BridgeEvent.Toast` 变体及 `runtime.toast` 解析。
+- **ChatStore**：新增 `RuntimeToast(seq,type,title,message)` + `latestToast` 状态 + `pushToast()`/`clearToast()`，`seq` 自增确保相同内容也能重新触发。
+- **ChatRuntimeBridge**：`handleEvent` 处理 `BridgeEvent.Toast` → `store.pushToast()`。
+- **NativeChatScreen**：新增 `RuntimeToastHost`，浮于聊天界面顶部（`Box` 内 `Align.TopCenter`），按类型着色（error=errorContainer / warning=tertiaryContainer / success=secondaryContainer / info=primaryContainer），4 秒自动消失（`LaunchedEffect(seq)+delay`），同时只显示最新一条。
+
+#### A2：文件嵌入到提示词上下文（P2 遗留 ⬜→✅）
+
+无代码改动。ST `appendFileContent()`（`script.js:4424`）在 `Generate()` 期间自动从 `extra.files` 读取文件内容拼入提示词，全程在隐藏 WebView 内完成；v0.9 附件上传已正确写入 `extra.files`。
+
+#### A3：Reasoning/Thinking 展示 ✅
+
+- **ChatBridgeModels**：新增 `ChatMessage.reasoning` 扩展属性（`extra.reasoning`，空白返回 null）。
+- **adapter**：新增 `STREAM_REASONING_DONE` 监听 → `throttledSnapshot()`，流式 reasoning 结束后刷新。
+- **NativeChatScreen**：新增 `ReasoningSection` 可折叠区（`Psychology` 图标 + "思考过程" + 展开箭头，展开区 `surfaceContainerHighest`），渲染于 AI 文本上方，默认折叠。
+
+#### A4：Tool Calls 渲染 ✅
+
+- **ChatBridgeModels**：新增 `ToolInvocation` 数据类 + `ChatMessage.toolInvocations` 解析（`extra.tool_invocations`，`parameters`/`result` 支持对象/数组/字符串）。
+- **NativeChatScreen**：新增 `ToolCallGroup`/`ToolCallCard`（`Build` 图标 + displayName，参数折叠、结果展示、`result` 为空时显示"执行中…" + 进度圈）；系统消息含 `tool_invocations` 时渲染卡片替代 `mes` HTML 文本，且不套用隐藏半透明/「已隐藏」badge（`isToolMessage` 区分）。
+
+#### 单元测试
+
+`ChatBridgeModelsTest` 新增 7 项：reasoning 解析与空值、tool_invocations 对象/字符串参数解析与 displayName 回退、缺省空列表、`runtime.toast` 事件解析。
+
+#### 文件变更汇总
+
+| 文件 | 变更 |
+|---|---|
+| `assets/chat_runtime_adapter.js` | `tryWrapToastr()` + `stripHtml()` + `STREAM_REASONING_DONE` 监听 |
+| `chat/ChatBridgeModels.kt` | `ToolInvocation` 数据类、`reasoning`/`toolInvocations` 扩展属性、`BridgeEvent.Toast` + 解析 |
+| `chat/ChatStore.kt` | `RuntimeToast` + `latestToast` + `pushToast`/`clearToast` |
+| `chat/ChatRuntimeBridge.kt` | `handleEvent` 处理 `BridgeEvent.Toast` |
+| `chat/NativeChatScreen.kt` | `RuntimeToastHost`、`ReasoningSection`、`ToolCallGroup`/`ToolCallCard`、`MessageBubble` 集成 |
+| `test/.../ChatBridgeModelsTest.kt` | reasoning/toolInvocations/toast 解析测试 |
+
+### v0.9 P2 附件/CFG/世界书收口（2026-05-30）
+
+完成 P2 阶段最后三个核心功能：附件上传和展示、CFG Scale 对话框、世界书只读入口。
+
+#### 附件上传和展示 ✅
+
+- **Coil 依赖**：`build.gradle.kts` 新增 `io.coil-kt:coil-compose:2.6.0`
+- **API**：`TavernCoreClient` 新增 `uploadFile(name, base64Data)` / `deleteFile(path)`，POST `/api/files/upload` 和 `/api/files/delete`
+- **Bridge 扩展**：`ChatRuntimeBridge.sendMessage()` 从 `store.pendingAttachments` 取出附件信息，放入 payload `attachments` 数组；JS adapter `normalizePendingAttachments()` 处理注入
+- **ChatStore**：新增 `PendingAttachment` 数据类和 `pendingAttachments` 状态列表
+- **ChatBridgeModels**：新增 `MediaAttachment`、`FileAttachment` 数据类和 `ChatMessage.mediaAttachments` / `.fileAttachments` 扩展属性（从 `extra` JSONObject 解析）
+- **NativeChatScreen UI**：
+  - `AttachSheet`："附件"和"图片"按钮接入 Android 文件选择器（`ActivityResultContracts.GetContent`，`*/*` / `image/*`）
+  - `PendingAttachmentStrip`：输入栏上方显示待发送附件预览（文件名 + 删除按钮）
+  - `MessageBubble` 扩展：媒体附件用 Coil `AsyncImage` 渲染，文件附件用 `MessageFileCard` 卡片样式展示
+- **单元测试**：`ChatBridgeModelsTest` 覆盖 `MediaAttachment` / `FileAttachment` 解析
+
+#### CFG Scale 对话框 ✅
+
+- JS adapter 新增 `cfg.get` / `cfg.set` 命令，读写 `chat_metadata` 中的 `cfg_guidance_scale`、`cfg_negative_prompt`、`cfg_positive_prompt`
+- `buildSnapshot()` metadata 扩展 `cfgScale`、`cfgNegativePrompt`、`cfgPositivePrompt`
+- `ChatStore` 新增对应状态字段，`applySnapshot` 自动同步
+- `ChatRuntimeBridge.setCfg()` 封装 Bridge 命令
+- `CfgScaleDialog`：AlertDialog 含 Slider（1.0-3.0）+ 负面/正面提示词 TextField
+- `ChatHeader` DropdownMenu 新增"CFG 引导"菜单项
+
+#### 世界书入口 ✅
+
+- JS adapter 新增 `worldInfo.get` 命令，返回 `chat_metadata.world_info`
+- `buildSnapshot()` metadata 扩展 `worldInfo` 字段
+- `ChatStore.worldInfoName` 状态字段
+- `WorldInfoSheet`：ModalBottomSheet，通过 API 加载世界书列表 + 当前绑定信息，点击展开查看 entries 概要（只读）
+- `ChatHeader` DropdownMenu 新增"世界书"菜单项
+
+#### 文件变更汇总
+
+| 文件 | 变更类型 | 说明 |
+|---|---|---|
+| `app/build.gradle.kts` | 修改 | 新增 Coil 依赖 |
+| `app/.../api/TavernCoreApi.kt` | 修改 | 新增 `uploadFile()`, `deleteFile()` |
+| `app/.../chat/ChatBridgeModels.kt` | 修改 | 新增 `MediaAttachment`, `FileAttachment` 数据类和解析扩展 |
+| `app/.../chat/ChatStore.kt` | 修改 | 新增 `PendingAttachment`, `pendingAttachments`, CFG 字段, `worldInfoName` |
+| `app/.../chat/ChatRuntimeBridge.kt` | 修改 | `sendMessage` 扩展携带附件, 新增 `setCfg()` |
+| `app/.../chat/NativeChatScreen.kt` | 修改 | `AttachSheet` 接入文件选择器, `PendingAttachmentStrip`, `MessageBubble` 附件渲染, `CfgScaleDialog`, `WorldInfoSheet` |
+| `app/.../assets/chat_runtime_adapter.js` | 修改 | `handleSend` 附件注入, `cfg.get/set`, `worldInfo.get`, snapshot metadata 扩展 |
+| `test/.../ChatBridgeModelsTest.kt` | 修改 | 新增 `MediaAttachment` / `FileAttachment` 解析测试 |
 
 ### v0.8 文档收口（2026-05-29）
 
@@ -881,9 +1055,9 @@ UI 增强：
 
 入口：群聊模式下 ChatHeader "历史对话"菜单项自动路由到内联 sheet（非 PastChatsScreen）。
 
-#### C3: 附件上传和展示 🔜
+#### C3: 附件上传和展示 ✅
 
-待后续实现：需接入 Android 文件选择器 + ST 上传 API + 消息内嵌展示。AttachSheet 按钮目前仍显示"暂未接入"提示。
+已在 v0.9 完成，详见 v0.9 段落。
 
 #### C4: Author's Note 基础接入 ✅
 
@@ -892,7 +1066,7 @@ UI 增强：
 - `ChatStore.authorsNote` 状态字段，通过 snapshot 自动同步
 - `AuthorsNoteDialog`：AlertDialog 显示说明文本 + 多行 OutlinedTextField，保存后通过 Bridge `authorsNote.set` → `ctx.saveChat()` 写回
 - AttachSheet "作者注"按钮连接到 `AuthorsNoteDialog`
-- CFG 和世界书待后续阶段
+- CFG 和世界书已在 v0.9 落地（`CfgScaleDialog` + `WorldInfoSheet`）
 
 #### C5: Slash commands ✅
 
@@ -1193,16 +1367,21 @@ Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 
 1. ~~群聊消息发送和停止（NativeChatScreen 内验证）~~ ✅ 群聊 send/stop 复用相同 Bridge 通道，regenerate 分流 `regenerateGroup()`，ChatHeader 增加群聊模式标识和群头像
 2. ~~群聊历史聊天切换~~ ✅ `GroupChatHistorySheet` 内联 bottom sheet，通过 API 加载群聊列表，`bridge.openGroup(groupId, chatId)` 切换
-3. 附件上传和展示 — 🔜 待接入文件选择器和 ST 上传 API
-4. ~~Author's Note 基础接入~~ ✅ adapter `authorsNote.get/set` 命令 + `AuthorsNoteDialog` + snapshot 同步；CFG 和世界书待后续
+3. ~~附件上传和展示~~ ✅ Coil `AsyncImage` + `MessageFileCard` + `PendingAttachmentStrip` + `TavernCoreClient.uploadFile()` + JS adapter 附件注入
+4. ~~Author's Note、CFG、世界书基础接入~~ ✅ Author's Note `authorsNote.get/set` + `AuthorsNoteDialog`；CFG `cfg.get/set` + `CfgScaleDialog`；世界书 `worldInfo.get` + `WorldInfoSheet`（只读）；全部通过 snapshot metadata 同步
 5. Slash commands 结果和错误展示 🔶 斜杠命令通过 `handleSend` 自然工作，正常结果以消息形式展示；运行时 toastr 通知暂不可捕获
 6. ~~消息隐藏/取消隐藏~~ ✅ adapter `message.hide/unhide` 通过 `hideChatMessageRange()` 切换 `is_system` + Kotlin 端用 `isSystem` 标识 + action sheet 切换 + 气泡半透明
 
 #### 阶段 D：P3 高级能力
 
+- **阶段 A（v0.10）✅**：toastr 通知捕获、Reasoning 展示、Tool Calls 渲染。
+- **阶段 B（v0.11）✅**：Quick Replies、Checkpoint/Branch、扩展列表（最小化通道）。
+- **阶段 C（v0.12）✅**：itemized prompts、Data Bank（聊天内 sheet）。logprobs ⛔ 阻塞（ST 未导出 state）。
+- **TTS、翻译、生图**：后续专项处理。
+
 按 §11 P3 列表推进，优先级根据用户需求动态调整。
 
-## 16. v0.3 审查变更记录（历史）
+###  v0.3 审查变更记录（历史）
 
 v0.3 基于对 SillyTavern 源码的逐行审查，修正和补充了以下内容：
 

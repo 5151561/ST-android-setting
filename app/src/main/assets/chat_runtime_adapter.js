@@ -265,8 +265,54 @@
       });
     }
 
+    // Reasoning/thinking finished streaming → refresh snapshot so the
+    // native UI picks up extra.reasoning on the last message.
+    if (ev.STREAM_REASONING_DONE) {
+      es.on(ev.STREAM_REASONING_DONE, function () {
+        throttledSnapshot();
+      });
+    }
+
+    tryWrapToastr();
     eventsBound = true;
     return true;
+  }
+
+  // Forward ST toastr notifications (slash command errors, API warnings,
+  // extension messages) to the native UI. toastr.subscribe only reports
+  // visibility changes without the type, so we wrap the 4 level methods.
+  var toastrWrapped = false;
+  function stripHtml(value) {
+    var text = String(value == null ? '' : value);
+    if (text.indexOf('<') < 0) return text;
+    try {
+      var div = document.createElement('div');
+      div.innerHTML = text;
+      return (div.textContent || div.innerText || '').trim();
+    } catch (_) {
+      return text;
+    }
+  }
+  function tryWrapToastr() {
+    if (toastrWrapped) return;
+    var toastr = window.toastr;
+    if (!toastr || typeof toastr.error !== 'function') return;
+    ['error', 'warning', 'info', 'success'].forEach(function (type) {
+      var original = toastr[type];
+      if (typeof original !== 'function') return;
+      toastr[type] = function (message, title) {
+        var result = original.apply(toastr, arguments);
+        try {
+          postEvent('runtime.toast', {
+            type: type,
+            title: stripHtml(title),
+            message: stripHtml(message)
+          });
+        } catch (_) { /* best-effort */ }
+        return result;
+      };
+    });
+    toastrWrapped = true;
   }
 
   async function safeSave() {
@@ -394,6 +440,38 @@
 
           case 'worldInfo.get':
             handleGetWorldInfo(cmdId);
+            break;
+
+          case 'quickReply.list':
+            handleListQuickReplies(cmdId);
+            break;
+
+          case 'quickReply.execute':
+            handleExecuteQuickReply(payload, cmdId);
+            break;
+
+          case 'chat.createCheckpoint':
+            handleCreateCheckpoint(payload, cmdId);
+            break;
+
+          case 'chat.createBranch':
+            handleCreateBranch(payload, cmdId);
+            break;
+
+          case 'chat.openCheckpoint':
+            handleOpenCheckpoint(payload, cmdId);
+            break;
+
+          case 'extensions.list':
+            handleListExtensions(cmdId);
+            break;
+
+          case 'itemizedPrompt.get':
+            handleGetItemizedPrompt(payload, cmdId);
+            break;
+
+          case 'dataBank.list':
+            handleListDataBank(cmdId);
             break;
 
           default:
@@ -870,6 +948,258 @@
     if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
     var metadata = ctx.chatMetadata || {};
     postResult(cmdId, { name: metadata.world_info || '' });
+  }
+
+  // --- Quick Replies (B1) ---
+  // window.quickReplyApi is exposed by the Quick Reply v2 extension.
+  // The visible buttons come from settings.config/chatConfig/charConfig setList
+  // links where isVisible is true (matches ButtonUi.renderBar).
+  function handleListQuickReplies(cmdId) {
+    var api = globalThis.quickReplyApi;
+    if (!api || !api.settings) {
+      // Extension not loaded → empty list, not an error.
+      postResult(cmdId, { items: [] });
+      return;
+    }
+    try {
+      var settings = api.settings;
+      var links = []
+        .concat(settings.config && settings.config.setList ? settings.config.setList : [])
+        .concat(settings.chatConfig && settings.chatConfig.setList ? settings.chatConfig.setList : [])
+        .concat(settings.charConfig && settings.charConfig.setList ? settings.charConfig.setList : []);
+      var items = [];
+      links.forEach(function (link) {
+        if (!link || !link.isVisible || !link.set) return;
+        var set = link.set;
+        if (set.isDeleted) return;
+        var setName = set.name || '';
+        (set.qrList || []).forEach(function (qr) {
+          if (!qr || qr.isHidden) return;
+          items.push({
+            setName: setName,
+            label: qr.label || '',
+            icon: qr.icon || '',
+            message: qr.message || ''
+          });
+        });
+      });
+      postResult(cmdId, { items: items });
+    } catch (err) {
+      postResult(cmdId, { items: [] });
+    }
+  }
+
+  function handleExecuteQuickReply(payload, cmdId) {
+    var api = globalThis.quickReplyApi;
+    var setName = payload && payload.setName ? String(payload.setName) : '';
+    var label = payload && payload.label ? String(payload.label) : '';
+    if (!label) { postError(cmdId, 'Quick reply label missing'); return; }
+    try {
+      var promise;
+      if (api && typeof api.executeQuickReply === 'function' && setName) {
+        promise = api.executeQuickReply(setName, label);
+      } else if (typeof globalThis.executeQuickReplyByName === 'function') {
+        promise = globalThis.executeQuickReplyByName(setName ? (setName + '.' + label) : label);
+      } else {
+        postError(cmdId, 'Quick reply runtime not available');
+        return;
+      }
+      watchGenerationState();
+      Promise.resolve(promise).then(function () {
+        postResult(cmdId, {});
+        setTimeout(postSnapshot, 300);
+      }).catch(function (err) {
+        postError(cmdId, 'quickReply failed: ' + (err && err.message ? err.message : err));
+      });
+    } catch (err) {
+      postError(cmdId, 'quickReply failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  // --- Checkpoint / Branch (B2) ---
+  // createNewBookmark(mesId, {forceName}) writes extra.bookmark_link and does
+  // NOT navigate. branchChat(mesId) auto-names, writes extra.branches, and
+  // navigates to the new chat.
+  async function handleCreateCheckpoint(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+      var chat = ctx.chat || [];
+      var messageId = Number(payload.id);
+      if (messageId < 0 || messageId >= chat.length) {
+        postError(cmdId, 'Invalid message index: ' + messageId);
+        return;
+      }
+      var bookmarks = await import('./scripts/bookmarks.js');
+      if (typeof bookmarks.createNewBookmark !== 'function') {
+        postError(cmdId, 'createNewBookmark not available');
+        return;
+      }
+      var name = payload.name ? String(payload.name) : null;
+      var created = await bookmarks.createNewBookmark(messageId, { forceName: name });
+      if (!created) {
+        postError(cmdId, 'Checkpoint not created');
+        return;
+      }
+      postSnapshot();
+      postResult(cmdId, { name: created });
+    } catch (err) {
+      postError(cmdId, 'createCheckpoint failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  async function handleCreateBranch(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+      var chat = ctx.chat || [];
+      var messageId = Number(payload.id);
+      if (messageId < 0 || messageId >= chat.length) {
+        postError(cmdId, 'Invalid message index: ' + messageId);
+        return;
+      }
+      var bookmarks = await import('./scripts/bookmarks.js');
+      if (typeof bookmarks.branchChat !== 'function') {
+        postError(cmdId, 'branchChat not available');
+        return;
+      }
+      // branchChat auto-navigates to the new branch chat.
+      var created = await bookmarks.branchChat(messageId);
+      if (!created) {
+        postError(cmdId, 'Branch not created');
+        return;
+      }
+      postSnapshot();
+      postResult(cmdId, { name: created });
+    } catch (err) {
+      postError(cmdId, 'createBranch failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  async function handleOpenCheckpoint(payload, cmdId) {
+    try {
+      var ctx = getContext();
+      if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
+      var name = payload && payload.name ? String(payload.name).replace(/\.jsonl$/i, '') : '';
+      if (!name) { postError(cmdId, 'Checkpoint name missing'); return; }
+      if (ctx.groupId && typeof ctx.openGroupChat === 'function') {
+        await ctx.openGroupChat(ctx.groupId, name);
+      } else if (typeof ctx.openCharacterChat === 'function') {
+        await ctx.openCharacterChat(name);
+      } else {
+        postError(cmdId, 'open chat runtime not available');
+        return;
+      }
+      postSnapshot();
+      postResult(cmdId, {});
+    } catch (err) {
+      postError(cmdId, 'openCheckpoint failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  // --- Extensions (B3) ---
+  async function handleListExtensions(cmdId) {
+    try {
+      var mod = await import('./scripts/extensions.js');
+      var names = Array.isArray(mod.extensionNames) ? mod.extensionNames.slice() : [];
+      postResult(cmdId, { names: names });
+    } catch (err) {
+      postResult(cmdId, { names: [] });
+    }
+  }
+
+  // --- Itemized Prompts (C2) ---
+  // itemizedPrompts is module-internal to script.js; the public copy lives on
+  // window via getContext()? No — it is exported from itemized-prompts.js but
+  // the populated array is the one in script.js. The exported itemizedParams()
+  // takes the array as an argument, so we read the live array from script.js.
+  async function handleGetItemizedPrompt(payload, cmdId) {
+    try {
+      var messageId = Number(payload.id);
+      var scriptModule = await import('./script.js');
+      var itemizedModule = await import('./scripts/itemized-prompts.js');
+      var list = scriptModule.itemizedPrompts || itemizedModule.itemizedPrompts || [];
+      if (!Array.isArray(list) || list.length === 0) {
+        postResult(cmdId, { available: false });
+        return;
+      }
+      var setIndex = itemizedModule.findItemizedPromptSet(list, messageId);
+      if (setIndex === undefined || setIndex === null) {
+        postResult(cmdId, { available: false });
+        return;
+      }
+      var params = await itemizedModule.itemizedParams(list, setIndex, messageId);
+      // Build a normalized component list (name + token count). Field set
+      // differs between OAI and non-OAI; we surface the common components and
+      // the computed total.
+      var isOai = params.this_main_api === 'openai';
+      var total = isOai
+        ? Number(params.finalPromptTokens) || 0
+        : Number(params.totalTokensInPrompt) || 0;
+      var components = [];
+      function add(label, value) {
+        var n = Number(value) || 0;
+        if (n > 0) components.push({ name: label, tokens: n });
+      }
+      add('角色描述', params.charDescriptionTokens);
+      add('角色性格', params.charPersonalityTokens);
+      add('场景', params.scenarioTextTokens);
+      add('用户人设', params.userPersonaStringTokens);
+      add('世界书', params.worldInfoStringTokens);
+      add('作者注', params.allAnchorsTokens);
+      add('聊天历史', params.ActualChatHistoryTokens);
+      if (isOai) {
+        add('系统提示', params.oaiSystemTokens);
+        add('示例对话', params.examplesStringTokens);
+        add('偏置', params.oaiBiasTokens);
+      } else {
+        add('故事串', params.storyStringTokens);
+        add('示例对话', params.examplesStringTokens);
+        add('指令', params.instructionTokens);
+        add('提示偏置', params.promptBiasTokens);
+      }
+      postResult(cmdId, {
+        available: true,
+        mesId: messageId,
+        total: total,
+        components: components,
+        presetName: params.presetName || '',
+        modelUsed: params.modelUsed || '',
+        apiUsed: params.apiUsed || params.mainApiFriendlyName || '',
+        tokenizer: params.selectedTokenizer || ''
+      });
+    } catch (err) {
+      postError(cmdId, 'itemizedPrompt failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  // --- Data Bank (C3) ---
+  async function handleListDataBank(cmdId) {
+    try {
+      var chatsModule = await import('./scripts/chats.js');
+      if (typeof chatsModule.getDataBankAttachmentsForSource !== 'function') {
+        postResult(cmdId, { global: [], character: [], chat: [] });
+        return;
+      }
+      function mapList(source) {
+        var list = chatsModule.getDataBankAttachmentsForSource(source, false) || [];
+        return list.map(function (a) {
+          return {
+            url: a && a.url ? String(a.url) : '',
+            name: a && a.name ? String(a.name) : '',
+            size: a && a.size != null ? Number(a.size) || 0 : 0,
+            created: a && a.created != null ? Number(a.created) || 0 : 0
+          };
+        });
+      }
+      postResult(cmdId, {
+        global: mapList('global'),
+        character: mapList('character'),
+        chat: mapList('chat')
+      });
+    } catch (err) {
+      postResult(cmdId, { global: [], character: [], chat: [] });
+    }
   }
 
   // --- Initialization ---

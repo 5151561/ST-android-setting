@@ -133,6 +133,7 @@ import io.github.sanitised.st.api.ConnectionProfile
 import io.github.sanitised.st.api.PersonaProfile
 import io.github.sanitised.st.api.SecretProviderState
 import io.github.sanitised.st.api.SettingsSnapshot
+import io.github.sanitised.st.api.ConnectionTestResult
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoSummary
@@ -2093,7 +2094,10 @@ fun PrototypeProviderDetailScreen(
     var modelsList by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectedModel by remember { mutableStateOf("") }
     var isLoadingModels by remember { mutableStateOf(false) }
-    
+
+    var verifyStatus by remember { mutableStateOf(ConnectionVerifyStatus.NOT_VERIFIED) }
+    var verifyErrorMessage by remember { mutableStateOf<String?>(null) }
+
     var temp by remember { mutableStateOf(1.0f) }
     var contextSize by remember { mutableStateOf(4096f) }
     
@@ -2258,23 +2262,43 @@ fun PrototypeProviderDetailScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     ) {
                         val configured = providerState?.hasConfiguredSecret == true
-                        val statusText = when {
-                            !running -> "服务未启动"
-                            configured -> "密钥已配置，尚未验证"
-                            else -> "未配置密钥"
+                        val statusText = when (verifyStatus) {
+                            ConnectionVerifyStatus.SUCCESS -> "连接成功"
+                            ConnectionVerifyStatus.FAILED -> verifyErrorMessage ?: "连接失败"
+                            ConnectionVerifyStatus.TESTING -> "正在测试连接…"
+                            ConnectionVerifyStatus.NOT_VERIFIED -> when {
+                                !running -> "服务未启动"
+                                configured -> "密钥已配置，尚未验证"
+                                else -> "未配置密钥"
+                            }
                         }
-                        val statusOk = running && configured
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .background(if (statusOk) STThemeTertiary else STThemeError, CircleShape)
-                        )
+                        val statusColor = when (verifyStatus) {
+                            ConnectionVerifyStatus.SUCCESS -> STThemeTertiary
+                            ConnectionVerifyStatus.FAILED -> STThemeError
+                            ConnectionVerifyStatus.TESTING -> STThemePrimary
+                            ConnectionVerifyStatus.NOT_VERIFIED -> if (running && configured) Color(0xFFFF9800) else STThemeError
+                        }
+                        if (verifyStatus == ConnectionVerifyStatus.TESTING) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(8.dp),
+                                strokeWidth = 1.5.dp,
+                                color = STThemePrimary
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(statusColor, CircleShape)
+                            )
+                        }
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = statusText,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (statusOk) STThemeTertiary else STThemeError
+                            color = statusColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -2307,9 +2331,86 @@ fun PrototypeProviderDetailScreen(
                     }
                 }
             )
-            
+
+            val canTest = running && (apiKey.isNotBlank() || !providerDefinition.requiresSecret)
+            val isTesting = verifyStatus == ConnectionVerifyStatus.TESTING
+            Button(
+                onClick = {
+                    scope.launch {
+                        verifyStatus = ConnectionVerifyStatus.TESTING
+                        verifyErrorMessage = null
+                        runCatching {
+                            val client = TavernCoreClient(baseUrl)
+                            if (apiKey != initialApiKey && providerDefinition.secretKeys.isNotEmpty() && apiKey.isNotBlank()) {
+                                client.writeSecret(providerDefinition.secretKeys.first(), apiKey, "默认密钥")
+                                initialApiKey = apiKey
+                            }
+                            client.testConnection(providerId)
+                        }.onSuccess { result ->
+                            if (result.success) {
+                                verifyStatus = ConnectionVerifyStatus.SUCCESS
+                                modelsList = result.models
+                                if (result.models.isNotEmpty() && selectedModel.isBlank()) {
+                                    selectedModel = result.models.first()
+                                }
+                                onShowMessage("连接成功，找到 ${result.models.size} 个模型")
+                            } else {
+                                verifyStatus = ConnectionVerifyStatus.FAILED
+                                verifyErrorMessage = result.errorMessage ?: "连接失败"
+                            }
+                        }.onFailure { e ->
+                            verifyStatus = ConnectionVerifyStatus.FAILED
+                            verifyErrorMessage = e.message?.take(80) ?: "连接失败"
+                        }
+                    }
+                },
+                enabled = canTest && !isTesting,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = STThemePrimary,
+                    disabledContainerColor = STThemePrimary.copy(alpha = 0.3f)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .height(48.dp)
+            ) {
+                if (isTesting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("正在连接…", color = Color.White)
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Cable,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = when {
+                            !running -> "服务未启动"
+                            apiKey.isBlank() && providerDefinition.requiresSecret -> "请先填写密钥"
+                            else -> "测试连接"
+                        }
+                    )
+                }
+            }
+
+            if (verifyStatus == ConnectionVerifyStatus.FAILED && verifyErrorMessage != null) {
+                Text(
+                    text = verifyErrorMessage!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = STThemeError,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
             HorizontalDivider(color = Color(0x0DFFFFFF), modifier = Modifier.padding(vertical = 12.dp))
-            
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
