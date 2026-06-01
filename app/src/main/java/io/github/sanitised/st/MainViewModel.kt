@@ -75,6 +75,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val secondConfirmation: MutableState<Boolean> = updateManager.secondConfirmation
     val swipeDrawer: MutableState<Boolean> = updateManager.swipeDrawer
     val developerMode: MutableState<Boolean> = updateManager.developerMode
+    val nativeGeneration: MutableState<Boolean> = updateManager.nativeGeneration
     val fontSize: MutableState<Float> = updateManager.fontSize
     val reduceMotion: MutableState<Boolean> = updateManager.reduceMotion
     val autoCheckForUpdates: MutableState<Boolean> = updateManager.autoCheckForUpdates
@@ -283,6 +284,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setDeveloperMode(enabled: Boolean) {
         updateManager.setDeveloperMode(enabled)
+    }
+
+    fun setNativeGeneration(enabled: Boolean) {
+        updateManager.setNativeGeneration(enabled)
     }
 
     fun setFontSize(size: Float) {

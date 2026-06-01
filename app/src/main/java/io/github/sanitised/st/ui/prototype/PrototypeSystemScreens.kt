@@ -352,6 +352,7 @@ fun PrototypeAISettingsScreen(
     baseUrl: String,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit,
+    onSettingsChanged: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -438,6 +439,7 @@ fun PrototypeAISettingsScreen(
                         updated["oai_settings"] = oai
                         TavernCoreClient(baseUrl).saveSettings(updated)
                         settings = updated
+                        onSettingsChanged()
                         onShowMessage("采样参数已保存至后端")
                     }.onFailure { onShowMessage("保存失败：${it.message}") }
                 }
@@ -503,7 +505,8 @@ fun PrototypeApiConnectionScreen(
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
     onOpenSecrets: (() -> Unit)? = null,
-    onOpenProviderDetail: (String) -> Unit = {}
+    onOpenProviderDetail: (String) -> Unit = {},
+    onSettingsChanged: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     var profiles by remember { mutableStateOf<List<ConnectionProfile>>(emptyList()) }
@@ -614,6 +617,7 @@ fun PrototypeApiConnectionScreen(
                                 )
                                 client.saveSettings(updated)
                                 settings = updated
+                                onSettingsChanged()
                                 onShowMessage("已切换至 ${firstProvider.label}")
                             }.onFailure {
                                 onShowMessage("模式切换失败：${it.message}")
@@ -682,6 +686,7 @@ fun PrototypeApiConnectionScreen(
                                 )
                                 client.saveSettings(updated)
                                 settings = updated
+                                onSettingsChanged()
                                 onShowMessage("已切换 API 提供商为 ${provider.label}")
                             }.onFailure {
                                 onShowMessage("切换失败：${it.message}")
@@ -781,6 +786,8 @@ fun PrototypeMeScreen(
     onSwipeDrawerChanged: (Boolean) -> Unit,
     developerMode: Boolean,
     onDeveloperModeChanged: (Boolean) -> Unit,
+    nativeGeneration: Boolean,
+    onNativeGenerationChanged: (Boolean) -> Unit,
     onOpenWorldInfo: () -> Unit,
     onOpenPersona: () -> Unit,
     onOpenPresets: () -> Unit,
@@ -916,6 +923,7 @@ fun PrototypeMeScreen(
         PrototypeSectionHeader("实验性")
         PrototypeSettingsGroup {
             PrototypeSwitchRow("开发者模式", "显示 token 计数与请求 JSON", developerMode, onDeveloperModeChanged)
+            PrototypeSwitchRow("原生生成（实验）", "直接由原生组装提示词并调用后端生成，不经 WebView", nativeGeneration, onNativeGenerationChanged)
         }
         // ── 关于 ──
         PrototypeSectionHeader("关于")
@@ -2081,6 +2089,7 @@ fun PrototypeProviderDetailScreen(
     providerId: String,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit,
+    onSettingsChanged: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -2234,6 +2243,7 @@ fun PrototypeProviderDetailScreen(
                                 client.writeSecret(providerDefinition.secretKeys.first(), apiKey, "默认密钥")
                             }
 
+                            onSettingsChanged()
                             onShowMessage("配置已成功保存！")
                             onBack()
                         }.onFailure {

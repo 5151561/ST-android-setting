@@ -69,15 +69,72 @@
       identifiersMatch(target, character.name);
   }
 
-  function getGenerationContext(cmdId) {
+  // Maps the active main_api to SillyTavern's connect button. Clicking the
+  // button is exactly what ST's own auto-connect does, so it is the most
+  // version-stable way to drive online_status from no_connection to connected.
+  function getConnectButtonId(ctx) {
+    switch ((ctx && ctx.mainApi) || '') {
+      case 'openai': return 'api_button_openai';
+      case 'textgenerationwebui': return 'api_button_textgenerationwebui';
+      case 'novel': return 'api_button_novel';
+      case 'kobold': return 'api_button';
+      default: return null;
+    }
+  }
+
+  function triggerApiConnect(ctx) {
+    ctx = ctx || getContext();
+    var btnId = getConnectButtonId(ctx);
+    if (btnId) {
+      var btn = document.getElementById(btnId);
+      if (btn) { btn.click(); return true; }
+    }
+    return false;
+  }
+
+  // Polls online_status until it leaves 'no_connection' or the deadline passes.
+  // getContext() rebuilds its object each call, so onlineStatus is always live.
+  function waitForConnection(timeoutMs) {
+    var deadline = Date.now() + (timeoutMs || 15000);
+    return new Promise(function (resolve) {
+      (function poll() {
+        var ctx = getContext();
+        if (ctx && ctx.onlineStatus && ctx.onlineStatus !== 'no_connection') {
+          resolve(true);
+          return;
+        }
+        if (Date.now() > deadline) { resolve(false); return; }
+        setTimeout(poll, 250);
+      })();
+    });
+  }
+
+  async function ensureConnected(timeoutMs) {
+    var ctx = getContext();
+    if (!ctx) return false;
+    if (ctx.onlineStatus && ctx.onlineStatus !== 'no_connection') return true;
+    if (!triggerApiConnect(ctx)) return false;
+    return await waitForConnection(timeoutMs);
+  }
+
+  // Used by the generation entry points. When the runtime frontend is not yet
+  // connected to a model API, attempt a connect (the native side has already
+  // saved the API config + secret to disk) before giving up.
+  async function ensureGenerationContext(cmdId) {
     var ctx = getContext();
     if (!ctx) {
       postError(cmdId, 'Runtime not ready');
       return null;
     }
     if (ctx.onlineStatus === 'no_connection') {
-      postError(cmdId, 'SillyTavern 还没有连接模型 API');
-      return null;
+      // Kept under the native chat.send command timeout (15s) so a slow connect
+      // does not surface a spurious "发送消息 超时" before the send resolves.
+      var connected = await ensureConnected(12000);
+      if (!connected) {
+        postError(cmdId, 'SillyTavern 还没有连接模型 API');
+        return null;
+      }
+      ctx = getContext();
     }
     return ctx;
   }
@@ -366,6 +423,14 @@
             handleSave(cmdId);
             break;
 
+          case 'runtime.connect':
+            handleConnect(cmdId, !!payload.auto);
+            break;
+
+          case 'runtime.reloadSettings':
+            handleReloadSettings(cmdId);
+            break;
+
           case 'chat.openCharacter':
             handleOpenCharacter(payload, cmdId);
             break;
@@ -487,6 +552,65 @@
     }
   };
 
+  // auto=true is a best-effort proactive connect (e.g. on chat entry): failures
+  // resolve quietly so an unconfigured API does not spam the native UI. auto=false
+  // is an explicit user retry and reports failures as command errors.
+  async function handleConnect(cmdId, auto) {
+    var ctx = getContext();
+    if (!ctx) {
+      auto ? postResult(cmdId, { connected: false }) : postError(cmdId, 'Runtime not ready');
+      return;
+    }
+    if (ctx.onlineStatus && ctx.onlineStatus !== 'no_connection') {
+      postResult(cmdId, { connected: true, status: ctx.onlineStatus });
+      return;
+    }
+    if (!triggerApiConnect(ctx)) {
+      auto
+        ? postResult(cmdId, { connected: false })
+        : postError(cmdId, '找不到可用的连接入口（main_api=' + (ctx.mainApi || '') + '）');
+      return;
+    }
+    var ok = await waitForConnection(20000);
+    var now = getContext();
+    if (ok) {
+      postResult(cmdId, { connected: true, status: now ? now.onlineStatus : '' });
+    } else if (auto) {
+      postResult(cmdId, { connected: false, status: now ? now.onlineStatus : '' });
+    } else {
+      postError(cmdId, '连接 API 超时，请检查密钥与网络');
+    }
+    postSnapshot();
+  }
+
+  // Re-reads settings from disk into the running frontend's memory. The native
+  // settings UI only writes settings.json; without this the persistent runtime
+  // keeps stale in-memory oai_settings (wrong model -> quota/limit errors). For
+  // Chat Completion the model is read from oai_settings at request time, so a
+  // settings reload alone fixes model selection; we only (re)connect when the
+  // frontend is not connected yet to avoid spamming provider status checks.
+  async function handleReloadSettings(cmdId) {
+    try {
+      var scriptModule = await import('./script.js');
+      if (typeof scriptModule.getSettings !== 'function') {
+        postError(cmdId, 'getSettings not available');
+        return;
+      }
+      await scriptModule.getSettings();
+      var ctx = getContext();
+      var connected = !!(ctx && ctx.onlineStatus && ctx.onlineStatus !== 'no_connection');
+      if (!connected && ctx) {
+        if (triggerApiConnect(ctx)) {
+          connected = await waitForConnection(20000);
+        }
+      }
+      postSnapshot();
+      postResult(cmdId, { connected: connected, status: (getContext() || {}).onlineStatus || '' });
+    } catch (err) {
+      postError(cmdId, 'reloadSettings failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
   async function handleSave(cmdId) {
     var saved = await safeSave();
     if (saved) {
@@ -580,11 +704,11 @@
     }
   }
 
-  function handleSend(payload, cmdId) {
+  async function handleSend(payload, cmdId) {
     var text = payload.text || '';
     if (!text.trim()) { postError(cmdId, 'Empty message'); return; }
     if (isRuntimeGenerating()) { postError(cmdId, 'Generation is already running'); return; }
-    if (!getGenerationContext(cmdId)) return;
+    if (!await ensureGenerationContext(cmdId)) return;
 
     var textarea = document.getElementById('send_textarea');
     var sendBtn = document.getElementById('send_but');
@@ -650,7 +774,7 @@
   }
 
   async function handleRegenerate(cmdId) {
-    var ctx = getGenerationContext(cmdId);
+    var ctx = await ensureGenerationContext(cmdId);
     if (!ctx) return;
 
     // In group mode, ST uses regenerateGroup() which deletes the current
@@ -686,8 +810,8 @@
     }
   }
 
-  function handleContinue(cmdId) {
-    var ctx = getGenerationContext(cmdId);
+  async function handleContinue(cmdId) {
+    var ctx = await ensureGenerationContext(cmdId);
     if (ctx && typeof ctx.generate === 'function') {
       watchGenerationState();
       Promise.resolve(ctx.generate('continue')).then(function () {

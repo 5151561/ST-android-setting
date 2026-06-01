@@ -127,7 +127,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
-import io.github.sanitised.st.ThemeMode
+import io.github.sanitised.st.chat.engine.ChatEngine
 import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
@@ -135,7 +135,6 @@ import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.prototype.PrototypeAssistPill
 import io.github.sanitised.st.ui.prototype.PrototypeAvatar
 import io.github.sanitised.st.ui.prototype.PrototypeGroupAvatar
-import io.github.sanitised.st.ui.webview.ChatWebViewScreen
 import io.github.sanitised.st.ui.webview.WebViewTarget
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -148,14 +147,14 @@ import kotlinx.coroutines.withContext
 fun NativeChatScreen(
     status: NodeStatus,
     target: WebViewTarget,
-    themeMode: ThemeMode,
     store: ChatStore,
     bridge: ChatRuntimeBridge,
-    onStartService: () -> Unit,
-    onShowLogs: () -> Unit,
+    engine: ChatEngine,
     onBackToHome: () -> Unit,
     onOpenPastChats: (() -> Unit)? = null,
     onShowMessage: (String) -> Unit,
+    settingsDirty: Boolean = false,
+    onSettingsConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -199,9 +198,23 @@ fun NativeChatScreen(
         }
     }
 
+    // When the native settings UI changed the API/model, the persistent runtime still
+    // holds stale in-memory settings. Reload settings.json (+ reconnect) once the
+    // runtime is ready, before opening/refreshing the chat.
+    LaunchedEffect(store.runtimeState, settingsDirty) {
+        if (settingsDirty && store.runtimeState == RuntimeState.READY) {
+            bridge.reloadSettings()
+            onSettingsConsumed()
+        }
+    }
+
     val readyTargetKey = if (store.runtimeState == RuntimeState.READY) readyTargetCommandKey(target) else null
     LaunchedEffect(readyTargetKey) {
         if (readyTargetKey == null) return@LaunchedEffect
+        // The runtime WebView is persistent (hosted above the NavHost), so runtime.ready
+        // fires only once. Re-trigger a best-effort connect on chat entry so an API that
+        // was configured after the runtime first loaded still gets connected.
+        bridge.connect(auto = true)
         when (target) {
             WebViewTarget.CHAT -> bridge.requestSnapshot()
             is WebViewTarget.CharacterChat -> bridge.openCharacter(target.avatar, target.chatFile)
@@ -219,23 +232,9 @@ fun NativeChatScreen(
     val isGroupMode = store.mode == "group"
 
     Box(modifier = modifier.fillMaxSize()) {
-        ChatWebViewScreen(
-            status = status,
-            target = target,
-            themeMode = themeMode,
-            onStartService = onStartService,
-            onShowLogs = onShowLogs,
-            onBackToHome = onBackToHome,
-            chatEventHandler = { json -> bridge.onEvent(json) },
-            onWebViewReady = { wv -> bridge.attach(wv) },
-            onWebViewDisposed = { wv -> bridge.detach(wv) },
-            onRuntimeReset = { bridge.markRuntimeLoading() },
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .size(1.dp)
-                .alpha(0.01f)
-        )
-
+        // The runtime WebView is hosted persistently in MainActivity (outside the
+        // NavHost) so it survives tab navigation and is not reloaded on every chat
+        // entry. This screen is now pure native UI driven by ChatStore.
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -294,8 +293,8 @@ fun NativeChatScreen(
                         onEditTextChange = { editText = it },
                         onSwipePrevious = { messageId -> bridge.swipePrevious(messageId) },
                         onSwipeNext = { messageId -> bridge.swipeNext(messageId) },
-                        onRegenerate = { bridge.regenerate() },
-                        onContinue = { bridge.continueGeneration() },
+                        onRegenerate = { engine.regenerate() },
+                        onContinue = { engine.continueGeneration() },
                         onLongPress = { message -> selectedMessage = message },
                         onSaveEdit = { messageId ->
                             bridge.editMessage(messageId, editText)
@@ -315,8 +314,8 @@ fun NativeChatScreen(
             if (editingMessageId < 0) {
                 ChatQuickStrip(
                     runtimeReady = readyForTarget,
-                    onContinue = { bridge.continueGeneration() },
-                    onRegenerate = { bridge.regenerate() },
+                    onContinue = { engine.continueGeneration() },
+                    onRegenerate = { engine.regenerate() },
                     onUnavailableAction = { label -> onShowMessage("$label 功能暂未接入原生聊天运行时") }
                 )
                 QuickReplyStrip(
@@ -330,8 +329,8 @@ fun NativeChatScreen(
                 isGenerating = store.isGenerating,
                 runtimeReady = readyForTarget,
                 pendingAttachments = store.pendingAttachments,
-                onSend = { text -> bridge.sendMessage(text) },
-                onStop = { bridge.stopGeneration() },
+                onSend = { text -> engine.send(text) },
+                onStop = { engine.stop() },
                 onVoiceInput = { onShowMessage("语音输入暂未接入") },
                 onRemovePendingAttachment = { attachment -> store.removePendingAttachment(attachment) },
                 onAttachmentAction = { label ->
@@ -371,7 +370,7 @@ fun NativeChatScreen(
                 selectedMessage = null
             },
             onRegenerate = {
-                bridge.regenerate()
+                engine.regenerate()
                 selectedMessage = null
             },
             onHideToggle = {

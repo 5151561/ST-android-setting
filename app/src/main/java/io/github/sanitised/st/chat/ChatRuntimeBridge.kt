@@ -51,6 +51,7 @@ class ChatRuntimeBridge(
             is BridgeEvent.RuntimeReady -> {
                 store.markRuntimeReady()
                 requestSnapshot()
+                connect(auto = true)
                 loadQuickReplies()
                 loadExtensions()
             }
@@ -259,6 +260,34 @@ class ChatRuntimeBridge(
         dispatch(BridgeMessage(kind = "command", name = "chat.reload"))
     }
 
+    /**
+     * Drives the runtime ST frontend to connect to the configured model API so
+     * online_status leaves 'no_connection'. The native settings UI only writes
+     * the API config + secret to disk; it never triggers the running frontend's
+     * connect, which is why generation otherwise fails with "未连接模型 API".
+     *
+     * @param auto best-effort proactive connect (no error surfaced on failure).
+     */
+    /**
+     * Re-reads settings.json into the running runtime frontend (and reconnects if
+     * needed). Call after the native settings UI changes the API/model so the
+     * persistent runtime stops generating with stale in-memory settings.
+     */
+    fun reloadSettings() {
+        dispatch(BridgeMessage(kind = "command", name = "runtime.reloadSettings"))
+    }
+
+    fun connect(auto: Boolean = false) {
+        dispatch(
+            BridgeMessage(
+                kind = "command",
+                name = "runtime.connect",
+                payload = JSONObject().put("auto", auto)
+            ),
+            trackTimeout = !auto
+        )
+    }
+
     fun loadQuickReplies() {
         dispatch(BridgeMessage(kind = "command", name = "quickReply.list"))
     }
@@ -428,6 +457,8 @@ class ChatRuntimeBridge(
             "chat.openCharacter" to "打开角色",
             "chat.openGroup" to "打开群聊",
             "runtime.save" to "保存聊天",
+            "runtime.connect" to "连接模型 API",
+            "runtime.reloadSettings" to "重载运行时设置",
             "chat.new" to "新建聊天",
             "chat.reload" to "重载聊天",
             "generation.stop" to "停止生成",

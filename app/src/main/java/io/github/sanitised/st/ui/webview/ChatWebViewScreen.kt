@@ -76,6 +76,8 @@ fun ChatWebViewScreen(
     onWebViewReady: ((WebView) -> Unit)? = null,
     onWebViewDisposed: ((WebView) -> Unit)? = null,
     onRuntimeReset: (() -> Unit)? = null,
+    enableBackHandler: Boolean = true,
+    onRuntimeError: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -304,7 +306,7 @@ fun ChatWebViewScreen(
         }
     }
 
-    BackHandler {
+    BackHandler(enabled = enableBackHandler) {
         if (webView.canGoBack()) {
             webView.goBack()
         } else {
@@ -337,6 +339,22 @@ fun ChatWebViewScreen(
         readyState == ReadyState.UNAVAILABLE -> WebViewErrorState(WebViewErrorKind.SERVER_UNAVAILABLE)
         pageError != null -> pageError
         else -> null
+    }
+
+    // When this screen runs as a hidden runtime host (onRuntimeError set), the
+    // full-screen error UI below is never visible, so surface the failure to the
+    // native chat UI through the store instead.
+    LaunchedEffect(error?.kind, error?.detail) {
+        val current = error ?: return@LaunchedEffect
+        onRuntimeError?.invoke(
+            when (current.kind) {
+                WebViewErrorKind.SERVICE_ERROR -> current.detail?.ifBlank { null } ?: "服务异常"
+                WebViewErrorKind.SERVICE_STOPPED -> "服务已停止"
+                WebViewErrorKind.SERVER_UNAVAILABLE -> "无法连接到本地服务"
+                WebViewErrorKind.PAGE_LOAD_FAILED -> current.detail?.ifBlank { null }?.let { "页面加载失败：$it" } ?: "页面加载失败"
+                WebViewErrorKind.RENDER_PROCESS_GONE -> current.detail?.ifBlank { null } ?: "运行时渲染进程已退出"
+            }
+        )
     }
 
     Surface(modifier = modifier.fillMaxSize()) {

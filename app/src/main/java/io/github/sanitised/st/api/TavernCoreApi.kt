@@ -354,6 +354,14 @@ interface TavernCoreApi {
     suspend fun createGroup(request: GroupCreateRequest): GroupSummary
     suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk>
     suspend fun stopGeneration(chatId: String)
+
+    // --- Native generation pipeline (Chat Completion) ---
+    /** Reads the raw chat JSONL as `[header, ...messages]`; empty list if the file does not exist. */
+    suspend fun getChatJsonl(avatar: String, chatFile: String): MutableList<Any?>
+    /** Saves the raw chat JSONL (`[header, ...messages]`) back to disk. */
+    suspend fun saveChatJsonl(avatar: String, chatFile: String, chat: List<Any?>)
+    /** Posts an already-assembled chat-completion payload and returns the assistant reply text. */
+    suspend fun generateChatCompletion(payload: Map<String, Any?>): String
 }
 
 class TavernCoreClient(
@@ -1314,6 +1322,56 @@ class TavernCoreClient(
     override suspend fun stopGeneration(chatId: String) {
         // TODO: POST /api/chats/{chatId}/stop
     }
+
+    override suspend fun getChatJsonl(avatar: String, chatFile: String): MutableList<Any?> =
+        withContext(Dispatchers.IO) {
+            val body = postJson(
+                "api/chats/get",
+                jsonObject(
+                    "avatar_url" to avatar,
+                    "file_name" to chatFile.removeSuffix(".jsonl")
+                )
+            )
+            // Found chats return a JSON array [header, ...messages]; a missing file returns {}.
+            when (val parsed = yaml.load<Any?>(body)) {
+                is List<*> -> parsed.map { normalizeJsonValue(it) }.toMutableList()
+                else -> mutableListOf()
+            }
+        }
+
+    override suspend fun saveChatJsonl(avatar: String, chatFile: String, chat: List<Any?>) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                "api/chats/save",
+                jsonObject(
+                    "avatar_url" to avatar,
+                    "file_name" to chatFile.removeSuffix(".jsonl"),
+                    "chat" to chat,
+                    "force" to false
+                )
+            )
+        }
+    }
+
+    override suspend fun generateChatCompletion(payload: Map<String, Any?>): String =
+        withContext(Dispatchers.IO) {
+            val body = postJson("api/backends/chat-completions/generate", jsonValue(payload))
+            val map = yaml.load<Any?>(body) as? Map<*, *>
+                ?: throw IllegalStateException("生成响应无法解析")
+            map["error"]?.takeIf { it != false }?.let {
+                val message = (it as? Map<*, *>)?.get("message")?.toString()
+                    ?: map["message"]?.toString()
+                    ?: "生成失败"
+                throw IllegalStateException(message)
+            }
+            // The backend normalizes all sources to choices[0].message.content for non-stream.
+            val choices = map["choices"] as? List<*>
+            val first = choices?.firstOrNull() as? Map<*, *>
+            val message = first?.get("message") as? Map<*, *>
+            (message?.get("content") as? String)
+                ?: (first?.get("text") as? String)
+                ?: throw IllegalStateException("生成响应为空")
+        }
 
     private companion object {
         val jsonMediaType = "application/json; charset=utf-8".toMediaType()

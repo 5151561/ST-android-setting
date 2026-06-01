@@ -146,10 +146,18 @@ class ChatInterfaceAuditRegressionTest {
     }
 
     @Test
-    fun defaultChatNavigationClearsPreviousNativeMessages() {
-        val source = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+    fun chatNavigationDoesNotShowPreviousChatMessagesForUnmatchedTarget() {
+        // The runtime WebView is now hosted persistently above the NavHost, so the
+        // store is no longer force-reset on every chat entry (that reset caused the
+        // multi-second reload). Stale messages from a previous chat must instead be
+        // suppressed by gating the message list on targetMatched: when the requested
+        // target does not match what the store currently holds, the loading view is
+        // shown until the new snapshot arrives.
+        val nativeChat = File("src/main/java/io/github/sanitised/st/chat/NativeChatScreen.kt").readText()
 
-        assertTrue(source.contains("chatStore.reset()"))
+        assertTrue(nativeChat.contains("val targetMatched = targetMatchesStore(target, store)"))
+        assertTrue(nativeChat.contains("if (!targetMatched ||"))
+        assertTrue(nativeChat.contains("ChatLoadingView("))
     }
 
     @Test

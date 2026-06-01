@@ -64,6 +64,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -112,6 +113,9 @@ import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STDialogButtonStyle
 import io.github.sanitised.st.ui.theme.STAppTheme
 import io.github.sanitised.st.chat.*
+import io.github.sanitised.st.chat.engine.BridgeChatEngine
+import io.github.sanitised.st.chat.engine.NativeChatEngine
+import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.ui.webview.ChatWebViewScreen
 import io.github.sanitised.st.ui.webview.WebViewTarget
 import kotlinx.coroutines.Dispatchers
@@ -577,12 +581,38 @@ class MainActivity : ComponentActivity() {
             }
             val chatStore = remember { ChatStore() }
             val chatBridge = remember { ChatRuntimeBridge(chatStore) }
+            // Chat generation engine, selected by the "原生生成（实验）" toggle. Native
+            // assembles the prompt on-device and calls the backend directly; the WebView
+            // bridge remains the default + fallback.
+            val chatScope = rememberCoroutineScope()
+            val nativeGenerationEnabled = viewModel.nativeGeneration.value
+            val chatEngine = remember(chatBridge, nativeGenerationEnabled) {
+                if (nativeGenerationEnabled) {
+                    NativeChatEngine(
+                        scope = chatScope,
+                        store = chatStore,
+                        bridge = chatBridge,
+                        clientProvider = { TavernCoreClient(SillyTavernUrl.localWebUrl(statusState.value.port)) }
+                    )
+                } else {
+                    BridgeChatEngine(chatBridge)
+                }
+            }
             var pendingWebViewTarget by rememberSaveable(stateSaver = webViewTargetSaver()) {
                 mutableStateOf<WebViewTarget>(WebViewTarget.CHAT)
             }
+            // Once the user has entered chat the first time, the runtime WebView host
+            // stays composed for the rest of the session so it is never reloaded.
+            var chatRuntimeActivated by rememberSaveable { mutableStateOf(false) }
+            // Set when the native settings UI changes the API/model. The persistent
+            // runtime keeps stale in-memory settings, so on next chat entry we ask it
+            // to reload settings.json + reconnect (otherwise the wrong model is used).
+            var runtimeSettingsDirty by rememberSaveable { mutableStateOf(false) }
             val navigateMainTab: (String) -> Unit = { route ->
                 if (route == STRoutes.CHAT) {
-                    chatStore.reset()
+                    // Keep the already-loaded chat state so returning to the tab is
+                    // instant; only set the target to the current chat snapshot.
+                    chatRuntimeActivated = true
                     pendingWebViewTarget = WebViewTarget.CHAT
                 }
                 navController.navigate(route) {
@@ -594,6 +624,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val openCharacterChatFromCharacterManagement: (String, String?) -> Unit = { avatar, chatFile ->
+                chatRuntimeActivated = true
                 pendingWebViewTarget = WebViewTarget.CharacterChat(avatar, chatFile)
                 navController.navigate(STRoutes.CHAT) {
                     launchSingleTop = true
@@ -655,6 +686,32 @@ class MainActivity : ComponentActivity() {
                             .padding(innerPadding)
                             .fillMaxSize()
                     ) {
+                        // Persistent chat runtime host: lives outside the NavHost so the
+                        // SillyTavern WebView runtime survives tab navigation and is loaded
+                        // only once per session instead of on every chat entry. Rendered as a
+                        // 1dp invisible view; the visible chat UI is NativeChatScreen, driven
+                        // by chatStore via chatBridge.
+                        if (chatRuntimeActivated) {
+                            ChatWebViewScreen(
+                                status = statusState.value,
+                                target = pendingWebViewTarget,
+                                themeMode = themeMode,
+                                onStartService = { startNode() },
+                                onShowLogs = { navController.navigate(STRoutes.LOGS) },
+                                onBackToHome = { },
+                                chatEventHandler = { json -> chatBridge.onEvent(json) },
+                                onWebViewReady = { wv -> chatBridge.attach(wv) },
+                                onWebViewDisposed = { wv -> chatBridge.detach(wv) },
+                                onRuntimeReset = { chatBridge.markRuntimeLoading() },
+                                enableBackHandler = false,
+                                onRuntimeError = { message -> chatStore.markRuntimeError(message) },
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .size(1.dp)
+                                    .alpha(0.01f)
+                            )
+                        }
+
                         NavHost(
                             navController = navController,
                             startDestination = STRoutes.HOME,
@@ -691,14 +748,13 @@ class MainActivity : ComponentActivity() {
                                 NativeChatScreen(
                                     status = statusState.value,
                                     target = pendingWebViewTarget,
-                                    themeMode = themeMode,
                                     store = chatStore,
                                     bridge = chatBridge,
-                                    onStartService = { startNode() },
-                                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
+                                    engine = chatEngine,
+                                    settingsDirty = runtimeSettingsDirty,
+                                    onSettingsConsumed = { runtimeSettingsDirty = false },
                                     onBackToHome = {
-                                        chatStore.reset()
-                                        pendingWebViewTarget = WebViewTarget.CHAT
+                                        // Keep the runtime + store loaded so returning is instant.
                                         if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME)
                                     },
                                     onOpenPastChats = {
@@ -842,7 +898,8 @@ class MainActivity : ComponentActivity() {
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
+                                    onSettingsChanged = { runtimeSettingsDirty = true }
                                 )
                             }
 
@@ -856,7 +913,8 @@ class MainActivity : ComponentActivity() {
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) },
                                     onOpenProviderDetail = { providerId ->
                                         navController.navigate(STRoutes.providerDetail(providerId))
-                                    }
+                                    },
+                                    onSettingsChanged = { runtimeSettingsDirty = true }
                                 )
                             }
 
@@ -871,7 +929,8 @@ class MainActivity : ComponentActivity() {
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     providerId = providerId,
                                     onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
+                                    onSettingsChanged = { runtimeSettingsDirty = true }
                                 )
                             }
 
@@ -968,6 +1027,8 @@ class MainActivity : ComponentActivity() {
                                     onSwipeDrawerChanged = { enabled -> viewModel.setSwipeDrawer(enabled) },
                                     developerMode = viewModel.developerMode.value,
                                     onDeveloperModeChanged = { enabled -> viewModel.setDeveloperMode(enabled) },
+                                    nativeGeneration = viewModel.nativeGeneration.value,
+                                    onNativeGenerationChanged = { enabled -> viewModel.setNativeGeneration(enabled) },
                                     onOpenWorldInfo = { navController.navigate(STRoutes.WORLD_INFO) },
                                     onOpenPersona = { navController.navigate(STRoutes.PERSONA) },
                                     onOpenPresets = { navController.navigate(STRoutes.PRESETS) },
