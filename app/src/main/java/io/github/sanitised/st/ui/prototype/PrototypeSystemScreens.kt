@@ -2162,7 +2162,11 @@ fun PrototypeProviderDetailScreen(
                 initialApiKey = apiKey
                 
                 isLoadingModels = true
-                modelsList = client.fetchModels(providerId)
+                modelsList = client.fetchModels(
+                    mode = providerDefinition.mode,
+                    sourceValue = providerDefinition.sourceValue.orEmpty(),
+                    apiServer = customUrl
+                )
                 isLoadingModels = false
             }.onFailure {
                 onShowMessage("加载配置失败：${it.message}")
@@ -2345,7 +2349,11 @@ fun PrototypeProviderDetailScreen(
                                 client.writeSecret(providerDefinition.secretKeys.first(), apiKey, "默认密钥")
                                 initialApiKey = apiKey
                             }
-                            client.testConnection(providerId)
+                            client.testConnection(
+                                mode = providerDefinition.mode,
+                                sourceValue = providerDefinition.sourceValue.orEmpty(),
+                                apiServer = customUrl
+                            )
                         }.onSuccess { result ->
                             if (result.success) {
                                 verifyStatus = ConnectionVerifyStatus.SUCCESS
@@ -2438,7 +2446,11 @@ fun PrototypeProviderDetailScreen(
                                 )
                                 runCatching {
                                     val client = TavernCoreClient(baseUrl)
-                                    modelsList = client.fetchModels(providerId)
+                                    modelsList = client.fetchModels(
+                                        mode = providerDefinition.mode,
+                                        sourceValue = providerDefinition.sourceValue.orEmpty(),
+                                        apiServer = customUrl
+                                    )
                                     onShowMessage("模型列表已成功刷新！")
                                 }.onFailure {
                                     onShowMessage("模型刷新失败：${it.message}")

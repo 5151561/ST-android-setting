@@ -316,8 +316,8 @@ interface TavernCoreApi {
     suspend fun deleteSecret(key: String, id: String? = null)
     suspend fun getSettings(): Map<String, Any?>
     suspend fun saveSettings(settings: Map<String, Any?>)
-    suspend fun fetchModels(providerId: String): List<String>
-    suspend fun testConnection(providerId: String): ConnectionTestResult
+    suspend fun fetchModels(mode: String, sourceValue: String, apiServer: String = ""): List<String>
+    suspend fun testConnection(mode: String, sourceValue: String, apiServer: String = ""): ConnectionTestResult
     suspend fun getPresetLibrary(): PresetLibrary
     suspend fun savePreset(apiId: String, name: String, presetJson: String)
     suspend fun selectPreset(apiId: String, name: String)
@@ -769,62 +769,34 @@ class TavernCoreClient(
         }
     }
 
-    override suspend fun fetchModels(providerId: String): List<String> {
+    override suspend fun fetchModels(mode: String, sourceValue: String, apiServer: String): List<String> {
         return withContext(Dispatchers.IO) {
-            val endpoint = when (providerId) {
-                "openrouter" -> "api/openrouter/models"
-                "koboldcpp", "kobold" -> "api/backends/text-completions/models"
-                else -> "api/backends/chat-completions/models"
-            }
             runCatching {
-                val body = postJson(endpoint, "{}")
-                val parsed = yaml.load<Any?>(body)
-                val list = when (parsed) {
-                    is List<*> -> parsed
-                    is Map<*, *> -> parsed["data"] as? List<*> ?: emptyList<Any?>()
-                    else -> emptyList<Any?>()
-                }
-                list.mapNotNull { item ->
-                    val map = item as? Map<*, *> ?: return@mapNotNull null
-                    val id = map.stringValue("id").takeIf { it.isNotBlank() } ?: map.stringValue("name").takeIf { it.isNotBlank() }
-                    id
-                }.distinct().sorted()
+                val body = postStatusCheck(mode, sourceValue, apiServer)
+                parseModelList(body)
             }.getOrElse { emptyList() }
         }
     }
 
-    override suspend fun testConnection(providerId: String): ConnectionTestResult {
+    override suspend fun testConnection(mode: String, sourceValue: String, apiServer: String): ConnectionTestResult {
         return withContext(Dispatchers.IO) {
-            val endpoint = when (providerId) {
-                "openrouter" -> "api/openrouter/models"
-                "koboldcpp", "kobold" -> "api/backends/text-completions/models"
-                else -> "api/backends/chat-completions/models"
-            }
             try {
-                val body = postJson(endpoint, "{}")
+                val body = postStatusCheck(mode, sourceValue, apiServer)
                 val parsed = yaml.load<Any?>(body)
                 val hasError = parsed is Map<*, *> && parsed["error"] == true
                 if (hasError) {
                     val msg = (parsed as? Map<*, *>)?.get("message")?.toString()
                     return@withContext ConnectionTestResult(
                         success = false,
-                        errorMessage = msg ?: "API 返回错误"
+                        errorMessage = msg ?: "API 返回错误，请检查密钥"
                     )
                 }
-                val list = when (parsed) {
-                    is List<*> -> parsed
-                    is Map<*, *> -> parsed["data"] as? List<*> ?: emptyList<Any?>()
-                    else -> emptyList<Any?>()
-                }
-                val models = list.mapNotNull { item ->
-                    val map = item as? Map<*, *> ?: return@mapNotNull null
-                    map.stringValue("id").takeIf { it.isNotBlank() }
-                        ?: map.stringValue("name").takeIf { it.isNotBlank() }
-                }.distinct().sorted()
+                val models = parseModelList(body)
                 ConnectionTestResult(success = true, models = models)
             } catch (e: Exception) {
                 val msg = e.message?.let { raw ->
                     when {
+                        "400" in raw -> "请求参数错误，请检查密钥是否已保存"
                         "401" in raw || "403" in raw -> "密钥无效或权限不足"
                         "timeout" in raw.lowercase() -> "连接超时，请检查网络"
                         "connect" in raw.lowercase() -> "无法连接到服务端点"
@@ -833,6 +805,60 @@ class TavernCoreClient(
                 } ?: "连接失败"
                 ConnectionTestResult(success = false, errorMessage = msg)
             }
+        }
+    }
+
+    private fun postStatusCheck(mode: String, sourceValue: String, apiServer: String): String {
+        return when (mode) {
+            "cc" -> postJson(
+                "api/backends/chat-completions/status",
+                jsonObject(
+                    "chat_completion_source" to sourceValue,
+                    "reverse_proxy" to apiServer.ifBlank { null },
+                    "proxy_password" to if (apiServer.isNotBlank()) "" else null
+                )
+            )
+            "tc" -> {
+                val server = apiServer.ifBlank {
+                    textCompletionDefaultServer(sourceValue)
+                }
+                postJson(
+                    "api/backends/text-completions/status",
+                    jsonObject(
+                        "api_server" to server,
+                        "api_type" to sourceValue
+                    )
+                )
+            }
+            else -> postJson(
+                "api/backends/chat-completions/status",
+                jsonObject("chat_completion_source" to sourceValue)
+            )
+        }
+    }
+
+    private fun parseModelList(responseBody: String): List<String> {
+        val parsed = yaml.load<Any?>(responseBody)
+        val list = when (parsed) {
+            is List<*> -> parsed
+            is Map<*, *> -> parsed["data"] as? List<*> ?: emptyList<Any?>()
+            else -> emptyList<Any?>()
+        }
+        return list.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            map.stringValue("id").takeIf { it.isNotBlank() }
+                ?: map.stringValue("name").takeIf { it.isNotBlank() }
+        }.distinct().sorted()
+    }
+
+    private fun textCompletionDefaultServer(apiType: String): String {
+        return when (apiType) {
+            "featherless" -> "https://api.featherless.ai/v1"
+            "mancer" -> "https://neuro.mancer.tech"
+            "ollama" -> "http://127.0.0.1:11434"
+            "koboldcpp" -> "http://127.0.0.1:5001"
+            "llamacpp" -> "http://127.0.0.1:8080"
+            else -> ""
         }
     }
 
