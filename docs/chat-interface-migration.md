@@ -813,12 +813,12 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
 3. ✅ 接管原生输入栏：发送、停止、生成状态。
 4. ✅ 补重生成、继续、新建、历史聊天切换。（Bridge 与 UI 已落地；群聊历史通过内联 sheet 切换）
 5. ✅ 补编辑、删除、swipe、附件。（编辑/删除/swipe/隐藏/附件上传和展示均已落地）
-6. 🔶 补群聊、Author's Note、世界书和扩展相关能力。（群聊打开/发送/历史切换、Author's Note、CFG、世界书基础接入已落地；扩展细节和 toastr 原生提示待后续）
+6. ✅ 补群聊、Author's Note、世界书和扩展相关能力。（群聊打开/发送/历史切换、Author's Note、CFG、世界书、toastr 原生提示均已落地；扩展只读 UI 待后续）
 7. ⬜ 最后再评估是否抽离部分生成链路到原生端。
 
 阶段性目标应该是”原生 UI 体验明显改善，但聊天语义仍和原版 ST 一致”。在没有契约测试前，不建议重写提示词组装和生成请求。
 
-> **v0.9 进度说明**：步骤 1-5 已完成。步骤 6 已覆盖群聊基础、Author's Note、CFG、世界书，主要欠缺是扩展/toastr 原生提示，以及真机上的长链路验证。
+> **v0.12 进度说明**：步骤 1-6 已完成（含 P3 阶段 A+B+C）。剩余主要是 logprobs（ST 未导出，阻塞）、TTS/翻译/生图（后续专项）、扩展只读 UI，以及真机长链路验证（步骤 7 的生成链路抽离仍不建议在契约测试前做）。
 
 ## 15. 实现进度
 
@@ -1347,13 +1347,20 @@ Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 
 ### 下一步
 
-#### 阶段 A：真机验证（当前最高优先级）
+> **当前进度（v0.12）**：P0/P1/P2 + P3 阶段 A+B+C 全部落地，均通过编译 + 单测（`ChatBridgeModelsTest` 15 项）+ `assembleDebug`。下方阶段 A/B/C 列表保留历史记录；当前最高优先级是**真机端到端验证**与**剩余阻塞/后续项**。
 
-1. 真机验证 P0 全部验收项（见 §13 P0 验收清单）
-2. Streaming token 性能测试：`postChatEvent` 调用频率、UI 更新帧率、长消息渲染
-3. 群聊打开真机测试：NativeChatScreen 能否正确渲染群聊消息、mode 切换是否正确
-4. Swipe 切换真机验证：前后翻页是否流畅、swipe_id 同步正确
-5. 离线角色库真机验证：无服务时显示本地角色、有服务后正常切到 API 数据
+#### 剩余项
+
+1. ⛔ logprobs：ST `logprobs.js` 的 `state` 未 export，需上游改动，保持 submodule 原封不动故不做。
+2. ⬜ TTS、翻译、生图：后续专项处理（逻辑复杂，单独立项）。
+3. 🔶 扩展系统：数据通道（`extensions.list`）已就绪，只读 UI 待后续。
+4. ⬜ P4 完整原生生成链路：契约测试就绪前不启动。
+
+#### 真机验证（最高优先级）
+
+1. P0 全部验收项（见 §13 P0 验收清单）；Streaming token 性能（`postChatEvent` 频率、帧率、长消息渲染）。
+2. 群聊打开/发送/历史切换、Swipe 前后翻页、离线角色库回退。
+3. P3 新功能依赖 ST 运行时实际状态，单测仅覆盖解析层，需真机验证：Quick Reply 执行、Checkpoint 创建/打开、Branch 创建跳转、Reasoning/Tool Calls 渲染、Itemized Prompt 与 Data Bank sheet 的真实数据。
 
 #### 阶段 B：P1 收口
 
@@ -1369,7 +1376,7 @@ Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 2. ~~群聊历史聊天切换~~ ✅ `GroupChatHistorySheet` 内联 bottom sheet，通过 API 加载群聊列表，`bridge.openGroup(groupId, chatId)` 切换
 3. ~~附件上传和展示~~ ✅ Coil `AsyncImage` + `MessageFileCard` + `PendingAttachmentStrip` + `TavernCoreClient.uploadFile()` + JS adapter 附件注入
 4. ~~Author's Note、CFG、世界书基础接入~~ ✅ Author's Note `authorsNote.get/set` + `AuthorsNoteDialog`；CFG `cfg.get/set` + `CfgScaleDialog`；世界书 `worldInfo.get` + `WorldInfoSheet`（只读）；全部通过 snapshot metadata 同步
-5. Slash commands 结果和错误展示 🔶 斜杠命令通过 `handleSend` 自然工作，正常结果以消息形式展示；运行时 toastr 通知暂不可捕获
+5. ~~Slash commands 结果和错误展示~~ ✅ 斜杠命令通过 `handleSend` 自然工作，正常结果以消息形式展示；toastr 通知（错误/警告/成功）经 adapter 包裹转发 `runtime.toast` → `RuntimeToastHost`（v0.10）
 6. ~~消息隐藏/取消隐藏~~ ✅ adapter `message.hide/unhide` 通过 `hideChatMessageRange()` 切换 `is_system` + Kotlin 端用 `isSystem` 标识 + action sheet 切换 + 气泡半透明
 
 #### 阶段 D：P3 高级能力

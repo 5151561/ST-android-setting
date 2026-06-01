@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-ST-android 是一个第三方 SillyTavern Android 客户端。它在设备上通过 foreground service 运行嵌入式 Node.js + SillyTavern 服务端，并用 Jetpack Compose 构建原生 UI 外壳。聊天界面正在从 WebView 迁移到原生 Compose，采用 JS Bridge 架构复用 SillyTavern 的聊天运行时（提示词组装、世界书、流式生成等），原生端只负责 UI 渲染和用户交互。
+ST-android 是一个第三方 SillyTavern Android 客户端。它在设备上通过 foreground service 运行嵌入式 Node.js + SillyTavern 服务端，并用 Jetpack Compose 构建原生 UI 外壳。聊天界面已基本完成从 WebView 到原生 Compose 的迁移：采用 JS Bridge 架构，隐藏 WebView 仅作运行时容器复用 SillyTavern 的聊天语义（提示词组装、世界书、流式生成等），用户可见的聊天 UI 全部由原生 Compose 渲染。P0/P1/P2 + P3 阶段 A/B/C 已落地（详见 `docs/chat-interface-migration.md`），剩余 logprobs（上游阻塞）、TTS/翻译/生图（后续专项）等少量高级能力。
 
 ## Build & Test
 
