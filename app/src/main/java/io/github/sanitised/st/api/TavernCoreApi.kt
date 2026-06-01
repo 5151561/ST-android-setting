@@ -2,7 +2,11 @@ package io.github.sanitised.st.api
 
 import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -362,6 +366,8 @@ interface TavernCoreApi {
     suspend fun saveChatJsonl(avatar: String, chatFile: String, chat: List<Any?>)
     /** Posts an already-assembled chat-completion payload and returns the assistant reply text. */
     suspend fun generateChatCompletion(payload: Map<String, Any?>): String
+    /** Streams a chat-completion (SSE), emitting incremental text deltas. Forces `stream=true`. */
+    fun generateChatCompletionStream(payload: Map<String, Any?>): Flow<String>
 }
 
 class TavernCoreClient(
@@ -371,6 +377,16 @@ class TavernCoreClient(
     private val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
     private val yaml = Yaml()
     private var csrfToken: String? = null
+
+    // Generations (streaming or a slow non-stream reply) can run far longer than the
+    // shared client's 15s call / 10s read timeouts allow, so derive a long-timeout client
+    // (shares cookie jar + pool). No overall call timeout; a 120s read gap bounds hangs.
+    private val generationHttpClient: OkHttpClient by lazy {
+        httpClient.newBuilder()
+            .callTimeout(0, TimeUnit.MILLISECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .build()
+    }
 
     override suspend fun healthCheck(): CoreHealth {
         return withContext(Dispatchers.IO) {
@@ -1355,7 +1371,7 @@ class TavernCoreClient(
 
     override suspend fun generateChatCompletion(payload: Map<String, Any?>): String =
         withContext(Dispatchers.IO) {
-            val body = postJson("api/backends/chat-completions/generate", jsonValue(payload))
+            val body = postJsonForGeneration("api/backends/chat-completions/generate", jsonValue(payload))
             val map = yaml.load<Any?>(body) as? Map<*, *>
                 ?: throw IllegalStateException("生成响应无法解析")
             map["error"]?.takeIf { it != false }?.let {
@@ -1372,6 +1388,62 @@ class TavernCoreClient(
                 ?: (first?.get("text") as? String)
                 ?: throw IllegalStateException("生成响应为空")
         }
+
+    override fun generateChatCompletionStream(payload: Map<String, Any?>): Flow<String> = callbackFlow {
+        val streamPayload = payload.toMutableMap().apply { put("stream", true) }
+        val builder = Request.Builder()
+            .url(normalizedBaseUrl + "api/backends/chat-completions/generate")
+            .header("Accept", "text/event-stream")
+            .post(jsonValue(streamPayload).toRequestBody(jsonMediaType))
+        csrfToken().takeIf { it.isNotBlank() }?.let { builder.header("x-csrf-token", it) }
+        val call = generationHttpClient.newCall(builder.build())
+
+        val worker = launch(Dispatchers.IO) {
+            try {
+                call.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        val err = response.body?.string().orEmpty()
+                        throw IllegalStateException("SillyTavern API ${response.code}: $err")
+                    }
+                    val source = response.body?.source() ?: throw IllegalStateException("生成响应为空")
+                    while (isActive && !source.exhausted()) {
+                        val line = source.readUtf8Line() ?: break
+                        if (!line.startsWith("data:")) continue
+                        val data = line.removePrefix("data:").trim()
+                        if (data.isEmpty() || data == "[DONE]") continue
+                        extractStreamDelta(data)?.takeIf { it.isNotEmpty() }?.let { trySend(it) }
+                    }
+                }
+                close()
+            } catch (e: Throwable) {
+                close(e)
+            }
+        }
+        awaitClose {
+            call.cancel()
+            worker.cancel()
+        }
+    }
+
+    /** Extracts an incremental text delta from one SSE `data:` JSON across OpenAI/Claude/Google shapes. */
+    private fun extractStreamDelta(dataJson: String): String? {
+        val obj = runCatching { yaml.load<Any?>(dataJson) }.getOrNull() as? Map<*, *> ?: return null
+        // OpenAI-compatible: choices[0].delta.content (or .text)
+        (obj["choices"] as? List<*>)?.firstOrNull()?.let { choice ->
+            val choiceMap = choice as? Map<*, *>
+            ((choiceMap?.get("delta") as? Map<*, *>)?.get("content") as? String)?.let { return it }
+            (choiceMap?.get("text") as? String)?.let { return it }
+        }
+        // Anthropic: { type: content_block_delta, delta: { text: "..." } }
+        ((obj["delta"] as? Map<*, *>)?.get("text") as? String)?.let { return it }
+        // Google: candidates[0].content.parts[].text
+        (obj["candidates"] as? List<*>)?.firstOrNull()?.let { cand ->
+            val parts = ((cand as? Map<*, *>)?.get("content") as? Map<*, *>)?.get("parts") as? List<*>
+            val text = parts?.mapNotNull { (it as? Map<*, *>)?.get("text") as? String }?.joinToString("")
+            if (!text.isNullOrEmpty()) return text
+        }
+        return null
+    }
 
     private companion object {
         val jsonMediaType = "application/json; charset=utf-8".toMediaType()
@@ -1423,6 +1495,23 @@ class TavernCoreClient(
         }
         val request = builder.build()
         httpClient.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("SillyTavern API ${response.code}: $body")
+            }
+            return body
+        }
+    }
+
+    /** Like [postJson] but uses the long-timeout generation client (slow model replies). */
+    private fun postJsonForGeneration(path: String, json: String): String {
+        val builder = Request.Builder()
+            .url(normalizedBaseUrl + path.removePrefix("/"))
+            .post(json.toRequestBody(jsonMediaType))
+        csrfToken().takeIf { it.isNotBlank() }?.let { token ->
+            builder.header("x-csrf-token", token)
+        }
+        generationHttpClient.newCall(builder.build()).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException("SillyTavern API ${response.code}: $body")

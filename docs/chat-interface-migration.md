@@ -1,8 +1,8 @@
 # SillyTavern Chat 原生界面迁移方案
 
-版本：0.12
-日期：2026-05-31
-状态：**P0 已收口 + P1 基本可用（保存错误检测 best-effort）+ P2 全部落地 + P3 阶段 A+B+C 已落地（logprobs 因 ST 未导出阻塞、TTS/翻译/生图后续专项）**（已对照 SillyTavern 源码审查 + 原生界面逐屏审计，当前已合入本地 `main`）
+版本：0.13
+日期：2026-06-02
+状态：**P0 已收口 + P1 基本可用（保存错误检测 best-effort）+ P2 全部落地 + P3 阶段 A+B+C 已落地（logprobs 因 ST 未导出阻塞、TTS/翻译/生图后续专项）+ 原生生成承接混合过渡已落地**（隐藏 WebView 运行时常驻保活并作为兜底；「原生生成（实验）」开关下，1v1 + Chat Completion source + 无附件走原生流式生成，其余兜底 WebView。详见 §15 v0.13）
 适用范围：ST-android 下一阶段 Chat 原生化、JS Bridge、SillyTavern 运行时复用、API 对接
 
 ## 1. 背景和目标
@@ -822,8 +822,66 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
 
 ## 15. 实现进度
 
-日期：2026-05-31（v0.12 P3 阶段 C + v0.11 P3 阶段 B + v0.10 P3 阶段 A + v0.9 P2 附件/CFG/世界书收口 + v0.8 文档收口 + v0.7 阶段 C P2 接续 + adapter 契约修正）
-状态：**P0 基础框架落地 + P1 基本可用（保存错误检测 best-effort）+ P2 全部落地 + P3 阶段 A+B+C 已落地**
+日期：2026-06-02（v0.13 原生生成承接混合过渡 + v0.12 P3 阶段 C + v0.11 P3 阶段 B + v0.10 P3 阶段 A + v0.9 P2 附件/CFG/世界书收口 + v0.8 文档收口 + v0.7 阶段 C P2 接续 + adapter 契约修正）
+状态：**P0 基础框架落地 + P1 基本可用 + P2 全部落地 + P3 阶段 A+B+C 已落地 + 原生生成（Chat Completion）混合过渡已落地（实验开关，WebView 保留兜底）**
+
+### v0.13 原生生成承接（混合过渡）：引擎接缝 + 原生 Chat Completion + 流式（2026-06-02）
+
+bridge 架构反复出现「运行时内存状态 vs 原生/磁盘状态」不同步（已配置 API 但 `online_status` 未连接、native 选的模型没回传运行时导致用错模型/限额）。决策：**逐步把生成搬到原生、直接调后端 `/api/backends/chat-completions/generate`，但保留隐藏 WebView 作为兜底，原生每达标一块就切原生、未达标的能力继续兜底。** 隐藏 WebView 运行时仍常驻，作为状态镜像源 + 复杂语义兜底。
+
+#### 过渡期即时修复（让 WebView 兜底可用）
+
+- **运行时设置同步**：adapter 新增 `runtime.reloadSettings`（`import('./script.js').getSettings()` 把磁盘设置重载进运行中前端内存）。native 设置页保存 API/模型后置「脏」标志（`runtimeSettingsDirty`），进聊天时 `NativeChatScreen` 触发 `bridge.reloadSettings()`。修复「模型选了但聊天用的还是旧/默认模型 → 达到限额」。
+- **运行时连接**：adapter 新增 `runtime.connect`（按 `mainApi` 点对应连接按钮 `#api_button_openai` / `_textgenerationwebui` / `_novel` / `#api_button`），支持 `auto`（静默，失败不刷屏）与显式两种。`runtime.ready` + 进聊天时自动静默连接。`getGenerationContext` 改为 `ensureGenerationContext`：发送/重写/继续前若 `no_connection` 先自动连接再继续（≤12s，压在 `chat.send` 15s 超时内）。
+- **WebView 运行时宿主提升**（修每次进 chat 转圈几秒）：宿主从 NavHost 内的 `NativeChatScreen` 提升到 `MainActivity` 的 Scaffold `Box`、NavHost 之外，1dp 隐藏常驻（`chatRuntimeActivated` 首次进聊天后保活），跨 tab 不再销毁重载。`ChatWebViewScreen` 加 `enableBackHandler`（常驻宿主关闭以免全局拦截返回）+ `onRuntimeError`（页面级错误回传 store）。去掉切 tab 时的 `chatStore.reset()`，防串台改由 `targetMatched` 门控。
+
+#### 可切换生成引擎接缝（Phase A）
+
+- `chat/engine/ChatEngine.kt`（接口：send/stop/regenerate/continue）+ `BridgeChatEngine`（包装 `ChatRuntimeBridge`，默认/兜底）+ `NativeChatEngine`。
+- `NativeChatScreen` 的发送/停止/重写/继续走 `engine`；其余高级动作（编辑/删除/swipe/checkpoint/quickReply/世界书 sheet 等）仍直连 bridge。
+- 「原生生成（实验）」开关：`UpdateManager` 持久化（`PREF_NATIVE_GENERATION`）→ `MainViewModel` → 设置页开关 → `MainActivity` 据此注入 `NativeChatEngine` 或 `BridgeChatEngine`。默认关。
+
+#### 原生 Chat Completion（Phase B + C + D）
+
+- **TavernCoreClient**：实现 `getChatJsonl`/`saveChatJsonl`（无损读写真实 JSONL，沿用 yaml 解析 + `jsonValue` 序列化，保留未知字段）；`generateChatCompletion`（非流式，后端已把各 source 归一化为 `choices[0].message.content`）；`generateChatCompletionStream`（SSE，`callbackFlow` + 独立长超时 client `generationHttpClient`：无 callTimeout、120s read；容错 delta 解析兼容 OpenAI/Claude/Google 三种 SSE 形态）。
+- **PromptBuilder**（纯 Kotlin，可测）：system = 世界书(前) → 角色 systemPrompt/description/personality/scenario → persona 描述（`power_user.persona_description`）→ message examples → 世界书(后)；历史按 `{{char}}`/`{{user}}` macro 替换映射 user/assistant；按 `openai_max_context - max_tokens` 估算裁剪最旧历史；作者注按深度（默认 4）作为 system 轮插入。复用 `ApiConnectionState` 的 provider/model 映射解析模型与 source。
+- **WorldInfoScanner**（纯 Kotlin，可测）：扫描角色内嵌世界书（`character.world`）+ 聊天绑定世界书（`chat_metadata.world_info`）对最近 3 条消息；`constant` 常驻 / 关键字命中激活，`selective` 需次关键字；按 `order` 排序、按 `position`(0/1) 拆「角色定义前/后」。
+- **NativeChatEngine**：发送 = 乐观插入用户消息 + 空 assistant 占位 → 组装 payload → SSE 流式逐字更新占位（~60ms 节流）→ 落盘 JSONL（读真实文件追加，无损）→ `bridge.reloadChat()` 让运行时按磁盘对齐（单一写者）。停止 = `stopRequested` + `takeWhile` 让流在下一 token 干净结束（`awaitClose` 取消 OkHttp Call），**保留已生成部分**。流式无 token 时回退非流式。
+
+#### 能力边界（审计收紧，避免打开开关踩真实回归）
+
+原生路径**仅在**：`mode != group` + `main_api == "openai"`（Chat Completion source）+ 无待发附件 时启用；否则一律 `bridge.sendMessage` 兜底。具体：
+- **群聊 / 非 CC 后端（Ooba/Kobold/Novel 等，Phase E 再做）/ 待发附件** → bridge 兜底。
+- **regenerate** → bridge（原生重写会丢 `swipes/swipe_id` 历史，待 swipe 语义对齐前不接管）。
+- **continue（继续生成）** → bridge。
+- 生成调用（流式 + 非流式兜底）统一走 `generationHttpClient`，不再吃共享 client 的 15s `callTimeout`。
+
+#### 单元测试
+
+`PromptBuilderTest`（4：模型/source/macro 组装、上下文裁剪、persona+示例、世界书+作者注深度）+ `WorldInfoScannerTest`（4：关键字/位置、constant/disabled、selective 次关键字、order 排序）。能力路由（gating/附件/regenerate 兜底）是运行期行为，需真机验证。
+
+#### 仍后置
+
+- 流式 reasoning/thinking（`extra.reasoning`）、continue/swipe 原生实现、Text Completion（Phase E）+ instruct/context 模板、世界书递归/概率/分组/@depth、对话示例 `<START>` 块精细解析、tool calling、正则、扩展注入 —— 这些场景继续走 WebView 兜底。
+- 非流式兜底路径的同步 `execute()` 中途不可取消（仅未知 SSE 格式时触发，120s read 兜底）。
+
+#### 文件变更汇总
+
+| 文件 | 变更 |
+|---|---|
+| `assets/chat_runtime_adapter.js` | `runtime.connect`（auto/显式）、`runtime.reloadSettings`、`ensureGenerationContext`（发送前自动连接） |
+| `chat/engine/ChatEngine.kt`（新） | 生成引擎接口 |
+| `chat/engine/BridgeChatEngine.kt`（新） | WebView bridge 引擎（默认/兜底） |
+| `chat/engine/NativeChatEngine.kt`（新） | 原生流式生成 + 能力边界 + JSONL 落盘 + 运行时对齐 |
+| `chat/prompt/PromptBuilder.kt`（新） | 提示词组装（角色卡/persona/示例/世界书/作者注/裁剪） |
+| `chat/prompt/WorldInfoScanner.kt`（新） | 世界书关键字激活与位置拆分 |
+| `api/TavernCoreApi.kt` | `getChatJsonl`/`saveChatJsonl`/`generateChatCompletion`/`generateChatCompletionStream` + `generationHttpClient` + `postJsonForGeneration` |
+| `chat/ChatRuntimeBridge.kt` | `connect(auto)`/`reloadSettings`、`runtime.ready` 自动连接 |
+| `chat/NativeChatScreen.kt` | 走 `engine`、`settingsDirty` 重载、移除内置 WebView 宿主 |
+| `ui/webview/ChatWebViewScreen.kt` | `enableBackHandler`/`onRuntimeError`，作为常驻隐藏宿主 |
+| `MainActivity.kt` | 常驻运行时宿主、引擎注入（按开关）、`runtimeSettingsDirty`、配置页 `onSettingsChanged` |
+| `UpdateManager.kt`/`MainViewModel.kt`/`PrototypeSystemScreens.kt` | 「原生生成（实验）」开关持久化 + UI |
+| `test/.../PromptBuilderTest.kt`、`WorldInfoScannerTest.kt`（新） | 提示词组装 + 世界书扫描单测 |
 
 ### v0.12 P3 阶段 C：Itemized Prompts + Data Bank（logprobs 阻塞）（2026-05-31）
 

@@ -11,6 +11,8 @@ import io.github.sanitised.st.chat.prompt.PromptBuilder
 import io.github.sanitised.st.chat.prompt.WorldInfoScanner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -36,11 +38,16 @@ class NativeChatEngine(
 
     private var job: Job? = null
 
+    @Volatile
+    private var stopRequested = false
+
     override fun send(text: String) {
         val message = text.trim()
         if (message.isEmpty() || store.isGenerating) return
-        // Group chats keep the WebView fallback (no single character card to assemble).
-        if (store.mode == "group") {
+        // The native engine only handles 1v1 Chat Completion text. Everything else
+        // (group chats, attachments) stays on the WebView bridge, which writes +
+        // clears the pending attachments and reuses the full ST semantics.
+        if (store.mode == "group" || store.pendingAttachments.isNotEmpty()) {
             bridge.sendMessage(message)
             return
         }
@@ -53,68 +60,42 @@ class NativeChatEngine(
         launchGeneration {
             val client = clientProvider()
             val settings = client.getSettings()
+            // Only Chat Completion sources (main_api == openai) are supported natively;
+            // Text Completion / Kobold / Novel keep the WebView fallback (Phase E).
+            if (!isChatCompletion(settings)) {
+                store.isGenerating = false
+                bridge.sendMessage(message)
+                return@launchGeneration
+            }
             val character = client.getCharacter(avatar)
             val userName = (settings["username"] as? String)?.takeIf { it.isNotBlank() } ?: "User"
             val date = sendDate()
 
-            // Optimistic user message for instant UI; replaced by the canonical
-            // snapshot after the runtime reloads from disk below.
+            // Optimistic user + empty assistant placeholder for live streaming; both are
+            // replaced by the canonical snapshot after the runtime reloads from disk below.
             store.addMessage(message(store.messages.size, userName, message, isUser = true))
-
             val history = store.messages.filter { !it.isSystem }
             val payload = buildPayload(client, character, userName, history, settings)
             val model = payload["model"] as? String ?: ""
-            val reply = runGenerate(client, payload)
+            val aiId = store.messages.size
+            store.addMessage(message(aiId, character.name, "", isUser = false))
 
-            store.addMessage(message(store.messages.size, character.name, reply, isUser = false))
+            val reply = streamReply(client, payload, aiId)
 
             val chat = client.getChatJsonl(avatar, chatFile)
             ensureHeader(chat, userName, character.name, date)
             chat += userMessageMap(userName, message, date)
-            chat += aiMessageMap(character.name, reply, date, model)
+            if (reply.isNotBlank()) chat += aiMessageMap(character.name, reply, date, model)
             client.saveChatJsonl(avatar, chatFile, chat)
             bridge.reloadChat()
         }
     }
 
     override fun regenerate() {
-        if (store.isGenerating) return
-        if (store.mode == "group") {
-            bridge.regenerate()
-            return
-        }
-        val avatar = store.avatarUrl
-        val chatFile = store.chatFile
-        val last = store.messages.lastOrNull()
-        if (avatar.isBlank() || chatFile.isBlank() || last == null || last.isUser) {
-            store.recordCommandError("没有可重写的回复")
-            return
-        }
-        launchGeneration {
-            val client = clientProvider()
-            val settings = client.getSettings()
-            val character = client.getCharacter(avatar)
-            val userName = (settings["username"] as? String)?.takeIf { it.isNotBlank() } ?: "User"
-            val date = sendDate()
-
-            // Drop the last assistant reply from the visible list and regenerate
-            // from the remaining history (which now ends with the user turn).
-            store.deleteMessage(last.id)
-            val history = store.messages.filter { !it.isSystem }
-            val payload = buildPayload(client, character, userName, history, settings)
-            val model = payload["model"] as? String ?: ""
-            val reply = runGenerate(client, payload)
-
-            store.addMessage(message(store.messages.size, character.name, reply, isUser = false))
-
-            val chat = client.getChatJsonl(avatar, chatFile)
-            if (chat.size > 1 && (chat.last() as? Map<*, *>)?.get("is_user") == false) {
-                chat.removeAt(chat.size - 1)
-            }
-            chat += aiMessageMap(character.name, reply, date, model)
-            client.saveChatJsonl(avatar, chatFile, chat)
-            bridge.reloadChat()
-        }
+        // Native regenerate would drop the existing swipe history (swipes/swipe_id),
+        // which is real data loss. Until native swipe semantics are aligned, regenerate
+        // stays on the WebView runtime which preserves swipes correctly.
+        bridge.regenerate()
     }
 
     override fun continueGeneration() {
@@ -123,7 +104,12 @@ class NativeChatEngine(
     }
 
     override fun stop() {
-        job?.cancel()
+        if (store.mode == "group") {
+            bridge.stopGeneration()
+            return
+        }
+        // Ends the stream at the next token; the in-flight job then persists the partial.
+        stopRequested = true
         store.isGenerating = false
     }
 
@@ -141,16 +127,23 @@ class NativeChatEngine(
         val entries = collectWorldInfo(client, character)
         val scanText = history.takeLast(WI_SCAN_DEPTH).joinToString("\n") { it.mes }
         val wi = WorldInfoScanner.scan(entries, scanText)
+        val personaDescription = (settings["power_user"] as? Map<*, *>)
+            ?.get("persona_description") as? String ?: ""
         return PromptBuilder.build(
             character = character,
             userName = userName,
             history = history,
             settings = settings,
+            personaDescription = personaDescription,
             worldInfoBefore = wi.before,
             worldInfoAfter = wi.after,
             authorsNote = store.authorsNote,
         )
     }
+
+    /** Native generation only covers Chat Completion (`/chat-completions/generate`). */
+    private fun isChatCompletion(settings: Map<String, Any?>): Boolean =
+        (settings["main_api"] as? String) == "openai"
 
     /** Lorebooks to scan: the character's embedded world + the chat-bound world. */
     private suspend fun collectWorldInfo(client: TavernCoreApi, character: CharacterDetail): List<WorldInfoEntry> {
@@ -164,15 +157,55 @@ class NativeChatEngine(
     }
 
     /**
-     * Calls the backend generate, surfacing the resolved source/model so it is
-     * obvious which model is actually used (diagnostics for the native path).
+     * Streams the reply into the placeholder message [aiId], updating the store as
+     * tokens arrive. Stops cleanly when [stopRequested] flips (the partial is kept).
+     * Falls back to a non-streaming call if the stream yields nothing (e.g. an SSE
+     * shape we don't parse), so unknown providers still work.
      */
+    private suspend fun streamReply(client: TavernCoreApi, payload: Map<String, Any?>, aiId: Int): String {
+        val source = payload["chat_completion_source"] as? String ?: ""
+        val model = payload["model"] as? String ?: ""
+        Log.i(TAG, "stream source=$source model=$model")
+        val acc = StringBuilder()
+        fun apply() {
+            val idx = store.messages.indexOfFirst { it.id == aiId }
+            if (idx >= 0) store.messages[idx] = store.messages[idx].copy(mes = acc.toString())
+        }
+        try {
+            var lastApply = 0L
+            client.generateChatCompletionStream(payload)
+                .takeWhile { !stopRequested }
+                .collect { delta ->
+                    acc.append(delta)
+                    // Throttle UI updates to ~60ms to avoid per-token recomposition storms.
+                    val now = System.currentTimeMillis()
+                    if (now - lastApply >= 60) {
+                        lastApply = now
+                        apply()
+                    }
+                }
+            apply() // flush the final text
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (acc.isNotEmpty()) {
+                apply()
+                throw IllegalStateException("源=$source 模型=${model.ifBlank { "(空!)" }}：${e.message}", e)
+            }
+            Log.w(TAG, "stream failed, falling back to non-stream: ${e.message}")
+        }
+        if (acc.isEmpty() && !stopRequested) {
+            val reply = runGenerate(client, payload)
+            acc.append(reply)
+            apply()
+        }
+        return acc.toString()
+    }
+
+    /** Non-streaming generate; used as the fallback for unsupported SSE shapes. */
     private suspend fun runGenerate(client: TavernCoreApi, payload: Map<String, Any?>): String {
         val source = payload["chat_completion_source"] as? String ?: ""
         val model = payload["model"] as? String ?: ""
-        val msgCount = (payload["messages"] as? List<*>)?.size ?: 0
-        // Silent breadcrumb for logcat; the failure path below surfaces a toast.
-        Log.i(TAG, "generate source=$source model=$model msgs=$msgCount")
         return try {
             client.generateChatCompletion(payload)
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -184,6 +217,7 @@ class NativeChatEngine(
 
     private fun launchGeneration(block: suspend () -> Unit) {
         job = scope.launch {
+            stopRequested = false
             store.isGenerating = true
             try {
                 block()

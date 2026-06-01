@@ -63,6 +63,22 @@ class PromptBuilderTest {
     }
 
     @Test
+    fun includesPersonaDescriptionAndMessageExamplesInSystem() {
+        val character = character().copy(messageExample = "<START>\n{{user}}: hi\n{{char}}: hello {{user}}!")
+        val payload = PromptBuilder.build(
+            character, "Alex", listOf(msg(0, "Hello", true)), settings(),
+            personaDescription = "Alex is a tired night-shift nurse.",
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val messages = payload["messages"] as List<Map<String, Any?>>
+        val system = messages.first()["content"] as String
+        assertTrue(system.contains("Alex is a tired night-shift nurse."))
+        assertTrue(system.contains("Example dialogue:"))
+        assertTrue(system.contains("hello Alex!")) // macro substituted in examples
+    }
+
+    @Test
     fun injectsWorldInfoIntoSystemAndAuthorsNoteAtDepth() {
         val history = (1..6).map { msg(it, "turn $it", isUser = it % 2 == 1) }
         val payload = PromptBuilder.build(

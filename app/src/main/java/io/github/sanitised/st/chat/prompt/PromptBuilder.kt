@@ -32,6 +32,7 @@ object PromptBuilder {
      * @param userName persona / user display name (settings `username`).
      * @param history visible (non-system) messages, oldest-first, including the just-sent user message.
      * @param settings full settings map from `getSettings()` (expects nested `oai_settings`).
+     * @param personaDescription active user persona description (power_user.persona_description).
      * @param worldInfoBefore scanned lorebook text inserted before the character defs.
      * @param worldInfoAfter scanned lorebook text inserted after the character defs.
      * @param authorsNote chat author's note, injected at [authorsNoteDepth] turns from the end.
@@ -41,6 +42,7 @@ object PromptBuilder {
         userName: String,
         history: List<ChatMessage>,
         settings: Map<String, Any?>,
+        personaDescription: String = "",
         worldInfoBefore: String = "",
         worldInfoAfter: String = "",
         authorsNote: String = "",
@@ -55,7 +57,9 @@ object PromptBuilder {
             .replace(CHAR_MACRO, charName)
             .replace(USER_MACRO, userName)
 
-        val systemContent = buildSystemPrompt(character, ::sub, sub(worldInfoBefore), sub(worldInfoAfter))
+        val systemContent = buildSystemPrompt(
+            character, ::sub, sub(worldInfoBefore), sub(worldInfoAfter), sub(personaDescription)
+        )
 
         val maxTokens = oai.intValue("openai_max_tokens", DEFAULT_MAX_TOKENS)
         val maxContext = oai.intValue("openai_max_context", DEFAULT_MAX_CONTEXT)
@@ -105,6 +109,7 @@ object PromptBuilder {
         sub: (String) -> String,
         worldInfoBefore: String,
         worldInfoAfter: String,
+        personaDescription: String,
     ): String {
         val parts = mutableListOf<String>()
         if (worldInfoBefore.isNotBlank()) parts += worldInfoBefore
@@ -112,6 +117,8 @@ object PromptBuilder {
         if (character.description.isNotBlank()) parts += sub(character.description)
         if (character.personality.isNotBlank()) parts += "${character.name}'s personality: ${sub(character.personality)}"
         if (character.scenario.isNotBlank()) parts += "Scenario: ${sub(character.scenario)}"
+        if (personaDescription.isNotBlank()) parts += personaDescription
+        if (character.messageExample.isNotBlank()) parts += "Example dialogue:\n${sub(character.messageExample)}"
         if (worldInfoAfter.isNotBlank()) parts += worldInfoAfter
         return parts.joinToString("\n\n").trim()
     }
