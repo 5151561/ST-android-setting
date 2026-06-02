@@ -268,7 +268,9 @@ data class GroupSummary(
     val generationMode: Int = 0,
     val isFavorite: Boolean = false,
     val disabledMembers: List<String> = emptyList(),
-    val autoModeDelay: Int = 5
+    val autoModeDelay: Int = 5,
+    val generationModeJoinPrefix: String = "",
+    val generationModeJoinSuffix: String = ""
 )
 
 data class GroupCreateRequest(
@@ -359,6 +361,10 @@ interface TavernCoreApi {
     suspend fun listRecentChats(): List<ChatSummary>
     suspend fun listGroups(): List<GroupSummary>
     suspend fun createGroup(request: GroupCreateRequest): GroupSummary
+    /** Overwrites a group's metadata (`POST /api/groups/edit`); sends the full object. */
+    suspend fun editGroup(group: GroupSummary)
+    /** Deletes a group by id (`POST /api/groups/delete`). */
+    suspend fun deleteGroup(groupId: String)
     suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk>
     suspend fun stopGeneration(chatId: String)
     /** Reads a group chat JSONL (`[header, ...messages]`) by its chat id; empty list if absent. */
@@ -1330,6 +1336,34 @@ class TavernCoreClient(
         }
     }
 
+    override suspend fun editGroup(group: GroupSummary) {
+        withContext(Dispatchers.IO) {
+            val payload = linkedMapOf<String, Any?>(
+                "id" to group.id,
+                "name" to group.name,
+                "members" to group.members,
+                "avatar_url" to group.avatarUrl.ifBlank { "img/ai4.png" },
+                "allow_self_responses" to group.allowSelfResponses,
+                "activation_strategy" to group.activationStrategy,
+                "generation_mode" to group.generationMode,
+                "disabled_members" to group.disabledMembers,
+                "fav" to group.isFavorite,
+                "chat_id" to group.chatId.ifBlank { group.id },
+                "chats" to group.chats.ifEmpty { listOf(group.chatId.ifBlank { group.id }) },
+                "auto_mode_delay" to group.autoModeDelay,
+                "generation_mode_join_prefix" to group.generationModeJoinPrefix,
+                "generation_mode_join_suffix" to group.generationModeJoinSuffix
+            )
+            postJson(path = "api/groups/edit", json = jsonValue(payload))
+        }
+    }
+
+    override suspend fun deleteGroup(groupId: String) {
+        withContext(Dispatchers.IO) {
+            postJson(path = "api/groups/delete", json = jsonObject("id" to groupId))
+        }
+    }
+
     override suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk> {
         // TODO: POST /api/chats/{chatId}/messages with SSE streaming
         return kotlinx.coroutines.flow.emptyFlow()
@@ -1882,7 +1916,9 @@ class TavernCoreClient(
             generationMode = intValue("generation_mode", 0),
             isFavorite = booleanValue("fav"),
             disabledMembers = stringListValue("disabled_members"),
-            autoModeDelay = intValue("auto_mode_delay", 5)
+            autoModeDelay = intValue("auto_mode_delay", 5),
+            generationModeJoinPrefix = stringValue("generation_mode_join_prefix"),
+            generationModeJoinSuffix = stringValue("generation_mode_join_suffix")
         )
     }
 

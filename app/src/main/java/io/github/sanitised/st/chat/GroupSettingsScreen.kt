@@ -26,30 +26,112 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.sanitised.st.SecondaryTopAppBar
+import io.github.sanitised.st.api.GroupSummary
+import io.github.sanitised.st.api.TavernCoreClient
+import kotlinx.coroutines.launch
+
+// generation_mode: 0=swap, 1=join(exclude muted), 2=join_all(include muted)
+private fun genModeName(value: Int): String = when (value) {
+    1 -> "join"
+    2 -> "join_all"
+    else -> "swap"
+}
+
+private fun genModeId(name: String): Int = when (name) {
+    "join" -> 1
+    "join_all" -> 2
+    else -> 0
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupSettingsScreen(
+    groupId: String,
+    baseUrl: String,
     onBack: () -> Unit,
+    onShowMessage: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // DEMO_PLACEHOLDER: 这一部分定义群组设置的原型模拟状态。在真实环境中，应绑定 ST API。
-    var groupName by remember { mutableStateOf("雨夜小聚") }
+    val scope = rememberCoroutineScope()
+    var base by remember { mutableStateOf<GroupSummary?>(null) }
+    var loaded by remember { mutableStateOf(false) }
+
+    var groupName by remember { mutableStateOf("") }
     var strategy by remember { mutableStateOf("natural") }
     var genMode by remember { mutableStateOf("swap") }
     var autoMode by remember { mutableStateOf(false) }
     var autoDelay by remember { mutableStateOf(5) }
     var selfResponses by remember { mutableStateOf(false) }
     var hideMutedSprites by remember { mutableStateOf(false) }
-    var fav by remember { mutableStateOf(true) }
+    var fav by remember { mutableStateOf(false) }
     var externalMedia by remember { mutableStateOf(true) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
-    val members = remember { listOf("aria", "eleanor", "kael") }
-    val membersMockList = remember {
-        listOf(
-            DemoGroupMember("aria", "Aria", "咖啡馆的女店员", Color(0xFFFFD7B0), "咖啡馆店员", 1, false, listOf(Color(0xFFFFD7B0), Color(0xFFA55A2A)), "A"),
-            DemoGroupMember("eleanor", "Eleanor Wright", "维多利亚时代小说家", Color(0xFFE8D3AC), "维多利亚小说家", 2, false, listOf(Color(0xFFD8C4A3), Color(0xFF6B4E2B)), "E"),
-            DemoGroupMember("kael", "Kael", "吟游精灵", Color(0xFFC8E5B7), "吟游精灵", 3, true, listOf(Color(0xFFC8E5B7), Color(0xFF3D6B3A)), "K")
+    val members = remember { mutableStateListOf<String>() }
+    val membersMockList = remember { mutableStateListOf<DemoGroupMember>() }
+
+    LaunchedEffect(groupId) {
+        val client = TavernCoreClient(baseUrl)
+        val group = runCatching { client.listGroups().find { it.id == groupId } }.getOrNull()
+        if (group == null) {
+            onShowMessage("找不到群聊")
+            return@LaunchedEffect
+        }
+        groupName = group.name
+        strategy = groupStrategyName(group.activationStrategy)
+        genMode = genModeName(group.generationMode)
+        autoDelay = group.autoModeDelay
+        selfResponses = group.allowSelfResponses
+        fav = group.isFavorite
+        val byId = runCatching { client.listCharacters() }.getOrDefault(emptyList()).associateBy { it.id }
+        members.clear(); members.addAll(group.members)
+        membersMockList.clear()
+        membersMockList.addAll(group.members.mapIndexed { index, avatar ->
+            val name = byId[avatar]?.name ?: avatar.removeSuffix(".png")
+            DemoGroupMember(
+                id = avatar, name = name, subtitle = "", accent = gradientFor(avatar).last(),
+                role = "", queue = index + 1, muted = avatar in group.disabledMembers,
+                avatarGrad = gradientFor(avatar), initial = memberInitial(name)
+            )
+        })
+        base = group
+        loaded = true
+    }
+
+    // 去抖持久化：任一字段变化 400ms 后写回 /api/groups/edit（首帧与基线相同则跳过）。
+    val current = base?.copy(
+        name = groupName,
+        activationStrategy = activationStrategyId(strategy),
+        generationMode = genModeId(genMode),
+        autoModeDelay = autoDelay,
+        allowSelfResponses = selfResponses,
+        isFavorite = fav
+    )
+    LaunchedEffect(current) {
+        val updated = current ?: return@LaunchedEffect
+        if (!loaded || updated == base) return@LaunchedEffect
+        kotlinx.coroutines.delay(400)
+        runCatching { TavernCoreClient(baseUrl).editGroup(updated) }
+            .onSuccess { base = updated }
+            .onFailure { onShowMessage(it.message ?: "保存群设置失败") }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("删除群聊") },
+            text = { Text("将彻底移除「${groupName}」的配置与历史存档，无法恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    scope.launch {
+                        runCatching { TavernCoreClient(baseUrl).deleteGroup(groupId) }
+                            .onSuccess { onShowMessage("已删除群聊"); onBack() }
+                            .onFailure { onShowMessage(it.message ?: "删除失败") }
+                    }
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("取消") } }
         )
     }
 
@@ -118,7 +200,7 @@ fun GroupSettingsScreen(
                             singleLine = true
                         )
                         Text(
-                            text = "${members.size} 位成员 · 创建于 142 天前",
+                            text = "${members.size} 位成员",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 6.dp)
@@ -414,7 +496,7 @@ fun GroupSettingsScreen(
                         )
                     },
                     supportingContent = { Text("彻底移除此群组的所有配置和历史存档文件") },
-                    modifier = Modifier.clickable {}
+                    modifier = Modifier.clickable { showDeleteDialog = true }
                 )
             }
         }

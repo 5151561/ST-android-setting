@@ -20,9 +20,10 @@
 | 群聊详情：真实群/成员/历史 | ✅ 已落地 | `GroupChatScreen(groupId, chatId, baseUrl)` 经 `listGroups()` + `listCharacters()` + `getGroupChatJsonl()` 加载 |
 | 群聊详情：用户发送消息 | ✅ 已落地 | 追加 UI + 真实落库（`saveGroupChatJsonl`，群聊 JSONL） |
 | 群聊 AI 回复（原生生成） | ✅ MVP 已落地 | `NativeGroupGenerator`：按 strategy 选发言人（`pickGroupSpeaker`）→ 该成员角色卡 + 群聊历史经 `PromptBuilder`/`TextPromptBuilder` 组装 → 流式生成（含非流式兜底）→ 落库群聊 JSONL。入口：点名 / 重写 / 继续 / 发言人 sheet / 自动接龙。**限制见 §6.5**，需真机验证 |
-| 对话切换（历史 sheet） | ⛔ 未接 | `ConversationSwitcherSheet` 仍为 demo 数据 |
-| 群设置 / 成员管理两页 | ⛔ 未接 | `GroupSettingsScreen` / `GroupMembersScreen` 仍为 demo 数据；静音/顺序持久化（`/api/groups/edit`）待接 |
-| swipe 持久化 | ⛔ 未接 | 当前 swipe 仅切换本地展示，不写盘 |
+| 对话切换（历史 sheet） | ✅ 已落地 | `ConversationSwitcherSheet` 列出真实群聊存档（`group.chats`），可切换会话、新建会话（写回 `chat_id`/`chats`） |
+| 群设置（`/api/groups/edit`） | ✅ 已落地 | `GroupSettingsScreen` 接真实数据；名称/策略/生成模式/自动延迟/自我回复/收藏 去抖持久化；删除群聊（确认弹窗 + `/api/groups/delete`） |
+| 群成员（`/api/groups/edit`） | ✅ 已落地 | `GroupMembersScreen` 接真实成员/候选；静音→`disabled_members`、顺序→`members`、增删成员，「完成」时写回 |
+| swipe 持久化 | ✅ 已落地 | swipe 切换更新显示文本并把 `swipe_id` + `mes` 写回群聊 JSONL |
 
 ---
 
@@ -206,7 +207,8 @@ GroupComposer.onSend(text)
 - ⚠️ 限制（后续完善）：
   1. `generation_mode = join`（合并多角色卡）未实现，MVP 仅 swap（单卡）。
   2. natural 策略近似为列表轮转，未做 mention/recency 启发式。
-  3. “重写/继续”当前为**追加**新回复，未做基于 swipe 的就地替换（见阶段 5）。
+  3. “重写/继续”当前为**追加**新回复，未做基于 swipe 的就地替换（swipe 切换/落库已支持，但生成新 swipe 的就地替换待后续）。
+  6. 群设置可持久化 `generation_mode=join/join_all`，但生成器（§6.2）当前仍按 swap 取单卡，未真正合并多角色卡。
   4. 群聊 UI 暂未接停止按钮（生成器支持 `requestStop`，待接 UI）。
   5. 流式期间禁用用户输入，避免乐观气泡索引错位。
 
@@ -220,7 +222,7 @@ GroupComposer.onSend(text)
 | 阶段 2 | 新建群聊接真实创建（角色多选 + create API + 列表刷新） | ✅ 真机验证 |
 | 阶段 3 | 群聊详情接真实数据（群/成员/历史）+ 用户发送落库 | ✅ |
 | 阶段 4 | **原生群聊生成**（§6：发言人编排 + 单成员生成 + 落库 + 停止） | ⏳ 进行中 |
-| 阶段 5 | 对话切换（历史 sheet 真实化）+ 群设置/成员两页接真实数据（`/api/groups/edit`）+ swipe 持久化 | ⛔ 待办 |
+| 阶段 5 | 对话切换（历史 sheet 真实化）+ 群设置/成员两页接真实数据（`/api/groups/edit`）+ swipe 持久化 | ✅ |
 
 ---
 
@@ -231,7 +233,8 @@ GroupComposer.onSend(text)
 | 群聊列表 | `ui/prototype/PrototypeGroupChatScreen.kt` |
 | 新建群聊（真实角色 + 创建） | `chat/NewGroupScreen.kt`、`MainActivity.kt`（`group-chat/new` 路由） |
 | 群聊详情（真实数据 + 发送） | `chat/GroupChatScreen.kt`、`MainActivity.kt`（`GROUP_CHAT_DETAIL` 路由） |
-| 群设置 / 成员（待接真实） | `chat/GroupSettingsScreen.kt`、`chat/GroupMembersScreen.kt` |
+| 群设置 / 成员（真实数据 + `/api/groups/edit`） | `chat/GroupSettingsScreen.kt`、`chat/GroupMembersScreen.kt` |
+| 群聊读写 / 编辑 / 删除 API | `api/TavernCoreApi.kt`（`getGroupChatJsonl` / `saveGroupChatJsonl` / `editGroup` / `deleteGroup`） |
 | REST 客户端 | `api/TavernCoreApi.kt`（`listGroups` / `createGroup` / `getGroupChatJsonl` / `saveGroupChatJsonl`、`GroupSummary` / `GroupCreateRequest`） |
 | 原生生成引擎 | `chat/engine/NativeChatEngine.kt`（1v1 现状，群聊将扩展） |
 | 契约测试 | `app/src/test/java/io/github/sanitised/st/chat/GroupChatMigrationContractTest.kt` |

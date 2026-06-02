@@ -92,6 +92,51 @@ class GroupChatMigrationContractTest {
     }
 
     @Test
+    fun groupSettingsAndMembersScreensPersistRealDataViaEditGroup() {
+        val settings = File("src/main/java/io/github/sanitised/st/chat/GroupSettingsScreen.kt").readText()
+        val members = File("src/main/java/io/github/sanitised/st/chat/GroupMembersScreen.kt").readText()
+        val api = File("src/main/java/io/github/sanitised/st/api/TavernCoreApi.kt").readText()
+
+        // Both screens take the group id + base url and persist via editGroup.
+        assertTrue(settings.contains("groupId: String"))
+        assertTrue(settings.contains("editGroup("))
+        assertTrue(settings.contains("deleteGroup("))
+        assertTrue(members.contains("groupId: String"))
+        assertTrue(members.contains("editGroup("))
+        assertTrue(members.contains("disabledMembers ="))
+
+        // No hardcoded demo state remains as the source of truth.
+        assertFalse(settings.contains("mutableStateOf(\"雨夜小聚\")"))
+        assertFalse(members.contains("DemoGroupMember(\"aria\""))
+
+        // The REST client exposes the edit/delete endpoints.
+        assertTrue(api.contains("suspend fun editGroup(group: GroupSummary)"))
+        assertTrue(api.contains("suspend fun deleteGroup(groupId: String)"))
+        assertTrue(api.contains("api/groups/edit"))
+        assertTrue(api.contains("api/groups/delete"))
+    }
+
+    @Test
+    fun conversationSwitcherListsRealGroupChatsNotDemoArchives() {
+        val screen = File("src/main/java/io/github/sanitised/st/chat/GroupChatScreen.kt").readText()
+
+        // The switcher is fed real chats and can switch / start a new conversation.
+        assertTrue(screen.contains("conversations: List<DemoConversation>"))
+        assertTrue(screen.contains("groupState.value.chats"))
+        // The old internal demo archive list is gone.
+        assertFalse(screen.contains("周末桌游夜"))
+        assertFalse(screen.contains("深夜书店打烊后"))
+    }
+
+    @Test
+    fun groupSwipeIsPersistedToTheGroupJsonl() {
+        val screen = File("src/main/java/io/github/sanitised/st/chat/GroupChatScreen.kt").readText()
+        assertTrue(screen.contains("fun applySwipe("))
+        assertTrue(screen.contains("\"swipe_id\"] = newSwipeId"))
+        assertTrue(screen.contains("saveGroupChatJsonl("))
+    }
+
+    @Test
     fun groupRepliesAreGeneratedNativelyNotFakedOrStubbed() {
         val screen = File("src/main/java/io/github/sanitised/st/chat/GroupChatScreen.kt").readText()
 

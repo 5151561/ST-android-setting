@@ -988,24 +988,36 @@ class MainActivity : ComponentActivity() {
                                     chatId = cid.takeIf { it.isNotBlank() },
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
-                                    onNavigateToSettings = { navController.navigate("group-chat/settings") },
-                                    onNavigateToMembers = { navController.navigate("group-chat/members") },
+                                    onNavigateToSettings = { navController.navigate(STRoutes.groupSettings(gid)) },
+                                    onNavigateToMembers = { navController.navigate(STRoutes.groupMembers(gid)) },
                                     onNavigateToNewGroup = { navController.navigate("group-chat/new") },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
-                            composable("group-chat/settings") {
+                            composable(
+                                route = STRoutes.GROUP_SETTINGS,
+                                arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+                            ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
                                 GroupSettingsScreen(
-                                    onBack = { navController.popBackStack() }
+                                    groupId = backStackEntry.arguments?.getString("groupId").orEmpty(),
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
-                            composable("group-chat/members") {
+                            composable(
+                                route = STRoutes.GROUP_MEMBERS,
+                                arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+                            ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
                                 GroupMembersScreen(
-                                    onBack = { navController.popBackStack() }
+                                    groupId = backStackEntry.arguments?.getString("groupId").orEmpty(),
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 

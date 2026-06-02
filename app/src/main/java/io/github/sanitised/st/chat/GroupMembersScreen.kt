@@ -26,31 +26,68 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.sanitised.st.api.GroupSummary
+import io.github.sanitised.st.api.TavernCoreClient
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupMembersScreen(
+    groupId: String,
+    baseUrl: String,
     onBack: () -> Unit,
+    onShowMessage: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // DEMO_PLACEHOLDER: 这一部分定义群成员管理的静态状态。在真实 ST 客户端中，这些状态需要被同步至后端，并重新发送 /api/groups/edit。
-    val activeMembers = remember {
-        mutableStateListOf(
-            DemoGroupMember("aria", "Aria", "咖啡馆的女店员", Color(0xFFFFD7B0), "咖啡馆店员", 1, false, listOf(Color(0xFFFFD7B0), Color(0xFFA55A2A)), "A"),
-            DemoGroupMember("eleanor", "Eleanor Wright", "维多利亚时代小说家", Color(0xFFE8D3AC), "维多利亚小说家", 2, false, listOf(Color(0xFFD8C4A3), Color(0xFF6B4E2B)), "E"),
-            DemoGroupMember("kael", "Kael", "吟游精灵", Color(0xFFC8E5B7), "吟游精灵", 3, true, listOf(Color(0xFFC8E5B7), Color(0xFF3D6B3A)), "K")
-        )
-    }
+    val scope = rememberCoroutineScope()
+    var base by remember { mutableStateOf<GroupSummary?>(null) }
 
-    val candidates = remember {
-        mutableStateListOf(
-            DemoGroupMember("vex", "Captain Vex", "银河走私船 Wraith 号船长", Color(0xFF8FB6C6), " Wraith 船长", 4, false, listOf(Color(0xFF8FB6C6), Color(0xFF2F5567)), "V"),
-            DemoGroupMember("zoey", "Zoey", "高中同桌 / 闺蜜", Color(0xFFF5B0C8), "高中发小", 5, false, listOf(Color(0xFFF5B0C8), Color(0xFFA8366A)), "Z"),
-            DemoGroupMember("archive", "档案室", "神秘档案员", Color(0xFFB8B2A4), "SCP 档案员", 6, false, listOf(Color(0xFFB8B2A4), Color(0xFF46443B)), "档")
-        )
-    }
+    // 当前成员（按发言顺序）与候选角色（未加入），均由真实数据填充。
+    val activeMembers = remember { mutableStateListOf<DemoGroupMember>() }
+    val candidates = remember { mutableStateListOf<DemoGroupMember>() }
     var requestedSpeakerName by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+
+    LaunchedEffect(groupId) {
+        val client = TavernCoreClient(baseUrl)
+        val group = runCatching { client.listGroups().find { it.id == groupId } }.getOrNull()
+        if (group == null) {
+            onShowMessage("找不到群聊")
+            return@LaunchedEffect
+        }
+        val characters = runCatching { client.listCharacters() }.getOrDefault(emptyList())
+        val byId = characters.associateBy { it.id }
+        fun toMember(avatar: String, index: Int): DemoGroupMember {
+            val name = byId[avatar]?.name ?: avatar.removeSuffix(".png")
+            return DemoGroupMember(
+                id = avatar, name = name, subtitle = "", accent = gradientFor(avatar).last(),
+                role = "", queue = index + 1, muted = avatar in group.disabledMembers,
+                avatarGrad = gradientFor(avatar), initial = memberInitial(name)
+            )
+        }
+        activeMembers.clear()
+        activeMembers.addAll(group.members.mapIndexed { i, avatar -> toMember(avatar, i) })
+        candidates.clear()
+        candidates.addAll(
+            characters.filter { it.id !in group.members }
+                .mapIndexed { i, c -> toMember(c.id, i) }
+        )
+        base = group
+    }
+
+    // 保存：把当前成员顺序与静音状态写回 /api/groups/edit。
+    fun saveMembers(then: () -> Unit) {
+        val snapshot = base ?: run { then(); return }
+        val updated = snapshot.copy(
+            members = activeMembers.map { it.id },
+            disabledMembers = activeMembers.filter { it.muted }.map { it.id }
+        )
+        scope.launch {
+            runCatching { TavernCoreClient(baseUrl).editGroup(updated) }
+                .onSuccess { base = updated; then() }
+                .onFailure { onShowMessage(it.message ?: "保存成员失败") }
+        }
+    }
 
     // 重新校准 queue 指数
     fun recalibrateQueue() {
@@ -85,8 +122,10 @@ fun GroupMembersScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        Toast.makeText(context, "成员设置已保存", Toast.LENGTH_SHORT).show()
-                        onBack()
+                        saveMembers {
+                            Toast.makeText(context, "成员设置已保存", Toast.LENGTH_SHORT).show()
+                            onBack()
+                        }
                     }) {
                         Icon(Icons.Filled.Done, contentDescription = "完成", tint = MaterialTheme.colorScheme.primary)
                     }

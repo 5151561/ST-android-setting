@@ -75,7 +75,8 @@ data class DemoGroup(
     val hideMutedSprites: Boolean,
     val fav: Boolean,
     val lorebook: String,
-    val tags: List<String>
+    val tags: List<String>,
+    val chats: List<String> = emptyList()
 )
 
 data class DemoGroupMember(
@@ -318,6 +319,36 @@ fun GroupChatScreen(
         }
     }
 
+    // swipe 切换：更新显示文本并把 swipe_id + mes 落库（按消息序号定位 JSONL 行）。
+    fun applySwipe(uiIndex: Int, newSwipeId: Int) {
+        val msg = threadMessages.getOrNull(uiIndex) ?: return
+        val texts = msg.swipeTexts ?: return
+        if (newSwipeId !in texts.indices) return
+        val newText = texts[newSwipeId]
+        threadMessages[uiIndex] = msg.copy(swipes = Pair(newSwipeId, texts.size), text = newText)
+        scope.launch {
+            runCatching {
+                val client = TavernCoreClient(baseUrl)
+                val chat = client.getGroupChatJsonl(activeChatId)
+                var seen = -1
+                for (j in chat.indices) {
+                    val line = chat[j] as? Map<*, *> ?: continue
+                    if (!line.containsKey("mes")) continue
+                    seen++
+                    if (seen == uiIndex) {
+                        val updated = LinkedHashMap<String, Any?>()
+                        line.forEach { (k, v) -> updated[k.toString()] = v }
+                        updated["swipe_id"] = newSwipeId
+                        updated["mes"] = newText
+                        chat[j] = updated
+                        break
+                    }
+                }
+                client.saveGroupChatJsonl(activeChatId, chat)
+            }.onFailure { onShowMessage(it.message ?: "保存 swipe 失败") }
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
             // 1. 群聊头部
@@ -367,16 +398,12 @@ fun GroupChatScreen(
                                     onSwipeLeft = {
                                         val i = threadMessages.indexOf(msg)
                                         val sw = msg.swipes
-                                        if (i >= 0 && sw != null && sw.first > 0) {
-                                            threadMessages[i] = msg.copy(swipes = Pair(sw.first - 1, sw.second))
-                                        }
+                                        if (i >= 0 && sw != null && sw.first > 0) applySwipe(i, sw.first - 1)
                                     },
                                     onSwipeRight = {
                                         val i = threadMessages.indexOf(msg)
                                         val sw = msg.swipes
-                                        if (i >= 0 && sw != null && sw.first < sw.second - 1) {
-                                            threadMessages[i] = msg.copy(swipes = Pair(sw.first + 1, sw.second))
-                                        }
+                                        if (i >= 0 && sw != null && sw.first < sw.second - 1) applySwipe(i, sw.first + 1)
                                     },
                                     // 重写 / 继续：交给原生群聊生成（下一阶段接入）
                                     onRegenerate = { requestGroupReply(member.id) },
@@ -434,14 +461,52 @@ fun GroupChatScreen(
             )
         }
 
-        // 7. 切换对话下拉面板 (ConversationSwitcher) —— 点群名触发
+        // 7. 切换对话下拉面板 (ConversationSwitcher) —— 点群名触发，列出真实群聊存档
         if (showConversationSwitcher) {
+            val chatIds = groupState.value.chats.ifEmpty { listOf(activeChatId).filter { it.isNotBlank() } }
+            val conversations = chatIds.map { cid ->
+                DemoConversation(
+                    id = cid,
+                    title = cid,
+                    kind = DemoConvKind.CHAT,
+                    messageCount = 0,
+                    preview = "",
+                    timeInfo = "",
+                    active = cid == activeChatId
+                )
+            }
             ConversationSwitcherSheet(
                 group = groupState.value,
                 members = membersList,
+                conversations = conversations,
                 onDismiss = { showConversationSwitcher = false },
-                onSelectConversation = { showConversationSwitcher = false },
-                onNewConversation = { showConversationSwitcher = false },
+                onSelectConversation = { cid ->
+                    showConversationSwitcher = false
+                    if (cid != activeChatId && !isGenerating) {
+                        activeChatId = cid
+                        scope.launch { loading = true; reload() }
+                    }
+                },
+                onNewConversation = {
+                    showConversationSwitcher = false
+                    if (!isGenerating) {
+                        scope.launch {
+                            val newId = System.currentTimeMillis().toString()
+                            val client = TavernCoreClient(baseUrl)
+                            val group = runCatching { client.listGroups().find { it.id == groupId } }.getOrNull()
+                            if (group != null) {
+                                val updated = group.copy(chatId = newId, chats = group.chats + newId)
+                                runCatching { client.editGroup(updated) }
+                                    .onSuccess {
+                                        activeChatId = newId
+                                        loading = true
+                                        reload()
+                                    }
+                                    .onFailure { onShowMessage(it.message ?: "新建对话失败") }
+                            }
+                        }
+                    }
+                },
                 onManageAll = { showConversationSwitcher = false }
             )
         }
@@ -1591,26 +1656,14 @@ data class DemoConversation(
 fun ConversationSwitcherSheet(
     group: DemoGroup,
     members: List<DemoGroupMember>,
+    conversations: List<DemoConversation>,
     onDismiss: () -> Unit,
     onSelectConversation: (String) -> Unit,
     onNewConversation: () -> Unit,
     onManageAll: () -> Unit
 ) {
-    // DEMO_PLACEHOLDER: 历史对话与检查点/分支模拟数据。
-    val conversations = remember {
-        listOf(
-            DemoConversation("rainynight", "雨夜小聚", DemoConvKind.CHAT, 48, "Eleanor：带了。说实话我写了三个版本的结尾…", "今天 21:03 · 36 KB", active = true),
-            DemoConversation("boardgame", "周末桌游夜", DemoConvKind.CHAT, 132, "Kael：这把我赌 Aria 在虚张声势。", "3 天前 · 94 KB"),
-            DemoConversation("bookshop", "深夜书店打烊后", DemoConvKind.CHAT, 76, "你：所以那本书到底是谁落下的？", "上周 · 58 KB"),
-            DemoConversation("firstmeet", "初次见面", DemoConvKind.CHAT, 24, "Aria：欢迎光临～三位是一起的吗？", "142 天前 · 17 KB")
-        )
-    }
-    val checkpoints = remember {
-        listOf(
-            DemoConversation("cp-reading", "结尾朗读 · 检查点", DemoConvKind.CHECKPOINT, 41, "从 Eleanor 读第二版结尾那刻保存", "今天 21:02 · 31 KB"),
-            DemoConversation("branch-rain", "如果当晚没下雨", DemoConvKind.BRANCH, 19, "岔开的支线：改约在天台", "今天 20:40 · 14 KB")
-        )
-    }
+    // 群聊原生路径暂不支持检查点/分支，仅展示真实对话存档。
+    val checkpoints = emptyList<DemoConversation>()
 
     var query by remember { mutableStateOf("") }
     fun matches(c: DemoConversation) =
@@ -1910,7 +1963,7 @@ private fun emptyDemoGroup(id: String): DemoGroup = DemoGroup(
 )
 
 // SillyTavern group_activation_strategy: 0=自然 1=列表 2=手动 3=池化。
-private fun groupStrategyName(value: Int): String = when (value) {
+internal fun groupStrategyName(value: Int): String = when (value) {
     1 -> "list"
     2 -> "manual"
     3 -> "pooled"
@@ -1929,7 +1982,8 @@ private fun GroupSummary.toDemoGroup(): DemoGroup = DemoGroup(
     hideMutedSprites = false,
     fav = isFavorite,
     lorebook = "",
-    tags = emptyList()
+    tags = emptyList(),
+    chats = chats
 )
 
 /** ST 的 send_date 多为 "May 26, 2026 12:00pm" 风格；尽力提取 HH:mm，否则原样回退。 */
