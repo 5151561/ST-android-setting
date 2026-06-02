@@ -56,4 +56,39 @@ class GroupChatMigrationContractTest {
         assertFalse(source.contains("if (strategy == \"manual\") \"由你点名\" else \"自动 · 自然顺序\""))
         assertTrue(source.contains("getStrategyActionLabel(strategy)"))
     }
+
+    @Test
+    fun activationStrategyStringsMapToRealSillyTavernEnumValues() {
+        // group_activation_strategy in SillyTavern/public/scripts/group-chats.js.
+        assertTrue(activationStrategyId("natural") == 0)
+        assertTrue(activationStrategyId("list") == 1)
+        assertTrue(activationStrategyId("manual") == 2)
+        assertTrue(activationStrategyId("pooled") == 3)
+        // Unknown values fall back to NATURAL rather than throwing.
+        assertTrue(activationStrategyId("???") == 0)
+    }
+
+    @Test
+    fun newGroupScreenIsWiredToCreateGroupApiInsteadOfBeingANoOp() {
+        // Regression for the full-device report: the create button used to be
+        // onCreate = { _, _, _ -> navController.popBackStack() }, so no group was
+        // ever persisted. The route must load real characters and call createGroup.
+        val activity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+
+        assertFalse(
+            "New group create handler must not discard its arguments.",
+            activity.contains("onCreate = { _, _, _ -> navController.popBackStack() }")
+        )
+        val newGroupRoute = activity.substringAfter("composable(\"group-chat/new\")")
+            .substringBefore("composable(")
+        assertTrue(newGroupRoute.contains("listCharacters()"))
+        assertTrue(newGroupRoute.contains("createGroup("))
+        assertTrue(newGroupRoute.contains("GroupCreateRequest("))
+
+        // The screen builds groups from real characters, not demo placeholders.
+        val screen = File("src/main/java/io/github/sanitised/st/chat/NewGroupScreen.kt").readText()
+        assertTrue(screen.contains("characters: List<CharacterSummary>"))
+        assertFalse(screen.contains("DEMO_PLACEHOLDER"))
+        assertFalse(screen.contains("DemoGroupMember("))
+    }
 }

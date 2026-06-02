@@ -1,6 +1,5 @@
 package io.github.sanitised.st.chat
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,33 +23,58 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.sanitised.st.api.CharacterSummary
+
+// SillyTavern group_activation_strategy (scripts/group-chats.js):
+// NATURAL=0, LIST=1, MANUAL=2, POOLED=3.
+internal fun activationStrategyId(strategy: String): Int = when (strategy) {
+    "natural" -> 0
+    "list" -> 1
+    "manual" -> 2
+    "pooled" -> 3
+    else -> 0
+}
+
+// Deterministic accent gradient per member so the same character always renders
+// with the same colors without needing the avatar image to be loaded.
+private val MEMBER_GRADIENTS = listOf(
+    listOf(Color(0xFFFFD7B0), Color(0xFFA55A2A)),
+    listOf(Color(0xFFD8C4A3), Color(0xFF6B4E2B)),
+    listOf(Color(0xFFC8E5B7), Color(0xFF3D6B3A)),
+    listOf(Color(0xFF8FB6C6), Color(0xFF2F5567)),
+    listOf(Color(0xFFF5B0C8), Color(0xFFA8366A)),
+    listOf(Color(0xFFB8B2A4), Color(0xFF46443B)),
+    listOf(Color(0xFFB3C7F5), Color(0xFF3A4E8A)),
+    listOf(Color(0xFFE3C2F5), Color(0xFF6A3A8A))
+)
+
+private fun gradientFor(seed: String): List<Color> {
+    if (seed.isEmpty()) return MEMBER_GRADIENTS[0]
+    val index = (seed.hashCode() and Int.MAX_VALUE) % MEMBER_GRADIENTS.size
+    return MEMBER_GRADIENTS[index]
+}
+
+private fun memberInitial(name: String): String =
+    name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewGroupScreen(
+    characters: List<CharacterSummary>,
+    loading: Boolean,
     onClose: () -> Unit,
-    onCreate: (String, List<String>, String) -> Unit,
+    onCreate: (name: String, members: List<String>, activationStrategy: Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // DEMO_PLACEHOLDER: 这一部分定义新建群向导的静态模拟状态。创建成功后，将参数传出，用于调用 POST /api/groups/create。
-    var groupName by remember { mutableStateOf("雨夜小聚") }
+    var groupName by remember { mutableStateOf("") }
     var selectedStrategy by remember { mutableStateOf("natural") }
-    
-    val selectedMembers = remember {
-        mutableStateListOf(
-            DemoGroupMember("aria", "Aria", "咖啡馆的女店员", Color(0xFFFFD7B0), "咖啡馆店员", 1, false, listOf(Color(0xFFFFD7B0), Color(0xFFA55A2A)), "A"),
-            DemoGroupMember("eleanor", "Eleanor Wright", "维多利亚时代小说家", Color(0xFFE8D3AC), "维多利亚小说家", 2, false, listOf(Color(0xFFD8C4A3), Color(0xFF6B4E2B)), "E"),
-            DemoGroupMember("kael", "Kael", "吟游精灵", Color(0xFFC8E5B7), "吟游精灵", 3, true, listOf(Color(0xFFC8E5B7), Color(0xFF3D6B3A)), "K")
-        )
-    }
+    val selectedIds = remember { mutableStateListOf<String>() }
 
-    val availableCandidates = remember {
-        mutableStateListOf(
-            DemoGroupMember("vex", "Captain Vex", "银河走私船 Wraith 号船长", Color(0xFF8FB6C6), " Wraith 船长", 4, false, listOf(Color(0xFF8FB6C6), Color(0xFF2F5567)), "V"),
-            DemoGroupMember("zoey", "Zoey", "高中同桌 / 闺蜜", Color(0xFFF5B0C8), "高中发小", 5, false, listOf(Color(0xFFF5B0C8), Color(0xFFA8366A)), "Z"),
-            DemoGroupMember("archive", "档案室", "神秘档案员", Color(0xFFB8B2A4), "SCP 档案员", 6, false, listOf(Color(0xFFB8B2A4), Color(0xFF46443B)), "档")
-        )
-    }
+    // The available carousel is everything not yet selected, in library order.
+    val selectedMembers = selectedIds.mapNotNull { id -> characters.firstOrNull { it.id == id } }
+    val availableCandidates = characters.filter { it.id !in selectedIds }
+
+    val canCreate = groupName.isNotBlank() && selectedMembers.isNotEmpty()
 
     Scaffold(
         topBar = {
@@ -70,9 +94,14 @@ fun NewGroupScreen(
                 },
                 actions = {
                     TextButton(
+                        enabled = canCreate,
                         onClick = {
-                            if (groupName.isNotBlank() && selectedMembers.isNotEmpty()) {
-                                onCreate(groupName, selectedMembers.map { it.id }, selectedStrategy)
+                            if (canCreate) {
+                                onCreate(
+                                    groupName.trim(),
+                                    selectedIds.toList(),
+                                    activationStrategyId(selectedStrategy)
+                                )
                             }
                         }
                     ) {
@@ -80,7 +109,8 @@ fun NewGroupScreen(
                             "创建",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = if (canCreate) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
                     }
                 },
@@ -105,12 +135,8 @@ fun NewGroupScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    GroupAvatar(
-                        ids = selectedMembers.map { it.id },
-                        members = selectedMembers,
-                        size = 64.dp
-                    )
-                    
+                    NewGroupHeaderAvatar(members = selectedMembers, size = 64.dp)
+
                     OutlinedTextField(
                         value = groupName,
                         onValueChange = { groupName = it },
@@ -131,7 +157,28 @@ fun NewGroupScreen(
                 }
             }
 
-            // 2. 已选成员顺序调整 (Draggable / Sortable list)
+            // 加载 / 空角色库提示
+            if (loading) {
+                item {
+                    Text(
+                        text = "正在读取角色…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
+            } else if (characters.isEmpty()) {
+                item {
+                    Text(
+                        text = "还没有可用角色，请先在「角色」页导入或创建角色。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
+            }
+
+            // 2. 已选成员顺序调整
             item {
                 SectionHeader(
                     title = "参与者 · 发言顺序",
@@ -145,7 +192,18 @@ fun NewGroupScreen(
                 )
             }
 
-            itemsIndexed(selectedMembers) { index, m ->
+            if (selectedMembers.isEmpty()) {
+                item {
+                    Text(
+                        text = "从下面的角色库中选择至少一位参与者。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            itemsIndexed(selectedMembers, key = { _, m -> m.id }) { index, m ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -154,14 +212,12 @@ fun NewGroupScreen(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // drag drop icons for micro-adjustment
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(end = 4.dp)) {
                         IconButton(
                             onClick = {
                                 if (index > 0) {
-                                    val temp = selectedMembers[index]
-                                    selectedMembers[index] = selectedMembers[index - 1]
-                                    selectedMembers[index - 1] = temp
+                                    val moved = selectedIds.removeAt(index)
+                                    selectedIds.add(index - 1, moved)
                                 }
                             },
                             enabled = index > 0,
@@ -178,9 +234,8 @@ fun NewGroupScreen(
                         IconButton(
                             onClick = {
                                 if (index < selectedMembers.lastIndex) {
-                                    val temp = selectedMembers[index]
-                                    selectedMembers[index] = selectedMembers[index + 1]
-                                    selectedMembers[index + 1] = temp
+                                    val moved = selectedIds.removeAt(index)
+                                    selectedIds.add(index + 1, moved)
                                 }
                             },
                             enabled = index < selectedMembers.lastIndex,
@@ -189,26 +244,27 @@ fun NewGroupScreen(
                             Icon(Icons.Filled.ArrowDropDown, contentDescription = "下移")
                         }
                     }
-                    
-                    // Avatar
+
                     Box(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(Brush.linearGradient(m.avatarGrad)),
+                            .background(Brush.linearGradient(gradientFor(m.id))),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(m.initial, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(memberInitial(m.name), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
-                    
+
                     Spacer(modifier = Modifier.width(12.dp))
-                    
+
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = m.name,
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = "第 ${index + 1} 位发言",
@@ -216,13 +272,8 @@ fun NewGroupScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    
-                    IconButton(
-                        onClick = {
-                            selectedMembers.removeAt(index)
-                            availableCandidates.add(m)
-                        }
-                    ) {
+
+                    IconButton(onClick = { selectedIds.remove(m.id) }) {
                         Icon(
                             imageVector = Icons.Filled.Close,
                             contentDescription = "移除角色",
@@ -233,72 +284,77 @@ fun NewGroupScreen(
                 }
             }
 
-            // 3. 待选角色库 (Horizontal Carousel)
+            // 3. 待选角色库
             item {
                 SectionHeader(title = "添加更多角色")
             }
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    availableCandidates.forEachIndexed { index, c ->
-                        Column(
-                            modifier = Modifier
-                                .width(64.dp)
-                                .clickable {
-                                    availableCandidates.removeAt(index)
-                                    selectedMembers.add(c)
-                                },
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Box(modifier = Modifier.size(56.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(CircleShape)
-                                        .background(Brush.linearGradient(c.avatarGrad)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(c.initial, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                if (availableCandidates.isEmpty()) {
+                    Text(
+                        text = if (characters.isEmpty()) "暂无角色" else "已添加全部角色",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        availableCandidates.forEach { c ->
+                            Column(
+                                modifier = Modifier
+                                    .width(64.dp)
+                                    .clickable { selectedIds.add(c.id) },
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(modifier = Modifier.size(56.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(CircleShape)
+                                            .background(Brush.linearGradient(gradientFor(c.id))),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(memberInitial(c.name), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .offset(x = 2.dp, y = 2.dp)
+                                            .size(22.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary)
+                                            .border(2.dp, MaterialTheme.colorScheme.background, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Add,
+                                            contentDescription = "加入",
+                                            tint = MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
                                 }
-                                
-                                // Green Plus badge
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .offset(x = 2.dp, y = 2.dp)
-                                        .size(22.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary)
-                                        .border(2.dp, MaterialTheme.colorScheme.background, CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Add,
-                                        contentDescription = "加入",
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                }
+                                Text(
+                                    text = c.name,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
-                            Text(
-                                text = c.name,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
                         }
                     }
                 }
             }
 
-            // 4. 快速策略选择 (Quick strategy selector)
+            // 4. 回复策略
             item {
                 SectionHeader(title = "回复策略")
             }
@@ -344,8 +400,7 @@ fun NewGroupScreen(
                     }
                 }
             }
-            
-            // 底部提示说明
+
             item {
                 Box(
                     modifier = Modifier
@@ -360,6 +415,37 @@ fun NewGroupScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NewGroupHeaderAvatar(members: List<CharacterSummary>, size: androidx.compose.ui.unit.Dp) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(
+                Brush.linearGradient(
+                    gradientFor(members.firstOrNull()?.id ?: "group")
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (members.isEmpty()) {
+            Icon(
+                imageVector = Icons.Filled.Group,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(size / 2)
+            )
+        } else {
+            Text(
+                text = members.take(2).joinToString("") { memberInitial(it.name) },
+                color = Color.White,
+                fontSize = (size.value / 3).sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
