@@ -58,8 +58,10 @@ class ChatStore {
     val quickReplies = mutableStateListOf<QuickReplyItem>()
     val loadedExtensions = mutableStateListOf<String>()
 
-    fun applySnapshot(snapshot: ChatSnapshot) {
-        runtimeState = RuntimeState.READY
+    fun applySnapshot(snapshot: ChatSnapshot, markRuntimeReady: Boolean = true) {
+        if (markRuntimeReady) {
+            runtimeState = RuntimeState.READY
+        }
         runtimeError = null
         mode = snapshot.mode
         characterName = snapshot.characterName

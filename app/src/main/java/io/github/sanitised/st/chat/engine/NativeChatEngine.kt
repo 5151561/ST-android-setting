@@ -8,9 +8,12 @@ import io.github.sanitised.st.chat.ChatMessage
 import io.github.sanitised.st.chat.ChatRuntimeBridge
 import io.github.sanitised.st.chat.ChatStore
 import io.github.sanitised.st.chat.prompt.PromptBuilder
+import io.github.sanitised.st.chat.prompt.TextPromptBuildResult
+import io.github.sanitised.st.chat.prompt.TextPromptBuilder
 import io.github.sanitised.st.chat.prompt.WorldInfoScanner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
@@ -20,14 +23,49 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
+enum class NativeEngineMode {
+    CHAT_COMPLETION,
+    TEXT_COMPLETION,
+    FALLBACK,
+}
+
+enum class ActiveGenerationRoute {
+    NONE,
+    NATIVE,
+    BRIDGE,
+}
+
+enum class GenerationStopTarget {
+    NATIVE,
+    BRIDGE,
+}
+
+fun stopTargetForGeneration(mode: String, route: ActiveGenerationRoute): GenerationStopTarget =
+    if (mode == "group" || route == ActiveGenerationRoute.BRIDGE) {
+        GenerationStopTarget.BRIDGE
+    } else {
+        GenerationStopTarget.NATIVE
+    }
+
+fun engineMode(settings: Map<String, Any?>, authorsNote: String = ""): NativeEngineMode =
+    when (settings["main_api"] as? String) {
+        "openai" -> NativeEngineMode.CHAT_COMPLETION
+        "textgenerationwebui" -> if (TextPromptBuilder.supports(settings, authorsNote)) {
+            NativeEngineMode.TEXT_COMPLETION
+        } else {
+            NativeEngineMode.FALLBACK
+        }
+        else -> NativeEngineMode.FALLBACK
+    }
+
 /**
- * Native Chat Completion engine: assembles the prompt on-device ([PromptBuilder]),
+ * Native generation engine: assembles the prompt on-device ([PromptBuilder] / [TextPromptBuilder]),
  * calls the backend generate endpoint directly, mirrors the reply into [ChatStore]
  * for immediate UI, persists the canonical JSONL via [TavernCoreApi], then asks the
  * hidden runtime to reload from disk so it stays the single source of truth.
  *
- * MVP: 1v1 character chats, non-streaming, Chat Completion sources only. Group chats
- * and advanced semantics still go through [BridgeChatEngine].
+ * MVP: 1v1 character chats for Chat Completion and first-batch Text Completion.
+ * Groups, attachments, complex templates, and unsupported APIs fall back to [BridgeChatEngine].
  */
 class NativeChatEngine(
     private val scope: CoroutineScope,
@@ -41,6 +79,9 @@ class NativeChatEngine(
     @Volatile
     private var stopRequested = false
 
+    @Volatile
+    private var activeGenerationRoute = ActiveGenerationRoute.NONE
+
     override fun send(text: String) {
         val message = text.trim()
         if (message.isEmpty() || store.isGenerating) return
@@ -48,6 +89,7 @@ class NativeChatEngine(
         // (group chats, attachments) stays on the WebView bridge, which writes +
         // clears the pending attachments and reuses the full ST semantics.
         if (store.mode == "group" || store.pendingAttachments.isNotEmpty()) {
+            activeGenerationRoute = ActiveGenerationRoute.BRIDGE
             bridge.sendMessage(message)
             return
         }
@@ -60,34 +102,70 @@ class NativeChatEngine(
         launchGeneration {
             val client = clientProvider()
             val settings = client.getSettings()
-            // Only Chat Completion sources (main_api == openai) are supported natively;
-            // Text Completion / Kobold / Novel keep the WebView fallback (Phase E).
-            if (!isChatCompletion(settings)) {
+            val mode = engineMode(settings, authorsNote = store.authorsNote)
+            if (mode == NativeEngineMode.FALLBACK) {
+                activeGenerationRoute = ActiveGenerationRoute.BRIDGE
                 store.isGenerating = false
                 bridge.sendMessage(message)
                 return@launchGeneration
             }
+            activeGenerationRoute = ActiveGenerationRoute.NATIVE
             val character = client.getCharacter(avatar)
             val userName = (settings["username"] as? String)?.takeIf { it.isNotBlank() } ?: "User"
             val date = sendDate()
+            var optimisticUserId: Int? = null
+            var optimisticAssistantId: Int? = null
+            var persisted = false
 
-            // Optimistic user + empty assistant placeholder for live streaming; both are
-            // replaced by the canonical snapshot after the runtime reloads from disk below.
-            store.addMessage(message(store.messages.size, userName, message, isUser = true))
-            val history = store.messages.filter { !it.isSystem }
-            val payload = buildPayload(client, character, userName, history, settings)
-            val model = payload["model"] as? String ?: ""
-            val aiId = store.messages.size
-            store.addMessage(message(aiId, character.name, "", isUser = false))
+            try {
+                // Optimistic user + empty assistant placeholder for live streaming; both are
+                // replaced by the canonical snapshot after the runtime reloads from disk below.
+                val userId = store.messages.size
+                optimisticUserId = userId
+                store.addMessage(message(userId, userName, message, isUser = true))
+                val history = store.messages.filter { !it.isSystem }
+                val payload = when (mode) {
+                    NativeEngineMode.CHAT_COMPLETION -> buildPayload(client, character, userName, history, settings)
+                    NativeEngineMode.TEXT_COMPLETION -> buildTextPayload(client, character, userName, history, settings)
+                    NativeEngineMode.FALLBACK -> error("fallback mode should have returned before optimistic append")
+                }
+                val model = payload["model"] as? String ?: ""
+                val aiId = store.messages.size
+                optimisticAssistantId = aiId
+                store.addMessage(message(aiId, character.name, "", isUser = false))
 
-            val reply = streamReply(client, payload, aiId)
+                val reply = when (mode) {
+                    NativeEngineMode.CHAT_COMPLETION -> streamReply(client, payload, aiId)
+                    NativeEngineMode.TEXT_COMPLETION -> streamTextReply(client, payload, aiId)
+                    NativeEngineMode.FALLBACK -> ""
+                }
 
-            val chat = client.getChatJsonl(avatar, chatFile)
-            ensureHeader(chat, userName, character.name, date)
-            chat += userMessageMap(userName, message, date)
-            if (reply.isNotBlank()) chat += aiMessageMap(character.name, reply, date, model)
-            client.saveChatJsonl(avatar, chatFile, chat)
-            bridge.reloadChat()
+                val chat = client.getChatJsonl(avatar, chatFile)
+                ensureHeader(chat, userName, character.name, date)
+                chat += userMessageMap(userName, message, date)
+                if (reply.isNotBlank()) {
+                    chat += aiMessageMap(
+                        name = character.name,
+                        text = reply,
+                        date = date,
+                        model = model,
+                        api = if (mode == NativeEngineMode.TEXT_COMPLETION) "textgenerationwebui" else "openai",
+                        type = payload["api_type"] as? String,
+                    )
+                }
+                client.saveChatJsonl(avatar, chatFile, chat)
+                persisted = true
+                bridge.reloadChat()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                if (!persisted) rollbackOptimisticMessages(store, optimisticUserId, optimisticAssistantId)
+                throw e
+            } catch (e: Exception) {
+                if (!persisted) {
+                    rollbackOptimisticMessages(store, optimisticUserId, optimisticAssistantId)
+                    runCatching { bridge.reloadChat() }
+                }
+                throw e
+            }
         }
     }
 
@@ -104,13 +182,14 @@ class NativeChatEngine(
     }
 
     override fun stop() {
-        if (store.mode == "group") {
-            bridge.stopGeneration()
-            return
+        when (stopTargetForGeneration(store.mode, activeGenerationRoute)) {
+            GenerationStopTarget.BRIDGE -> bridge.stopGeneration()
+            GenerationStopTarget.NATIVE -> {
+                // Ends the stream at the next token; the in-flight job then persists the partial.
+                stopRequested = true
+                store.isGenerating = false
+            }
         }
-        // Ends the stream at the next token; the in-flight job then persists the partial.
-        stopRequested = true
-        store.isGenerating = false
     }
 
     /**
@@ -124,26 +203,59 @@ class NativeChatEngine(
         history: List<ChatMessage>,
         settings: Map<String, Any?>,
     ): Map<String, Any?> {
-        val entries = collectWorldInfo(client, character)
-        val scanText = history.takeLast(WI_SCAN_DEPTH).joinToString("\n") { it.mes }
-        val wi = WorldInfoScanner.scan(entries, scanText)
-        val personaDescription = (settings["power_user"] as? Map<*, *>)
-            ?.get("persona_description") as? String ?: ""
+        val context = buildPromptContext(client, character, history, settings)
         return PromptBuilder.build(
             character = character,
             userName = userName,
             history = history,
             settings = settings,
-            personaDescription = personaDescription,
-            worldInfoBefore = wi.before,
-            worldInfoAfter = wi.after,
+            personaDescription = context.personaDescription,
+            worldInfoBefore = context.worldInfoBefore,
+            worldInfoAfter = context.worldInfoAfter,
             authorsNote = store.authorsNote,
         )
     }
 
-    /** Native generation only covers Chat Completion (`/chat-completions/generate`). */
-    private fun isChatCompletion(settings: Map<String, Any?>): Boolean =
-        (settings["main_api"] as? String) == "openai"
+    private suspend fun buildTextPayload(
+        client: TavernCoreApi,
+        character: CharacterDetail,
+        userName: String,
+        history: List<ChatMessage>,
+        settings: Map<String, Any?>,
+    ): Map<String, Any?> {
+        val context = buildPromptContext(client, character, history, settings)
+        return when (val result = TextPromptBuilder.build(
+            character = character,
+            userName = userName,
+            history = history,
+            settings = settings,
+            personaDescription = context.personaDescription,
+            worldInfoBefore = context.worldInfoBefore,
+            worldInfoAfter = context.worldInfoAfter,
+            authorsNote = store.authorsNote,
+        )) {
+            is TextPromptBuildResult.Ready -> result.payload
+            is TextPromptBuildResult.Unsupported -> throw IllegalStateException(result.reason)
+        }
+    }
+
+    private suspend fun buildPromptContext(
+        client: TavernCoreApi,
+        character: CharacterDetail,
+        history: List<ChatMessage>,
+        settings: Map<String, Any?>,
+    ): NativePromptContext {
+        val entries = collectWorldInfo(client, character)
+        val scanText = history.takeLast(WI_SCAN_DEPTH).joinToString("\n") { it.mes }
+        val wi = WorldInfoScanner.scan(entries, scanText)
+        val personaDescription = (settings["power_user"] as? Map<*, *>)
+            ?.get("persona_description") as? String ?: ""
+        return NativePromptContext(
+            personaDescription = personaDescription,
+            worldInfoBefore = wi.before,
+            worldInfoAfter = wi.after,
+        )
+    }
 
     /** Lorebooks to scan: the character's embedded world + the chat-bound world. */
     private suspend fun collectWorldInfo(client: TavernCoreApi, character: CharacterDetail): List<WorldInfoEntry> {
@@ -165,6 +277,34 @@ class NativeChatEngine(
     private suspend fun streamReply(client: TavernCoreApi, payload: Map<String, Any?>, aiId: Int): String {
         val source = payload["chat_completion_source"] as? String ?: ""
         val model = payload["model"] as? String ?: ""
+        return streamGeneratedReply(
+            aiId = aiId,
+            source = source,
+            model = model,
+            stream = { client.generateChatCompletionStream(payload) },
+            generate = { client.generateChatCompletion(payload) },
+        )
+    }
+
+    private suspend fun streamTextReply(client: TavernCoreApi, payload: Map<String, Any?>, aiId: Int): String {
+        val source = payload["api_type"] as? String ?: ""
+        val model = payload["model"] as? String ?: ""
+        return streamGeneratedReply(
+            aiId = aiId,
+            source = source,
+            model = model,
+            stream = { client.generateTextCompletionStream(payload) },
+            generate = { client.generateTextCompletion(payload) },
+        )
+    }
+
+    private suspend fun streamGeneratedReply(
+        aiId: Int,
+        source: String,
+        model: String,
+        stream: () -> Flow<String>,
+        generate: suspend () -> String,
+    ): String {
         Log.i(TAG, "stream source=$source model=$model")
         val acc = StringBuilder()
         fun apply() {
@@ -173,7 +313,7 @@ class NativeChatEngine(
         }
         try {
             var lastApply = 0L
-            client.generateChatCompletionStream(payload)
+            stream()
                 .takeWhile { !stopRequested }
                 .collect { delta ->
                     acc.append(delta)
@@ -195,7 +335,7 @@ class NativeChatEngine(
             Log.w(TAG, "stream failed, falling back to non-stream: ${e.message}")
         }
         if (acc.isEmpty() && !stopRequested) {
-            val reply = runGenerate(client, payload)
+            val reply = runGenerate(source, model, generate)
             acc.append(reply)
             apply()
         }
@@ -203,11 +343,9 @@ class NativeChatEngine(
     }
 
     /** Non-streaming generate; used as the fallback for unsupported SSE shapes. */
-    private suspend fun runGenerate(client: TavernCoreApi, payload: Map<String, Any?>): String {
-        val source = payload["chat_completion_source"] as? String ?: ""
-        val model = payload["model"] as? String ?: ""
+    private suspend fun runGenerate(source: String, model: String, generate: suspend () -> String): String {
         return try {
-            client.generateChatCompletion(payload)
+            generate()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -230,6 +368,9 @@ class NativeChatEngine(
                 store.pushToast("error", "原生生成失败", msg)
             } finally {
                 store.isGenerating = false
+                if (activeGenerationRoute == ActiveGenerationRoute.NATIVE) {
+                    activeGenerationRoute = ActiveGenerationRoute.NONE
+                }
             }
         }
     }
@@ -257,8 +398,17 @@ class NativeChatEngine(
             "extra" to emptyMap<String, Any?>()
         )
 
-    private fun aiMessageMap(name: String, text: String, date: String, model: String): Map<String, Any?> =
-        linkedMapOf(
+    private fun aiMessageMap(
+        name: String,
+        text: String,
+        date: String,
+        model: String,
+        api: String,
+        type: String?,
+    ): Map<String, Any?> {
+        val extra = linkedMapOf<String, Any?>("api" to api, "model" to model)
+        type?.takeIf { it.isNotBlank() }?.let { extra["type"] = it }
+        return linkedMapOf(
             "name" to name,
             "is_user" to false,
             "is_system" to false,
@@ -266,8 +416,9 @@ class NativeChatEngine(
             "mes" to text,
             "swipes" to listOf(text),
             "swipe_id" to 0,
-            "extra" to linkedMapOf<String, Any?>("api" to "openai", "model" to model)
+            "extra" to extra
         )
+    }
 
     private fun ensureHeader(chat: MutableList<Any?>, userName: String, charName: String, date: String) {
         if (chat.isNotEmpty()) return
@@ -286,4 +437,19 @@ class NativeChatEngine(
         const val TAG = "NativeChatEngine"
         const val WI_SCAN_DEPTH = 3
     }
+}
+
+private data class NativePromptContext(
+    val personaDescription: String,
+    val worldInfoBefore: String,
+    val worldInfoAfter: String,
+)
+
+fun rollbackOptimisticMessages(
+    store: ChatStore,
+    userMessageId: Int?,
+    assistantMessageId: Int?,
+) {
+    assistantMessageId?.let(store::deleteMessage)
+    userMessageId?.let(store::deleteMessage)
 }

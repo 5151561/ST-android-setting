@@ -150,6 +150,8 @@ fun NativeChatScreen(
     store: ChatStore,
     bridge: ChatRuntimeBridge,
     engine: ChatEngine,
+    nativeChatLoadingEnabled: Boolean = false,
+    nativeChatLoader: NativeChatLoader? = null,
     onBackToHome: () -> Unit,
     onOpenPastChats: (() -> Unit)? = null,
     onShowMessage: (String) -> Unit,
@@ -208,6 +210,22 @@ fun NativeChatScreen(
         }
     }
 
+    val nativeTargetKey = if (nativeChatLoadingEnabled && status.state == NodeState.RUNNING) {
+        readyTargetCommandKey(target)
+    } else {
+        null
+    }
+    LaunchedEffect(nativeTargetKey) {
+        if (nativeTargetKey == null) return@LaunchedEffect
+        if (target is WebViewTarget.CharacterChat) {
+            runCatching {
+                nativeChatLoader?.openCharacter(target.avatar, target.chatFile) ?: false
+            }.onFailure { error ->
+                store.recordCommandError(error.message ?: "原生加载聊天失败")
+            }.getOrDefault(false)
+        }
+    }
+
     val readyTargetKey = if (store.runtimeState == RuntimeState.READY) readyTargetCommandKey(target) else null
     LaunchedEffect(readyTargetKey) {
         if (readyTargetKey == null) return@LaunchedEffect
@@ -228,7 +246,8 @@ fun NativeChatScreen(
     } else {
         target.displayLabel()
     }
-    val readyForTarget = store.runtimeState == RuntimeState.READY && targetMatched
+    val nativeReadyForTarget = nativeChatLoadingEnabled && targetMatched
+    val readyForTarget = (store.runtimeState == RuntimeState.READY || nativeReadyForTarget) && targetMatched
     val isGroupMode = store.mode == "group"
 
     Box(modifier = modifier.fillMaxSize()) {

@@ -50,7 +50,6 @@ class ChatRuntimeBridge(
         when (event) {
             is BridgeEvent.RuntimeReady -> {
                 store.markRuntimeReady()
-                requestSnapshot()
                 connect(auto = true)
                 loadQuickReplies()
                 loadExtensions()
@@ -289,11 +288,11 @@ class ChatRuntimeBridge(
     }
 
     fun loadQuickReplies() {
-        dispatch(BridgeMessage(kind = "command", name = "quickReply.list"))
+        dispatch(BridgeMessage(kind = "command", name = "quickReply.list"), silentTimeout = true)
     }
 
     fun loadExtensions() {
-        dispatch(BridgeMessage(kind = "command", name = "extensions.list"))
+        dispatch(BridgeMessage(kind = "command", name = "extensions.list"), silentTimeout = true)
     }
 
     fun loadItemizedPrompt(messageId: Int) {
@@ -360,7 +359,11 @@ class ChatRuntimeBridge(
         dispatch(BridgeMessage(kind = "command", name = "runtime.save"))
     }
 
-    private fun dispatch(message: BridgeMessage, trackTimeout: Boolean = true) {
+    private fun dispatch(
+        message: BridgeMessage,
+        trackTimeout: Boolean = true,
+        silentTimeout: Boolean = false
+    ) {
         mainHandler.post {
             val wv = webView
             if (wv == null) {
@@ -375,19 +378,22 @@ class ChatRuntimeBridge(
                   return true;
                 })();
             """.trimIndent()
+            if (trackTimeout) {
+                registerTimeout(message.id, message.name, silentTimeout)
+            }
             wv.evaluateJavascript(js) { result ->
                 if (result != "true") {
+                    if (trackTimeout) {
+                        completePendingCommand(message.id)
+                    }
                     store.markRuntimeUnavailable("聊天运行时正在重新连接")
                     return@evaluateJavascript
-                }
-                if (trackTimeout) {
-                    registerTimeout(message.id, message.name)
                 }
             }
         }
     }
 
-    private fun registerTimeout(commandId: String, commandName: String) {
+    private fun registerTimeout(commandId: String, commandName: String, silent: Boolean = false) {
         val timeoutMs = when {
             commandName.startsWith("chat.open") -> OPEN_TIMEOUT_MS
             commandName.startsWith("generation.") -> GENERATION_TIMEOUT_MS
@@ -396,8 +402,15 @@ class ChatRuntimeBridge(
         val runnable = Runnable {
             pendingCommands.remove(commandId)
             val label = COMMAND_LABELS[commandName] ?: commandName
-            store.recordCommandError("$label 超时，运行时可能无响应")
-            Log.w(TAG, "Command timeout [$commandId] $commandName after ${timeoutMs}ms")
+            // Background, auto-fired loads (quick replies, extensions) are
+            // best-effort and retried on the next chat change — a transient
+            // timeout should be logged, not surfaced as a runtime error banner.
+            if (silent) {
+                Log.w(TAG, "Background command timeout [$commandId] $commandName after ${timeoutMs}ms (silent)")
+            } else {
+                store.recordCommandError("$label 超时，运行时可能无响应")
+                Log.w(TAG, "Command timeout [$commandId] $commandName after ${timeoutMs}ms")
+            }
         }
         pendingCommands[commandId] = PendingCommand(commandName, runnable)
         mainHandler.postDelayed(runnable, timeoutMs)

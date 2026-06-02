@@ -46,6 +46,20 @@
     return root && typeof root.getContext === 'function' ? root.getContext() : null;
   }
 
+  // Dynamic import() inside this injected script resolves relative specifiers
+  // against the script's own base URL, which is about:blank (the script is
+  // treated as a CORS-cross-origin script). Relative imports therefore fail with
+  // "Failed to resolve module specifier '...'. The base URL is about:blank".
+  // Build an absolute same-origin URL so resolution no longer depends on the
+  // injected script's base URL. The page loads modules from the origin root
+  // (e.g. <script type="module" src="script.js">), so origin + '/' + path
+  // matches the already-loaded module URL and returns the live cached instance.
+  function importModule(path) {
+    var origin = (window.location && window.location.origin) || '';
+    var clean = String(path).replace(/^\.?\/+/, '');
+    return import(origin + '/' + clean);
+  }
+
   function normalizeIdentifier(value) {
     return String(value || '')
       .split(/[\\/]/)
@@ -402,11 +416,12 @@
   // --- Command dispatch from Android ---
   window.STAndroidChatRuntime = {
     dispatch: function (jsonStr) {
+      var cmdId = '';
       try {
         var msg = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
         var name = msg.name;
         var payload = msg.payload || {};
-        var cmdId = msg.id || '';
+        cmdId = msg.id || '';
 
         switch (name) {
           case 'runtime.getSnapshot':
@@ -544,6 +559,11 @@
         }
       } catch (e) {
         console.error('[STAndroidChatRuntime] dispatch error', e);
+        // Safety net: a handler that throws before replying must not leave the
+        // command hanging until the Android-side timeout fires.
+        if (cmdId) {
+          postError(cmdId, 'dispatch error: ' + (e && e.message ? e.message : e));
+        }
       }
     },
 
@@ -591,7 +611,7 @@
   // frontend is not connected yet to avoid spamming provider status checks.
   async function handleReloadSettings(cmdId) {
     try {
-      var scriptModule = await import('./script.js');
+      var scriptModule = await importModule('script.js');
       if (typeof scriptModule.getSettings !== 'function') {
         postError(cmdId, 'getSettings not available');
         return;
@@ -782,7 +802,7 @@
     // does NOT handle this correctly for groups.
     if (ctx.groupId) {
       try {
-        var groupModule = await import('./scripts/group-chats.js');
+        var groupModule = await importModule('scripts/group-chats.js');
         if (typeof groupModule.regenerateGroup !== 'function') {
           postError(cmdId, 'regenerateGroup not available');
           return;
@@ -827,7 +847,7 @@
 
   async function handleNewChat(cmdId) {
     try {
-      var scriptModule = await import('./script.js');
+      var scriptModule = await importModule('script.js');
       if (typeof scriptModule.doNewChat !== 'function') {
         postError(cmdId, 'doNewChat not available');
         return;
@@ -905,7 +925,7 @@
       if (mesEl) {
         var mesText = mesEl.querySelector('.mes_text');
         try {
-          var scriptModule = await import('./script.js');
+          var scriptModule = await importModule('script.js');
           if (mesText && typeof scriptModule.messageFormatting === 'function') {
             mesText.innerHTML = scriptModule.messageFormatting(
               newText, msg.name, msg.is_system, msg.is_user, messageId, {}, false
@@ -950,7 +970,7 @@
       // It requires the DOM element to exist (returns early otherwise).
       var mesEl = document.querySelector('.mes[mesid="' + messageId + '"]');
       if (mesEl) {
-        var scriptModule = await import('./script.js');
+        var scriptModule = await importModule('script.js');
         if (typeof scriptModule.deleteMessage === 'function') {
           await scriptModule.deleteMessage(messageId, undefined, false);
           postEvent('message.deleted', { id: messageId });
@@ -987,7 +1007,7 @@
       }
       // ST hides messages by toggling is_system. Use the canonical function
       // from chats.js which also refreshes swipe buttons and saves.
-      var chatsModule = await import('./scripts/chats.js');
+      var chatsModule = await importModule('scripts/chats.js');
       await chatsModule.hideChatMessageRange(messageId, messageId, false);
       postEvent('message.updated', serializeMessage(chat[messageId], messageId));
       postResult(cmdId, {});
@@ -1006,7 +1026,7 @@
         postError(cmdId, 'Invalid message index: ' + messageId);
         return;
       }
-      var chatsModule = await import('./scripts/chats.js');
+      var chatsModule = await importModule('scripts/chats.js');
       await chatsModule.hideChatMessageRange(messageId, messageId, true);
       postEvent('message.updated', serializeMessage(chat[messageId], messageId));
       postResult(cmdId, {});
@@ -1079,14 +1099,16 @@
   // The visible buttons come from settings.config/chatConfig/charConfig setList
   // links where isVisible is true (matches ButtonUi.renderBar).
   function handleListQuickReplies(cmdId) {
-    var api = globalThis.quickReplyApi;
-    if (!api || !api.settings) {
-      // Extension not loaded → empty list, not an error.
-      postResult(cmdId, { items: [] });
-      return;
-    }
     try {
-      var settings = api.settings;
+      // Accessing quickReplyApi / api.settings may throw while the extension is
+      // still initialising, so keep every access inside the try. A missing or
+      // half-loaded extension yields an empty list, not an error.
+      var api = globalThis.quickReplyApi;
+      var settings = api && api.settings;
+      if (!settings) {
+        postResult(cmdId, { items: [] });
+        return;
+      }
       var links = []
         .concat(settings.config && settings.config.setList ? settings.config.setList : [])
         .concat(settings.chatConfig && settings.chatConfig.setList ? settings.chatConfig.setList : [])
@@ -1154,12 +1176,12 @@
         postError(cmdId, 'Invalid message index: ' + messageId);
         return;
       }
-      var bookmarks = await import('./scripts/bookmarks.js');
+      var bookmarks = await importModule('scripts/bookmarks.js');
       if (typeof bookmarks.createNewBookmark !== 'function') {
         postError(cmdId, 'createNewBookmark not available');
         return;
       }
-      var name = payload.name ? String(payload.name) : null;
+      var name = payload.name != null ? String(payload.name) : '';
       var created = await bookmarks.createNewBookmark(messageId, { forceName: name });
       if (!created) {
         postError(cmdId, 'Checkpoint not created');
@@ -1182,7 +1204,7 @@
         postError(cmdId, 'Invalid message index: ' + messageId);
         return;
       }
-      var bookmarks = await import('./scripts/bookmarks.js');
+      var bookmarks = await importModule('scripts/bookmarks.js');
       if (typeof bookmarks.branchChat !== 'function') {
         postError(cmdId, 'branchChat not available');
         return;
@@ -1224,7 +1246,7 @@
   // --- Extensions (B3) ---
   async function handleListExtensions(cmdId) {
     try {
-      var mod = await import('./scripts/extensions.js');
+      var mod = await importModule('scripts/extensions.js');
       var names = Array.isArray(mod.extensionNames) ? mod.extensionNames.slice() : [];
       postResult(cmdId, { names: names });
     } catch (err) {
@@ -1240,8 +1262,8 @@
   async function handleGetItemizedPrompt(payload, cmdId) {
     try {
       var messageId = Number(payload.id);
-      var scriptModule = await import('./script.js');
-      var itemizedModule = await import('./scripts/itemized-prompts.js');
+      var scriptModule = await importModule('script.js');
+      var itemizedModule = await importModule('scripts/itemized-prompts.js');
       var list = scriptModule.itemizedPrompts || itemizedModule.itemizedPrompts || [];
       if (!Array.isArray(list) || list.length === 0) {
         postResult(cmdId, { available: false });
@@ -1300,7 +1322,7 @@
   // --- Data Bank (C3) ---
   async function handleListDataBank(cmdId) {
     try {
-      var chatsModule = await import('./scripts/chats.js');
+      var chatsModule = await importModule('scripts/chats.js');
       if (typeof chatsModule.getDataBankAttachmentsForSource !== 'function') {
         postResult(cmdId, { global: [], character: [], chat: [] });
         return;

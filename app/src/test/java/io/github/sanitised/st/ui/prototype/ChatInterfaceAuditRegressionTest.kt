@@ -167,4 +167,25 @@ class ChatInterfaceAuditRegressionTest {
         assertFalse(source.contains("WebViewTarget.CHAT -> true"))
         assertTrue(source.contains("WebViewTarget.CHAT -> store.chatFile.isNotBlank()"))
     }
+
+    @Test
+    fun nativeGenerationHydratesCharacterChatBeforeRuntimeSnapshot() {
+        val nativeChat = File("src/main/java/io/github/sanitised/st/chat/NativeChatScreen.kt").readText()
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+
+        assertTrue(nativeChat.contains("nativeChatLoader?.openCharacter"))
+        assertTrue(nativeChat.contains("val nativeReadyForTarget = nativeChatLoadingEnabled && targetMatched"))
+        assertTrue(mainActivity.contains("nativeChatLoadingEnabled = nativeGenerationEnabled"))
+        assertTrue(mainActivity.contains("nativeChatLoader = nativeChatLoader"))
+    }
+
+    @Test
+    fun runtimeReadyDoesNotApplyGenericSnapshotBeforeTargetOpen() {
+        val bridge = File("src/main/java/io/github/sanitised/st/chat/ChatRuntimeBridge.kt").readText()
+        val runtimeReadyBlock = bridge
+            .substringAfter("is BridgeEvent.RuntimeReady -> {")
+            .substringBefore("is BridgeEvent.RuntimeError ->")
+
+        assertFalse(runtimeReadyBlock.contains("requestSnapshot()"))
+    }
 }

@@ -57,3 +57,66 @@ test('adapter exposes cfg and world info bridge commands', () => {
   assert.match(adapter, /cfg_positive_prompt/);
   assert.match(adapter, /world_info/);
 });
+
+test('adapter imports ST modules via absolute origin URL, not relative specifiers', () => {
+  // Injected scripts resolve relative import() against about:blank and fail with
+  // "base URL is about:blank". All dynamic imports must go through importModule,
+  // which builds an absolute same-origin URL. Regression for the full-device
+  // report (Checkpoint/Branch/ItemizedPrompt/DataBank import failures).
+  assert.doesNotMatch(adapter, /import\('\.\//, 'no relative dynamic import() should remain');
+  assert.match(adapter, /function importModule\(path\)/);
+  assert.match(adapter, /window\.location && window\.location\.origin/);
+  assert.match(adapter, /return import\(origin \+ '\/' \+ clean\)/);
+  for (const mod of ['script.js', 'scripts/bookmarks.js', 'scripts/chats.js', 'scripts/itemized-prompts.js']) {
+    assert.match(adapter, new RegExp(`await importModule\\('${mod.replace('.', '\\.')}'\\)`));
+  }
+});
+
+test('dispatch catch replies with an error so no command silently times out', () => {
+  const dispatch = adapter.match(/dispatch: function \(jsonStr\) \{[\s\S]*?\n    \},/)?.[0] ?? '';
+  // cmdId must be hoisted out of the try so the catch can reference it.
+  assert.match(dispatch, /var cmdId = '';\s*\n\s*try \{/);
+  assert.match(dispatch, /cmdId = msg\.id \|\| '';/);
+  assert.match(dispatch, /catch \(e\) \{[\s\S]*?if \(cmdId\) \{[\s\S]*?postError\(cmdId/);
+});
+
+test('handleListQuickReplies accesses quickReplyApi entirely inside try', () => {
+  const handler = adapter.match(/function handleListQuickReplies\(cmdId\) \{[\s\S]*?\n  \}/)?.[0] ?? '';
+  // The api / api.settings access must be inside the try (it can throw while the
+  // extension is initialising). Regression for the persistent "加载快捷回复 超时".
+  const tryIdx = handler.indexOf('try {');
+  const apiIdx = handler.indexOf('globalThis.quickReplyApi');
+  assert.ok(tryIdx !== -1 && apiIdx !== -1 && apiIdx > tryIdx, 'quickReplyApi access must be inside try');
+  assert.match(handler, /var settings = api && api\.settings;/);
+});
+
+test('background auto-load commands time out silently (best-effort)', () => {
+  const loadQr = bridge.match(/fun loadQuickReplies\(\) \{[\s\S]*?\n    \}/)?.[0] ?? '';
+  const loadExt = bridge.match(/fun loadExtensions\(\) \{[\s\S]*?\n    \}/)?.[0] ?? '';
+  assert.match(loadQr, /silentTimeout = true/);
+  assert.match(loadExt, /silentTimeout = true/);
+  assert.match(bridge, /private fun registerTimeout\(commandId: String, commandName: String, silent: Boolean = false\)/);
+  assert.match(bridge, /if \(silent\) \{[\s\S]*?Log\.w/);
+});
+
+test('bridge registers pending command before evaluating JS to avoid fast-result race', () => {
+  const dispatch = bridge.match(/private fun dispatch\([\s\S]*?\n    \}/)?.[0] ?? '';
+  const registerIdx = dispatch.indexOf('registerTimeout(message.id, message.name, silentTimeout)');
+  const evalIdx = dispatch.indexOf('wv.evaluateJavascript(js)');
+  assert.ok(registerIdx !== -1, 'dispatch should register timeout for tracked commands');
+  assert.ok(evalIdx !== -1, 'dispatch should evaluate runtime JS');
+  assert.ok(
+    registerIdx < evalIdx,
+    'pending command must be registered before evaluateJavascript because fast JS results can arrive before the callback'
+  );
+});
+
+test('checkpoint command passes blank forceName to use ST auto naming without hidden popup', () => {
+  const handler = adapter.match(/async function handleCreateCheckpoint\(payload, cmdId\) \{[\s\S]*?\n  \}/)?.[0] ?? '';
+  // ST createNewBookmark treats forceName === null as "show Popup input" and
+  // forceName === '' as "confirmed blank input, auto-generate name". The native
+  // dialog says blank means auto naming, so the adapter must not pass null.
+  assert.match(handler, /var name = payload\.name != null \? String\(payload\.name\) : '';/);
+  assert.doesNotMatch(handler, /payload\.name \? String\(payload\.name\) : null/);
+  assert.match(handler, /createNewBookmark\(messageId, \{ forceName: name \}\)/);
+});

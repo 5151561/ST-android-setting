@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import io.github.sanitised.st.chat.prompt.GenerationDeltaParser
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -265,7 +266,11 @@ data class GroupSummary(
     val allowSelfResponses: Boolean = false,
     val activationStrategy: Int = 0,
     val generationMode: Int = 0,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val disabledMembers: List<String> = emptyList(),
+    val autoModeDelay: Int = 5,
+    val generationModeJoinPrefix: String = "",
+    val generationModeJoinSuffix: String = ""
 )
 
 data class GroupCreateRequest(
@@ -356,8 +361,16 @@ interface TavernCoreApi {
     suspend fun listRecentChats(): List<ChatSummary>
     suspend fun listGroups(): List<GroupSummary>
     suspend fun createGroup(request: GroupCreateRequest): GroupSummary
+    /** Overwrites a group's metadata (`POST /api/groups/edit`); sends the full object. */
+    suspend fun editGroup(group: GroupSummary)
+    /** Deletes a group by id (`POST /api/groups/delete`). */
+    suspend fun deleteGroup(groupId: String)
     suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk>
     suspend fun stopGeneration(chatId: String)
+    /** Reads a group chat JSONL (`[header, ...messages]`) by its chat id; empty list if absent. */
+    suspend fun getGroupChatJsonl(chatId: String): MutableList<Any?>
+    /** Saves a group chat JSONL (`[header, ...messages]`) back to disk by its chat id. */
+    suspend fun saveGroupChatJsonl(chatId: String, chat: List<Any?>)
 
     // --- Native generation pipeline (Chat Completion) ---
     /** Reads the raw chat JSONL as `[header, ...messages]`; empty list if the file does not exist. */
@@ -368,6 +381,10 @@ interface TavernCoreApi {
     suspend fun generateChatCompletion(payload: Map<String, Any?>): String
     /** Streams a chat-completion (SSE), emitting incremental text deltas. Forces `stream=true`. */
     fun generateChatCompletionStream(payload: Map<String, Any?>): Flow<String>
+    /** Posts an already-assembled text-completion payload and returns the generated text. */
+    suspend fun generateTextCompletion(payload: Map<String, Any?>): String
+    /** Streams a text-completion (SSE), emitting incremental text deltas. Forces `stream=true`. */
+    fun generateTextCompletionStream(payload: Map<String, Any?>): Flow<String>
 }
 
 class TavernCoreClient(
@@ -844,7 +861,7 @@ class TavernCoreClient(
             )
             "tc" -> {
                 val server = apiServer.ifBlank {
-                    textCompletionDefaultServer(sourceValue)
+                    resolveTextGenServer(fetchSettings().settings, sourceValue)
                 }
                 postJson(
                     "api/backends/text-completions/status",
@@ -873,17 +890,6 @@ class TavernCoreClient(
             map.stringValue("id").takeIf { it.isNotBlank() }
                 ?: map.stringValue("name").takeIf { it.isNotBlank() }
         }.distinct().sorted()
-    }
-
-    private fun textCompletionDefaultServer(apiType: String): String {
-        return when (apiType) {
-            "featherless" -> "https://api.featherless.ai/v1"
-            "mancer" -> "https://neuro.mancer.tech"
-            "ollama" -> "http://127.0.0.1:11434"
-            "koboldcpp" -> "http://127.0.0.1:5001"
-            "llamacpp" -> "http://127.0.0.1:8080"
-            else -> ""
-        }
     }
 
     override suspend fun getPresetLibrary(): PresetLibrary {
@@ -1330,6 +1336,34 @@ class TavernCoreClient(
         }
     }
 
+    override suspend fun editGroup(group: GroupSummary) {
+        withContext(Dispatchers.IO) {
+            val payload = linkedMapOf<String, Any?>(
+                "id" to group.id,
+                "name" to group.name,
+                "members" to group.members,
+                "avatar_url" to group.avatarUrl.ifBlank { "img/ai4.png" },
+                "allow_self_responses" to group.allowSelfResponses,
+                "activation_strategy" to group.activationStrategy,
+                "generation_mode" to group.generationMode,
+                "disabled_members" to group.disabledMembers,
+                "fav" to group.isFavorite,
+                "chat_id" to group.chatId.ifBlank { group.id },
+                "chats" to group.chats.ifEmpty { listOf(group.chatId.ifBlank { group.id }) },
+                "auto_mode_delay" to group.autoModeDelay,
+                "generation_mode_join_prefix" to group.generationModeJoinPrefix,
+                "generation_mode_join_suffix" to group.generationModeJoinSuffix
+            )
+            postJson(path = "api/groups/edit", json = jsonValue(payload))
+        }
+    }
+
+    override suspend fun deleteGroup(groupId: String) {
+        withContext(Dispatchers.IO) {
+            postJson(path = "api/groups/delete", json = jsonObject("id" to groupId))
+        }
+    }
+
     override suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk> {
         // TODO: POST /api/chats/{chatId}/messages with SSE streaming
         return kotlinx.coroutines.flow.emptyFlow()
@@ -1362,6 +1396,32 @@ class TavernCoreClient(
                 jsonObject(
                     "avatar_url" to avatar,
                     "file_name" to chatFile.removeSuffix(".jsonl"),
+                    "chat" to chat,
+                    "force" to false
+                )
+            )
+        }
+    }
+
+    override suspend fun getGroupChatJsonl(chatId: String): MutableList<Any?> =
+        withContext(Dispatchers.IO) {
+            val body = postJson(
+                "api/chats/group/get",
+                jsonObject("id" to chatId.removeSuffix(".jsonl"))
+            )
+            // Found chats return a JSON array [header, ...messages]; a missing file returns {} or [].
+            when (val parsed = yaml.load<Any?>(body)) {
+                is List<*> -> parsed.map { normalizeJsonValue(it) }.toMutableList()
+                else -> mutableListOf()
+            }
+        }
+
+    override suspend fun saveGroupChatJsonl(chatId: String, chat: List<Any?>) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                "api/chats/group/save",
+                jsonObject(
+                    "id" to chatId.removeSuffix(".jsonl"),
                     "chat" to chat,
                     "force" to false
                 )
@@ -1411,7 +1471,7 @@ class TavernCoreClient(
                         if (!line.startsWith("data:")) continue
                         val data = line.removePrefix("data:").trim()
                         if (data.isEmpty() || data == "[DONE]") continue
-                        extractStreamDelta(data)?.takeIf { it.isNotEmpty() }?.let { trySend(it) }
+                        GenerationDeltaParser.extract(data)?.takeIf { it.isNotEmpty() }?.let { trySend(it) }
                     }
                 }
                 close()
@@ -1425,24 +1485,65 @@ class TavernCoreClient(
         }
     }
 
-    /** Extracts an incremental text delta from one SSE `data:` JSON across OpenAI/Claude/Google shapes. */
-    private fun extractStreamDelta(dataJson: String): String? {
-        val obj = runCatching { yaml.load<Any?>(dataJson) }.getOrNull() as? Map<*, *> ?: return null
-        // OpenAI-compatible: choices[0].delta.content (or .text)
-        (obj["choices"] as? List<*>)?.firstOrNull()?.let { choice ->
-            val choiceMap = choice as? Map<*, *>
-            ((choiceMap?.get("delta") as? Map<*, *>)?.get("content") as? String)?.let { return it }
-            (choiceMap?.get("text") as? String)?.let { return it }
+    override suspend fun generateTextCompletion(payload: Map<String, Any?>): String =
+        withContext(Dispatchers.IO) {
+            val body = postJsonForGeneration("api/backends/text-completions/generate", jsonValue(payload))
+            extractTextCompletionResponse(body)
         }
-        // Anthropic: { type: content_block_delta, delta: { text: "..." } }
-        ((obj["delta"] as? Map<*, *>)?.get("text") as? String)?.let { return it }
-        // Google: candidates[0].content.parts[].text
-        (obj["candidates"] as? List<*>)?.firstOrNull()?.let { cand ->
-            val parts = ((cand as? Map<*, *>)?.get("content") as? Map<*, *>)?.get("parts") as? List<*>
-            val text = parts?.mapNotNull { (it as? Map<*, *>)?.get("text") as? String }?.joinToString("")
-            if (!text.isNullOrEmpty()) return text
+
+    private fun extractTextCompletionResponse(body: String): String {
+        val map = yaml.load<Any?>(body) as? Map<*, *>
+            ?: throw IllegalStateException("生成响应无法解析")
+        map["error"]?.takeIf { it != false }?.let { error ->
+            val message = (error as? Map<*, *>)?.get("message")?.toString()
+                ?: map["message"]?.toString()
+                ?: "生成失败"
+            throw IllegalStateException(message)
         }
-        return null
+        val choices = map["choices"] as? List<*>
+        val first = choices?.firstOrNull() as? Map<*, *>
+        val message = first?.get("message") as? Map<*, *>
+        return (first?.get("text") as? String)
+            ?: (message?.get("content") as? String)
+            ?: (map["content"] as? String)
+            ?: (map["response"] as? String)
+            ?: throw IllegalStateException("生成响应为空")
+    }
+
+    override fun generateTextCompletionStream(payload: Map<String, Any?>): Flow<String> = callbackFlow {
+        val streamPayload = payload.toMutableMap().apply { put("stream", true) }
+        val builder = Request.Builder()
+            .url(normalizedBaseUrl + "api/backends/text-completions/generate")
+            .header("Accept", "text/event-stream")
+            .post(jsonValue(streamPayload).toRequestBody(jsonMediaType))
+        csrfToken().takeIf { it.isNotBlank() }?.let { builder.header("x-csrf-token", it) }
+        val call = generationHttpClient.newCall(builder.build())
+
+        val worker = launch(Dispatchers.IO) {
+            try {
+                call.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        val err = response.body?.string().orEmpty()
+                        throw IllegalStateException("SillyTavern API ${response.code}: $err")
+                    }
+                    val source = response.body?.source() ?: throw IllegalStateException("生成响应为空")
+                    while (isActive && !source.exhausted()) {
+                        val line = source.readUtf8Line() ?: break
+                        if (!line.startsWith("data:")) continue
+                        val data = line.removePrefix("data:").trim()
+                        if (data.isEmpty() || data == "[DONE]") continue
+                        GenerationDeltaParser.extract(data)?.takeIf { it.isNotEmpty() }?.let { trySend(it) }
+                    }
+                }
+                close()
+            } catch (e: Throwable) {
+                close(e)
+            }
+        }
+        awaitClose {
+            call.cancel()
+            worker.cancel()
+        }
     }
 
     private companion object {
@@ -1813,7 +1914,11 @@ class TavernCoreClient(
             allowSelfResponses = booleanValue("allow_self_responses"),
             activationStrategy = intValue("activation_strategy", 0),
             generationMode = intValue("generation_mode", 0),
-            isFavorite = booleanValue("fav")
+            isFavorite = booleanValue("fav"),
+            disabledMembers = stringListValue("disabled_members"),
+            autoModeDelay = intValue("auto_mode_delay", 5),
+            generationModeJoinPrefix = stringValue("generation_mode_join_prefix"),
+            generationModeJoinSuffix = stringValue("generation_mode_join_suffix")
         )
     }
 

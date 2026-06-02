@@ -116,6 +116,8 @@ import io.github.sanitised.st.chat.*
 import io.github.sanitised.st.chat.engine.BridgeChatEngine
 import io.github.sanitised.st.chat.engine.NativeChatEngine
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.api.CharacterSummary
+import io.github.sanitised.st.api.GroupCreateRequest
 import io.github.sanitised.st.ui.webview.ChatWebViewScreen
 import io.github.sanitised.st.ui.webview.WebViewTarget
 import kotlinx.coroutines.Dispatchers
@@ -586,6 +588,12 @@ class MainActivity : ComponentActivity() {
             // bridge remains the default + fallback.
             val chatScope = rememberCoroutineScope()
             val nativeGenerationEnabled = viewModel.nativeGeneration.value
+            val nativeChatLoader = remember(chatStore) {
+                NativeChatLoader(
+                    store = chatStore,
+                    clientProvider = { TavernCoreClient(SillyTavernUrl.localWebUrl(statusState.value.port)) }
+                )
+            }
             val chatEngine = remember(chatBridge, nativeGenerationEnabled) {
                 if (nativeGenerationEnabled) {
                     NativeChatEngine(
@@ -751,6 +759,8 @@ class MainActivity : ComponentActivity() {
                                     store = chatStore,
                                     bridge = chatBridge,
                                     engine = chatEngine,
+                                    nativeChatLoadingEnabled = nativeGenerationEnabled,
+                                    nativeChatLoader = nativeChatLoader,
                                     settingsDirty = runtimeSettingsDirty,
                                     onSettingsConsumed = { runtimeSettingsDirty = false },
                                     onBackToHome = {
@@ -969,35 +979,89 @@ class MainActivity : ComponentActivity() {
                                         defaultValue = ""
                                     }
                                 )
-                            ) {
+                            ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
+                                val gid = backStackEntry.arguments?.getString("groupId").orEmpty()
+                                val cid = backStackEntry.arguments?.getString("chatId").orEmpty()
                                 GroupChatScreen(
+                                    groupId = gid,
+                                    chatId = cid.takeIf { it.isNotBlank() },
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
-                                    onNavigateToSettings = { navController.navigate("group-chat/settings") },
-                                    onNavigateToMembers = { navController.navigate("group-chat/members") },
-                                    onNavigateToNewGroup = { navController.navigate("group-chat/new") }
+                                    onNavigateToSettings = { navController.navigate(STRoutes.groupSettings(gid)) },
+                                    onNavigateToMembers = { navController.navigate(STRoutes.groupMembers(gid)) },
+                                    onNavigateToNewGroup = { navController.navigate("group-chat/new") },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
-                            composable("group-chat/settings") {
+                            composable(
+                                route = STRoutes.GROUP_SETTINGS,
+                                arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+                            ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
                                 GroupSettingsScreen(
-                                    onBack = { navController.popBackStack() }
+                                    groupId = backStackEntry.arguments?.getString("groupId").orEmpty(),
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
-                            composable("group-chat/members") {
+                            composable(
+                                route = STRoutes.GROUP_MEMBERS,
+                                arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+                            ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
                                 GroupMembersScreen(
-                                    onBack = { navController.popBackStack() }
+                                    groupId = backStackEntry.arguments?.getString("groupId").orEmpty(),
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                                    onBack = { navController.popBackStack() },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
                             composable("group-chat/new") {
                                 BackHandler { navController.popBackStack() }
+                                val newGroupBaseUrl = SillyTavernUrl.localWebUrl(statusState.value.port)
+                                val newGroupScope = rememberCoroutineScope()
+                                var newGroupCharacters by remember { mutableStateOf<List<CharacterSummary>>(emptyList()) }
+                                var newGroupLoading by remember { mutableStateOf(true) }
+                                var creatingGroup by remember { mutableStateOf(false) }
+                                LaunchedEffect(newGroupBaseUrl) {
+                                    newGroupLoading = true
+                                    runCatching { TavernCoreClient(newGroupBaseUrl).listCharacters() }
+                                        .onSuccess { newGroupCharacters = it.sortedBy { c -> c.name.lowercase() } }
+                                        .onFailure { error ->
+                                            viewModel.showTransientMessage(error.message ?: "角色列表加载失败")
+                                        }
+                                    newGroupLoading = false
+                                }
                                 NewGroupScreen(
+                                    characters = newGroupCharacters,
+                                    loading = newGroupLoading,
                                     onClose = { navController.popBackStack() },
-                                    onCreate = { _, _, _ -> navController.popBackStack() }
+                                    onCreate = { name, members, strategy ->
+                                        if (creatingGroup) return@NewGroupScreen
+                                        creatingGroup = true
+                                        newGroupScope.launch {
+                                            runCatching {
+                                                TavernCoreClient(newGroupBaseUrl).createGroup(
+                                                    GroupCreateRequest(
+                                                        name = name,
+                                                        members = members,
+                                                        activationStrategy = strategy
+                                                    )
+                                                )
+                                            }.onSuccess { created ->
+                                                viewModel.showTransientMessage("已创建群聊「${created.name}」")
+                                                navController.popBackStack()
+                                            }.onFailure { error ->
+                                                viewModel.showTransientMessage(error.message ?: "创建群聊失败")
+                                            }
+                                            creatingGroup = false
+                                        }
+                                    }
                                 )
                             }
 
