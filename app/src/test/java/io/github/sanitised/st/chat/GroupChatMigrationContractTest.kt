@@ -92,6 +92,19 @@ class GroupChatMigrationContractTest {
     }
 
     @Test
+    fun groupRepliesAreGeneratedNativelyNotFakedOrStubbed() {
+        val screen = File("src/main/java/io/github/sanitised/st/chat/GroupChatScreen.kt").readText()
+
+        // AI replies must go through the native generator, persisted to the group JSONL.
+        assertTrue(screen.contains("NativeGroupGenerator"))
+        assertTrue(screen.contains("generator.generate("))
+        assertTrue(screen.contains("saveGroupChatJsonl("))
+        // No more "coming soon" stub and no hardcoded demo reply text.
+        assertFalse(screen.contains("群聊原生生成正在接入中"))
+        assertFalse(screen.contains("那今天的可可多加些鲜奶油"))
+    }
+
+    @Test
     fun newGroupScreenIsWiredToCreateGroupApiInsteadOfBeingANoOp() {
         // Regression for the full-device report: the create button used to be
         // onCreate = { _, _, _ -> navController.popBackStack() }, so no group was

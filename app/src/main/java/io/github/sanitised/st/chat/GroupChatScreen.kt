@@ -50,6 +50,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.chat.engine.GroupReply
+import io.github.sanitised.st.chat.engine.NativeGroupGenerator
+import io.github.sanitised.st.chat.engine.pickGroupSpeaker
 import io.github.sanitised.st.ui.prototype.PrototypeAvatar
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -194,10 +197,17 @@ fun GroupChatScreen(
 
     val lazyListState = rememberLazyListState()
 
+    val generator = remember { NativeGroupGenerator { TavernCoreClient(baseUrl) } }
+    var isGenerating by remember { mutableStateOf(false) }
+
     // 发送用户消息：追加到本地并真实落库（群聊 JSONL）。
     fun sendUserMessage(text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty() || activeChatId.isBlank()) return
+        if (isGenerating) {
+            onShowMessage("正在生成回复，请稍候")
+            return
+        }
         val date = groupSendDate()
         threadMessages.add(
             DemoGroupMessage(
@@ -219,12 +229,93 @@ fun GroupChatScreen(
         }
     }
 
-    // AI 回复生成：原生群聊生成（成员轮转/激活）将在下一阶段接入。
-    // 现在不再造假回复，只给出明确提示，避免污染真实聊天数据。
-    fun requestGroupReply(@Suppress("UNUSED_PARAMETER") memberId: String?) {
-        typingSpeakerId = null
-        isAutoModeRunning = false
-        onShowMessage("群聊原生生成正在接入中，暂不能生成 AI 回复")
+    // AI 回复生成：原生群聊生成（NativeGroupGenerator）。
+    // memberId 非空 = 点名/重写/继续指定成员；为空 = 按 strategy 自动选下一位。
+    fun requestGroupReply(memberId: String?) {
+        if (isGenerating || activeChatId.isBlank()) return
+        val strategyInt = activationStrategyId(groupState.value.strategy)
+        val disabled = membersList.filter { it.muted }.map { it.id }.toSet()
+        val lastSpeaker = threadMessages.lastOrNull { it.role == "assistant" }?.speaker
+        val speakerAvatar = memberId
+            ?: pickGroupSpeaker(membersList.map { it.id }, disabled, lastSpeaker, strategyInt)
+        if (speakerAvatar == null) {
+            onShowMessage(if (groupState.value.strategy == "manual") "请先点名一位发言者" else "没有可发言的成员")
+            return
+        }
+        val member = membersList.find { it.id == speakerAvatar }
+        if (member == null) {
+            onShowMessage("找不到该成员")
+            return
+        }
+
+        // 提示词历史：把当前线程映射为 ChatMessage（assistant 用成员真实名）。
+        val promptHistory = threadMessages.map { m ->
+            val name = if (m.role == "user") userName
+            else membersList.find { it.id == m.speaker }?.name ?: (m.speaker ?: "")
+            ChatMessage(
+                id = m.mesId,
+                name = name,
+                mes = m.text,
+                isUser = m.role == "user",
+                isSystem = false,
+                sendDate = "",
+                swipeId = 0,
+                swipes = emptyList(),
+                extra = JSONObject()
+            )
+        }
+
+        // 乐观空气泡（流式期间输入被禁用，占位始终保持在末尾）。
+        threadMessages.add(
+            DemoGroupMessage(
+                role = "assistant",
+                speaker = member.id,
+                mesId = threadMessages.size,
+                time = formatGroupTime(groupSendDate()),
+                text = ""
+            )
+        )
+        isGenerating = true
+        scope.launch {
+            try {
+                val reply = generator.generate(
+                    speakerAvatar = member.id,
+                    userName = userName,
+                    history = promptHistory,
+                    authorsNote = "",
+                    worldInfoName = "",
+                    onToken = { cumulative ->
+                        val idx = threadMessages.lastIndex
+                        if (idx >= 0 && threadMessages[idx].role == "assistant") {
+                            threadMessages[idx] = threadMessages[idx].copy(text = cumulative)
+                        }
+                    }
+                )
+                if (reply.text.isBlank()) {
+                    val idx = threadMessages.lastIndex
+                    if (idx >= 0 && threadMessages[idx].role == "assistant" && threadMessages[idx].text.isBlank()) {
+                        threadMessages.removeAt(idx)
+                    }
+                } else {
+                    val date = groupSendDate()
+                    val client = TavernCoreClient(baseUrl)
+                    val chat = client.getGroupChatJsonl(activeChatId)
+                    ensureGroupHeader(chat, userName, groupState.value.name, date)
+                    chat.add(groupAssistantMessageMap(reply, date))
+                    client.saveGroupChatJsonl(activeChatId, chat)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val idx = threadMessages.lastIndex
+                if (idx >= 0 && threadMessages[idx].role == "assistant" && threadMessages[idx].text.isBlank()) {
+                    threadMessages.removeAt(idx)
+                }
+                onShowMessage(e.message ?: "群聊生成失败")
+            } finally {
+                isGenerating = false
+            }
+        }
     }
 
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -1873,4 +1964,16 @@ private fun groupUserMessageMap(userName: String, text: String, date: String): M
         "send_date" to date,
         "mes" to text,
         "extra" to emptyMap<String, Any?>()
+    )
+
+private fun groupAssistantMessageMap(reply: GroupReply, date: String): Map<String, Any?> =
+    linkedMapOf(
+        "name" to reply.speakerName,
+        "is_user" to false,
+        "is_system" to false,
+        "send_date" to date,
+        "mes" to reply.text,
+        "swipes" to listOf(reply.text),
+        "swipe_id" to 0,
+        "extra" to linkedMapOf<String, Any?>("api" to reply.api, "model" to reply.model)
     )
