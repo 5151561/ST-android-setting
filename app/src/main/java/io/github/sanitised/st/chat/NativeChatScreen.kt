@@ -152,6 +152,7 @@ fun NativeChatScreen(
     engine: ChatEngine,
     nativeChatLoadingEnabled: Boolean = false,
     nativeChatLoader: NativeChatLoader? = null,
+    nativeChatRuntime: NativeChatRuntime? = null,
     onBackToHome: () -> Unit,
     onOpenPastChats: (() -> Unit)? = null,
     onShowMessage: (String) -> Unit,
@@ -255,6 +256,34 @@ fun NativeChatScreen(
     val nativeReadyForTarget = nativeChatLoadingEnabled && targetMatched
     val readyForTarget = (store.runtimeState == RuntimeState.READY || nativeReadyForTarget) && targetMatched
     val isGroupMode = store.mode == "group"
+    val nativeSingleChatRuntime = NativeChatUiRouting.selectNativeSingleChatRuntime(
+        nativeChatRuntime = nativeChatRuntime,
+        nativeChatLoadingEnabled = nativeChatLoadingEnabled,
+        targetMatched = targetMatched,
+        isGroupMode = isGroupMode,
+    )
+
+    fun launchNativeAction(
+        fallback: () -> Unit,
+        successMessage: String,
+        action: suspend NativeChatRuntime.() -> Unit,
+    ) {
+        val runtime = nativeSingleChatRuntime
+        if (runtime == null) {
+            fallback()
+            if (successMessage.isNotBlank()) onShowMessage(successMessage)
+            return
+        }
+        scope.launch {
+            runCatching { runtime.action() }
+                .onSuccess {
+                    if (successMessage.isNotBlank()) onShowMessage(successMessage)
+                }
+                .onFailure { error ->
+                    onShowMessage(error.message ?: "原生聊天操作失败")
+                }
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         // The runtime WebView is hosted persistently in MainActivity (outside the
@@ -320,15 +349,37 @@ fun NativeChatScreen(
                         editingMessageId = editingMessageId,
                         editText = editText,
                         onEditTextChange = { editText = it },
-                        onSwipePrevious = { messageId -> bridge.swipePrevious(messageId) },
-                        onSwipeNext = { messageId -> bridge.swipeNext(messageId) },
+                        onSwipePrevious = { messageId ->
+                            launchNativeAction(
+                                fallback = { bridge.swipePrevious(messageId) },
+                                successMessage = "",
+                            ) {
+                                swipePrevious(messageId)
+                            }
+                        },
+                        onSwipeNext = { messageId ->
+                            launchNativeAction(
+                                fallback = { bridge.swipeNext(messageId) },
+                                successMessage = "",
+                            ) {
+                                swipeNext(messageId)
+                            }
+                        },
                         onRegenerate = { engine.regenerate() },
                         onContinue = { engine.continueGeneration() },
                         onLongPress = { message -> selectedMessage = message },
                         onSaveEdit = { messageId ->
-                            bridge.editMessage(messageId, editText)
-                            editingMessageId = -1
-                            onShowMessage("消息已保存")
+                            val text = editText
+                            launchNativeAction(
+                                fallback = {
+                                    bridge.editMessage(messageId, text)
+                                    editingMessageId = -1
+                                },
+                                successMessage = "消息已保存",
+                            ) {
+                                editMessage(messageId, text)
+                                editingMessageId = -1
+                            }
                         },
                         onCancelEdit = { editingMessageId = -1 },
                         onDeleteFromEdit = { message ->
@@ -404,11 +455,19 @@ fun NativeChatScreen(
             },
             onHideToggle = {
                 if (message.isSystem) {
-                    bridge.unhideMessage(message.id)
-                    onShowMessage("消息已取消隐藏")
+                    launchNativeAction(
+                        fallback = { bridge.unhideMessage(message.id) },
+                        successMessage = "消息已取消隐藏",
+                    ) {
+                        setMessageHidden(message.id, false)
+                    }
                 } else {
-                    bridge.hideMessage(message.id)
-                    onShowMessage("消息已隐藏（不会被 AI 看到）")
+                    launchNativeAction(
+                        fallback = { bridge.hideMessage(message.id) },
+                        successMessage = "消息已隐藏（不会被 AI 看到）",
+                    ) {
+                        setMessageHidden(message.id, true)
+                    }
                 }
                 selectedMessage = null
             },
@@ -417,8 +476,13 @@ fun NativeChatScreen(
                 selectedMessage = null
             },
             onCreateBranch = {
-                bridge.createBranch(message.id)
-                onShowMessage("正在创建分支…")
+                launchNativeAction(
+                    fallback = { bridge.createBranch(message.id) },
+                    successMessage = "",
+                ) {
+                    val name = createBranch(message.id)
+                    onShowMessage("已创建并打开分支 $name")
+                }
                 selectedMessage = null
             },
             onViewBranches = {
@@ -446,9 +510,13 @@ fun NativeChatScreen(
         DeleteMessageDialog(
             messageName = message.name,
             onConfirm = {
-                bridge.deleteMessageFromChat(message.id)
+                launchNativeAction(
+                    fallback = { bridge.deleteMessageFromChat(message.id) },
+                    successMessage = "消息已删除",
+                ) {
+                    deleteMessage(message.id)
+                }
                 deletingMessage = null
-                onShowMessage("消息已删除")
             },
             onDismiss = { deletingMessage = null }
         )
@@ -506,9 +574,14 @@ fun NativeChatScreen(
         CheckpointDialog(
             onDismiss = { checkpointMessage = null },
             onConfirm = { name ->
-                bridge.createCheckpoint(message.id, name.ifBlank { null })
+                launchNativeAction(
+                    fallback = { bridge.createCheckpoint(message.id, name.ifBlank { null }) },
+                    successMessage = "",
+                ) {
+                    val created = createCheckpoint(message.id, name)
+                    onShowMessage("已创建存档点 $created")
+                }
                 checkpointMessage = null
-                onShowMessage("正在创建存档点…")
             }
         )
     }
@@ -521,8 +594,12 @@ fun NativeChatScreen(
             onDismiss = { branchListMessage = null },
             onOpen = { name ->
                 branchListMessage = null
-                bridge.openCheckpoint(name)
-                onShowMessage("正在打开 $name…")
+                launchNativeAction(
+                    fallback = { bridge.openCheckpoint(name) },
+                    successMessage = "已打开 $name",
+                ) {
+                    openChat(name)
+                }
             }
         )
     }
