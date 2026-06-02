@@ -48,13 +48,13 @@ private val MEMBER_GRADIENTS = listOf(
     listOf(Color(0xFFE3C2F5), Color(0xFF6A3A8A))
 )
 
-private fun gradientFor(seed: String): List<Color> {
+internal fun gradientFor(seed: String): List<Color> {
     if (seed.isEmpty()) return MEMBER_GRADIENTS[0]
     val index = (seed.hashCode() and Int.MAX_VALUE) % MEMBER_GRADIENTS.size
     return MEMBER_GRADIENTS[index]
 }
 
-private fun memberInitial(name: String): String =
+internal fun memberInitial(name: String): String =
     name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -266,7 +266,9 @@ data class GroupSummary(
     val allowSelfResponses: Boolean = false,
     val activationStrategy: Int = 0,
     val generationMode: Int = 0,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val disabledMembers: List<String> = emptyList(),
+    val autoModeDelay: Int = 5
 )
 
 data class GroupCreateRequest(
@@ -359,6 +361,10 @@ interface TavernCoreApi {
     suspend fun createGroup(request: GroupCreateRequest): GroupSummary
     suspend fun sendMessage(chatId: String, text: String): Flow<GenerationChunk>
     suspend fun stopGeneration(chatId: String)
+    /** Reads a group chat JSONL (`[header, ...messages]`) by its chat id; empty list if absent. */
+    suspend fun getGroupChatJsonl(chatId: String): MutableList<Any?>
+    /** Saves a group chat JSONL (`[header, ...messages]`) back to disk by its chat id. */
+    suspend fun saveGroupChatJsonl(chatId: String, chat: List<Any?>)
 
     // --- Native generation pipeline (Chat Completion) ---
     /** Reads the raw chat JSONL as `[header, ...messages]`; empty list if the file does not exist. */
@@ -1363,6 +1369,32 @@ class TavernCoreClient(
         }
     }
 
+    override suspend fun getGroupChatJsonl(chatId: String): MutableList<Any?> =
+        withContext(Dispatchers.IO) {
+            val body = postJson(
+                "api/chats/group/get",
+                jsonObject("id" to chatId.removeSuffix(".jsonl"))
+            )
+            // Found chats return a JSON array [header, ...messages]; a missing file returns {} or [].
+            when (val parsed = yaml.load<Any?>(body)) {
+                is List<*> -> parsed.map { normalizeJsonValue(it) }.toMutableList()
+                else -> mutableListOf()
+            }
+        }
+
+    override suspend fun saveGroupChatJsonl(chatId: String, chat: List<Any?>) {
+        withContext(Dispatchers.IO) {
+            postJson(
+                "api/chats/group/save",
+                jsonObject(
+                    "id" to chatId.removeSuffix(".jsonl"),
+                    "chat" to chat,
+                    "force" to false
+                )
+            )
+        }
+    }
+
     override suspend fun generateChatCompletion(payload: Map<String, Any?>): String =
         withContext(Dispatchers.IO) {
             val body = postJsonForGeneration("api/backends/chat-completions/generate", jsonValue(payload))
@@ -1848,7 +1880,9 @@ class TavernCoreClient(
             allowSelfResponses = booleanValue("allow_self_responses"),
             activationStrategy = intValue("activation_strategy", 0),
             generationMode = intValue("generation_mode", 0),
-            isFavorite = booleanValue("fav")
+            isFavorite = booleanValue("fav"),
+            disabledMembers = stringListValue("disabled_members"),
+            autoModeDelay = intValue("auto_mode_delay", 5)
         )
     }
 

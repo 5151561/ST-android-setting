@@ -69,6 +69,29 @@ class GroupChatMigrationContractTest {
     }
 
     @Test
+    fun groupChatDetailLoadsRealGroupDataByIdInsteadOfStaticDemo() {
+        val screen = File("src/main/java/io/github/sanitised/st/chat/GroupChatScreen.kt").readText()
+
+        // The screen must take the route's groupId/chatId and load real data.
+        assertTrue(screen.contains("groupId: String"))
+        assertTrue(screen.contains("chatId: String?"))
+        assertTrue(screen.contains("getGroupChatJsonl("))
+        assertTrue(screen.contains("listGroups().find { it.id == groupId }"))
+        // The previous build hardcoded the demo group as the active conversation.
+        assertFalse(
+            "Active group must not be hardcoded to the demo group.",
+            screen.contains("id = \"rainynight\"")
+        )
+
+        // The detail route must pass the nav args through to the screen.
+        val activity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val detailRoute = activity.substringAfter("route = STRoutes.GROUP_CHAT_DETAIL")
+            .substringBefore("composable(")
+        assertTrue(detailRoute.contains("groupId = gid"))
+        assertTrue(detailRoute.contains("chatId = cid.takeIf"))
+    }
+
+    @Test
     fun newGroupScreenIsWiredToCreateGroupApiInsteadOfBeingANoOp() {
         // Regression for the full-device report: the create button used to be
         // onCreate = { _, _, _ -> navController.popBackStack() }, so no group was

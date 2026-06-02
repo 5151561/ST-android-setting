@@ -48,10 +48,18 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.sanitised.st.api.GroupSummary
+import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.ui.prototype.PrototypeAvatar
+import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
 
-// DEMO_PLACEHOLDER: 这一部分定义群组聊天的静态模拟数据，对接 ST API 后需替换为 API 实体。
+// 群聊 UI 的数据载体。名称沿用 Demo* 前缀，但已由真实 ST API 数据填充
+// （群信息 / 成员 / 历史消息见 GroupChatScreen.reload()）。
 data class DemoGroup(
     val id: String,
     val name: String,
@@ -92,57 +100,87 @@ data class DemoGroupMessage(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupChatScreen(
+    groupId: String,
+    chatId: String?,
+    baseUrl: String,
     onBack: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToMembers: () -> Unit,
     onNavigateToNewGroup: () -> Unit,
+    onShowMessage: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // DEMO_PLACEHOLDER: 以下状态数据全部为原型模拟数据。开发对接时，应当由 ChatStore 和 ChatRuntimeBridge 接管。
-    val groupState = remember {
-        mutableStateOf(
-            DemoGroup(
-                id = "rainynight",
-                name = "雨夜小聚",
-                members = listOf("aria", "eleanor", "kael"),
-                strategy = "natural", // manual, natural, list, pooled
-                genMode = "swap",
-                autoMode = false,
-                autoDelay = 5,
-                selfResponses = false,
-                hideMutedSprites = false,
-                fav = true,
-                lorebook = "常去的咖啡馆",
-                tags = listOf("日常", "群像", "治愈")
+    val scope = rememberCoroutineScope()
+
+    // Real group state, loaded from the local SillyTavern API by [groupId]/[chatId].
+    val groupState = remember { mutableStateOf(emptyDemoGroup(groupId)) }
+    val membersList = remember { mutableStateListOf<DemoGroupMember>() }
+    val threadMessages = remember { mutableStateListOf<DemoGroupMessage>() }
+    var activeChatId by remember { mutableStateOf(chatId?.takeIf { it.isNotBlank() } ?: "") }
+    var userName by remember { mutableStateOf("User") }
+    var loading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+
+    suspend fun reload() {
+        val client = TavernCoreClient(baseUrl)
+        val group = runCatching { client.listGroups().find { it.id == groupId } }.getOrNull()
+        if (group == null) {
+            loadError = "找不到群聊"
+            loading = false
+            return
+        }
+        val chatToLoad = activeChatId.ifBlank { group.chatId.ifBlank { group.id } }
+        activeChatId = chatToLoad
+        userName = runCatching { client.getSettings()["username"] as? String }.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: "User"
+        val byId = runCatching { client.listCharacters() }.getOrDefault(emptyList())
+            .associateBy { it.id }
+        val members = group.members.mapIndexed { index, avatar ->
+            val character = byId[avatar]
+            val name = character?.name ?: avatar.removeSuffix(".png")
+            DemoGroupMember(
+                id = avatar,
+                name = name,
+                subtitle = character?.creatorNotes?.lineSequence()?.firstOrNull()?.take(24) ?: "",
+                accent = gradientFor(avatar).last(),
+                role = "",
+                queue = index + 1,
+                muted = avatar in group.disabledMembers,
+                avatarGrad = gradientFor(avatar),
+                initial = memberInitial(name)
             )
-        )
-    }
-
-    val membersList = remember {
-        mutableStateListOf(
-            DemoGroupMember("aria", "Aria", "咖啡馆的女店员", Color(0xFFFFD7B0), "咖啡馆店员", 1, false, listOf(Color(0xFFFFD7B0), Color(0xFFA55A2A)), "A"),
-            DemoGroupMember("eleanor", "Eleanor Wright", "维多利亚时代小说家", Color(0xFFE8D3AC), "维多利亚小说家", 2, false, listOf(Color(0xFFD8C4A3), Color(0xFF6B4E2B)), "E"),
-            DemoGroupMember("kael", "Kael", "吟游精灵", Color(0xFFC8E5B7), "吟游精灵", 3, true, listOf(Color(0xFFC8E5B7), Color(0xFF3D6B3A)), "K")
-        )
-    }
-
-    val threadMessages = remember {
-        mutableStateListOf(
-            DemoGroupMessage("assistant", "aria", 0, "20:58", "*她把三把湿透的伞收进门口的铁桶，回头时眼睛弯成了月牙。*\n\n都到齐啦？外头雨大得很——我先煮上热可可。今晚不赶客，你们想坐到几点都行。"),
-            DemoGroupMessage("user", null, 1, "21:00", "难得凑齐一次。Eleanor，你上回说卡在最后一章，今天带稿子来了吗？"),
-            DemoGroupMessage("assistant", "eleanor", 2, "21:01", "*她从帆布包里抽出一沓纸，边角还沾着雨。*\n\n带了。说实话……我写了三个版本的结尾，自己都拿不准。要不一会儿读给你们听，帮我挑一个？"),
-            DemoGroupMessage("assistant", "kael", 3, "21:02", "*指尖在桌沿轻轻敲出节拍。*\n\n结尾啊，得像一首歌的最后一个音——可以不响亮，但要让人记很久。读吧，我听着。"),
-            DemoGroupMessage("user", null, 4, "21:03", "我也想听。Aria，第一杯可可先给 Eleanor，她现在最需要点勇气。"),
+        }
+        val nameToId = members.associate { it.name to it.id }
+        val jsonl = runCatching { client.getGroupChatJsonl(chatToLoad) }.getOrDefault(mutableListOf())
+        val messages = jsonl.mapNotNull { raw ->
+            val map = raw as? Map<*, *> ?: return@mapNotNull null
+            if (!map.containsKey("mes")) return@mapNotNull null // skip the JSONL header line
+            val isUser = map["is_user"] == true
+            val name = map["name"]?.toString() ?: ""
+            val swipeTexts = (map["swipes"] as? List<*>)?.map { it?.toString() ?: "" }
+            val swipeId = (map["swipe_id"] as? Number)?.toInt() ?: 0
+            val hasSwipes = swipeTexts != null && swipeTexts.size > 1
             DemoGroupMessage(
-                "assistant", "aria", 5, "21:03",
-                "*她把最满的那杯推到 Eleanor 面前，又顺手点了一支小蜡烛。*\n\n给。慢慢读，没人催你。",
-                swipes = Pair(0, 2),
-                swipeTexts = listOf(
-                    "*她把最满的那杯推到 Eleanor 面前，又顺手点了一支小蜡烛。*\n\n给。慢慢读，没人催你。",
-                    "*她把杯子轻轻搁在 Eleanor 手边，指尖在桌沿点了点。*\n\n别紧张，就当念给老朋友听。我们都在。"
-                )
+                role = if (isUser) "user" else "assistant",
+                speaker = if (isUser) null else (nameToId[name] ?: name),
+                mesId = 0,
+                time = formatGroupTime(map["send_date"]?.toString()),
+                text = map["mes"]?.toString() ?: "",
+                swipes = if (hasSwipes) Pair(swipeId.coerceIn(0, swipeTexts!!.size - 1), swipeTexts.size) else null,
+                swipeTexts = if (hasSwipes) swipeTexts else null
             )
-        )
+        }.mapIndexed { index, message -> message.copy(mesId = index) }
+
+        groupState.value = group.toDemoGroup()
+        membersList.clear(); membersList.addAll(members)
+        threadMessages.clear(); threadMessages.addAll(messages)
+        loadError = null
+        loading = false
+    }
+
+    LaunchedEffect(groupId, chatId) {
+        loading = true
+        reload()
     }
 
     var typingSpeakerId by remember { mutableStateOf<String?>(null) }
@@ -151,46 +189,42 @@ fun GroupChatScreen(
     var showSpeakerSheet by remember { mutableStateOf(false) }
     var showConversationSwitcher by remember { mutableStateOf(false) }
 
-    // 自动接龙/点名时的"下一位发言者"：取第一位未静音成员（demo 近似自然顺序）
+    // 下一位发言者：取第一位未静音成员（自然顺序近似）
     val autoNextSpeaker = membersList.firstOrNull { !it.muted } ?: membersList.firstOrNull()
 
     val lazyListState = rememberLazyListState()
 
-    // 自动接龙：只负责倒计时，结束后把发言交给下面统一的 typingSpeakerId 流程，避免重复追加。
-    LaunchedEffect(isAutoModeRunning) {
-        if (isAutoModeRunning) {
-            autoSecondsLeft = groupState.value.autoDelay
-            while (autoSecondsLeft > 0) {
-                kotlinx.coroutines.delay(1000)
-                autoSecondsLeft--
-            }
-            isAutoModeRunning = false
-            typingSpeakerId = autoNextSpeaker?.id
+    // 发送用户消息：追加到本地并真实落库（群聊 JSONL）。
+    fun sendUserMessage(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() || activeChatId.isBlank()) return
+        val date = groupSendDate()
+        threadMessages.add(
+            DemoGroupMessage(
+                role = "user",
+                speaker = null,
+                mesId = threadMessages.size,
+                time = formatGroupTime(date),
+                text = trimmed
+            )
+        )
+        scope.launch {
+            runCatching {
+                val client = TavernCoreClient(baseUrl)
+                val chat = client.getGroupChatJsonl(activeChatId)
+                ensureGroupHeader(chat, userName, groupState.value.name, date)
+                chat.add(groupUserMessageMap(userName, trimmed, date))
+                client.saveGroupChatJsonl(activeChatId, chat)
+            }.onFailure { error -> onShowMessage(error.message ?: "保存消息失败") }
         }
     }
 
-    // 统一的"打字动效 → 追加回复"流程：手动点名、随机、自动接龙都汇集到这里，保证只追加一条。
-    LaunchedEffect(typingSpeakerId) {
-        val speaker = typingSpeakerId
-        if (speaker != null) {
-            kotlinx.coroutines.delay(2000)
-            val replyText = when (speaker) {
-                "aria" -> "*端着新鲜出炉的华夫饼走过来，在桌上放下一小碟蜂蜜。*\n\n那今天的可可多加些鲜奶油，算我请客！"
-                "eleanor" -> "*轻轻翻开泛黄的手稿，眼神明亮。*\n\n多谢你的勇气。那我就先读一小段……\"第一章。伦敦的钟声敲响了十二下。\""
-                "kael" -> "*取下腰间的短笛，微风穿过树影。*\n\n那我就用这支笛子给 Eleanor 的故事配乐，如何？"
-                else -> "我听着呢。你说得对，群聊的氛围最棒了。"
-            }
-            threadMessages.add(
-                DemoGroupMessage(
-                    role = "assistant",
-                    speaker = speaker,
-                    mesId = threadMessages.size,
-                    time = "21:04",
-                    text = replyText
-                )
-            )
-            typingSpeakerId = null
-        }
+    // AI 回复生成：原生群聊生成（成员轮转/激活）将在下一阶段接入。
+    // 现在不再造假回复，只给出明确提示，避免污染真实聊天数据。
+    fun requestGroupReply(@Suppress("UNUSED_PARAMETER") memberId: String?) {
+        typingSpeakerId = null
+        isAutoModeRunning = false
+        onShowMessage("群聊原生生成正在接入中，暂不能生成 AI 回复")
     }
 
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -204,7 +238,7 @@ fun GroupChatScreen(
                 onMembersIconClick = onNavigateToMembers,
                 onNavigateToNewGroup = onNavigateToNewGroup,
                 onOpenSettings = onNavigateToSettings,
-                onMemberClick = { id -> typingSpeakerId = id }
+                onMemberClick = { id -> requestGroupReply(id) }
             )
 
             // 2. 自动回复横幅 (AutoMode Banner) —— 显示与实际发言一致的下一位
@@ -253,15 +287,9 @@ fun GroupChatScreen(
                                             threadMessages[i] = msg.copy(swipes = Pair(sw.first + 1, sw.second))
                                         }
                                     },
-                                    // 重写：丢弃当前这条，重新生成一条
-                                    onRegenerate = {
-                                        if (threadMessages.isNotEmpty()) {
-                                            threadMessages.removeAt(threadMessages.lastIndex)
-                                        }
-                                        typingSpeakerId = member.id
-                                    },
-                                    // 继续：让同一角色接着往下说一条
-                                    onContinue = { typingSpeakerId = member.id },
+                                    // 重写 / 继续：交给原生群聊生成（下一阶段接入）
+                                    onRegenerate = { requestGroupReply(member.id) },
+                                    onContinue = { requestGroupReply(member.id) },
                                     onMore = { showSpeakerSheet = true }
                                 )
                             }
@@ -288,17 +316,7 @@ fun GroupChatScreen(
 
             // 5. 消息输入框
             GroupComposer(
-                onSend = { text ->
-                    threadMessages.add(
-                        DemoGroupMessage(
-                            role = "user",
-                            speaker = null,
-                            mesId = threadMessages.size,
-                            time = "21:04",
-                            text = text
-                        )
-                    )
-                }
+                onSend = { text -> sendUserMessage(text) }
             )
         }
 
@@ -309,10 +327,7 @@ fun GroupChatScreen(
                 onDismiss = { showSpeakerSheet = false },
                 onSelectSpeaker = { id ->
                     showSpeakerSheet = false
-                    typingSpeakerId = id
-                    // 模拟延迟回复效果
-                    isAutoModeRunning = false
-                    // 开启协程模拟生成
+                    requestGroupReply(id)
                 },
                 onToggleMute = { id ->
                     val idx = membersList.indexOfFirst { it.id == id }
@@ -323,7 +338,7 @@ fun GroupChatScreen(
                 },
                 onTriggerAuto = {
                     showSpeakerSheet = false
-                    isAutoModeRunning = true
+                    requestGroupReply(null)
                 }
             )
         }
@@ -1782,3 +1797,80 @@ private fun ConversationRow(c: DemoConversation, onClick: () -> Unit) {
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────
+// 真实数据映射与群聊 JSONL 持久化辅助
+// ─────────────────────────────────────────────────────────────
+
+/** 加载完成前的占位群（避免 UI 读到 demo 数据）。 */
+private fun emptyDemoGroup(id: String): DemoGroup = DemoGroup(
+    id = id,
+    name = "",
+    members = emptyList(),
+    strategy = "natural",
+    genMode = "swap",
+    autoMode = false,
+    autoDelay = 5,
+    selfResponses = false,
+    hideMutedSprites = false,
+    fav = false,
+    lorebook = "",
+    tags = emptyList()
+)
+
+// SillyTavern group_activation_strategy: 0=自然 1=列表 2=手动 3=池化。
+private fun groupStrategyName(value: Int): String = when (value) {
+    1 -> "list"
+    2 -> "manual"
+    3 -> "pooled"
+    else -> "natural"
+}
+
+private fun GroupSummary.toDemoGroup(): DemoGroup = DemoGroup(
+    id = id,
+    name = name,
+    members = members,
+    strategy = groupStrategyName(activationStrategy),
+    genMode = if (generationMode == 0) "swap" else "append",
+    autoMode = false,
+    autoDelay = autoModeDelay,
+    selfResponses = allowSelfResponses,
+    hideMutedSprites = false,
+    fav = isFavorite,
+    lorebook = "",
+    tags = emptyList()
+)
+
+/** ST 的 send_date 多为 "May 26, 2026 12:00pm" 风格；尽力提取 HH:mm，否则原样回退。 */
+private fun formatGroupTime(sendDate: String?): String {
+    val raw = sendDate?.trim().orEmpty()
+    if (raw.isEmpty()) return ""
+    val match = Regex("(\\d{1,2}:\\d{2})").find(raw)
+    return match?.groupValues?.get(1) ?: raw.take(16)
+}
+
+private fun groupSendDate(): String =
+    SimpleDateFormat("MMMM d, yyyy h:mma", Locale.ENGLISH).format(Date()).lowercase(Locale.ENGLISH)
+
+/** 群聊 JSONL 为空时写入首行 header（与 NativeChatEngine 1v1 语义一致）。 */
+private fun ensureGroupHeader(chat: MutableList<Any?>, userName: String, groupName: String, date: String) {
+    if (chat.isNotEmpty()) return
+    chat.add(
+        linkedMapOf<String, Any?>(
+            "user_name" to userName,
+            "character_name" to groupName,
+            "create_date" to date,
+            "chat_metadata" to linkedMapOf<String, Any?>("integrity" to UUID.randomUUID().toString())
+        )
+    )
+}
+
+private fun groupUserMessageMap(userName: String, text: String, date: String): Map<String, Any?> =
+    linkedMapOf(
+        "name" to userName,
+        "is_user" to true,
+        "is_system" to false,
+        "send_date" to date,
+        "mes" to text,
+        "extra" to emptyMap<String, Any?>()
+    )

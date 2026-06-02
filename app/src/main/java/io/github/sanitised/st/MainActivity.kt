@@ -979,13 +979,19 @@ class MainActivity : ComponentActivity() {
                                         defaultValue = ""
                                     }
                                 )
-                            ) {
+                            ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
+                                val gid = backStackEntry.arguments?.getString("groupId").orEmpty()
+                                val cid = backStackEntry.arguments?.getString("chatId").orEmpty()
                                 GroupChatScreen(
+                                    groupId = gid,
+                                    chatId = cid.takeIf { it.isNotBlank() },
+                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
                                     onNavigateToSettings = { navController.navigate("group-chat/settings") },
                                     onNavigateToMembers = { navController.navigate("group-chat/members") },
-                                    onNavigateToNewGroup = { navController.navigate("group-chat/new") }
+                                    onNavigateToNewGroup = { navController.navigate("group-chat/new") },
+                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
 
