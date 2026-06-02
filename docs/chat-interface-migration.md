@@ -1,8 +1,8 @@
 # SillyTavern Chat 原生界面迁移方案
 
-版本：0.13
+版本：0.14
 日期：2026-06-02
-状态：**P0 已收口 + P1 基本可用（保存错误检测 best-effort）+ P2 全部落地 + P3 阶段 A+B+C 已落地（logprobs 因 ST 未导出阻塞、TTS/翻译/生图后续专项）+ 原生生成承接混合过渡已落地**（隐藏 WebView 运行时常驻保活并作为兜底；「原生生成（实验）」开关下，1v1 + Chat Completion source + 无附件走原生流式生成，其余兜底 WebView。详见 §15 v0.13）
+状态：**P0 已收口 + P1 基本可用（保存错误检测 best-effort）+ P2 全部落地 + P3 阶段 A+B+C 已落地（logprobs 因 ST 未导出阻塞、TTS/翻译/生图后续专项）+ 原生生成承接混合过渡已落地**（隐藏 WebView 运行时常驻保活并作为兜底；「原生生成（实验）」开关下，1v1 + Chat Completion source 或首批 Text Completion 后端 + 无附件走原生流式生成，其余兜底 WebView。详见 §15 v0.14）
 适用范围：ST-android 下一阶段 Chat 原生化、JS Bridge、SillyTavern 运行时复用、API 对接
 
 ## 1. 背景和目标
@@ -94,7 +94,7 @@ SillyTavern Core
 | 生成中状态、streaming、abort | Runtime WebView 内 ST 前端 | 展示状态，发送停止命令 |
 | 角色列表、角色详情 | ST 本地 API，必要时 runtime 同步 | 复用当前角色原生页面已有 API 能力 |
 | 聊天文件列表、导入、导出、重命名、删除 | ST 本地 API 优先 | 对未打开的聊天文件可直接 API 操作 |
-| 当前打开聊天切换、新建、保存 | Runtime WebView 优先 | 通过 Bridge 命令触发，保持 ST 前端事件一致 |
+| 当前打开聊天切换、新建、保存 | 原生快照 + Runtime WebView 对齐 | 原生生成开关下角色聊天先 API 读取 JSONL 快照；Bridge 后台打开同一目标，保留未迁移动作 |
 | 附件选择、分享、复制、通知、TTS/STT | Android 原生能力 | 通过 `STAndroidBridge` 提供给 Web runtime 或直接由原生 UI 调用 |
 
 换句话说：**活动聊天由 JS runtime 负责写，原生 UI 负责显示和发命令；非活动数据管理优先走本地 API。**
@@ -106,7 +106,7 @@ SillyTavern Core
 | 场景 | 推荐通道 | 原因 |
 |---|---|---|
 | 发送消息、停止、重生成、继续 | Bridge | 必须复用 `Generate()`、streaming、扩展和保存语义 |
-| 当前活动聊天加载、切换 | Bridge 优先 | 保持 `this_chid`、`chat`、事件总线和 UI runtime 一致 |
+| 当前活动聊天加载、切换 | 原生快照优先（角色聊天 + 原生生成开关），Bridge 对齐兜底 | 先让 Compose 有可显示的目标 JSONL；随后保持 `this_chid`、`chat`、事件总线和 UI runtime 一致 |
 | 角色列表、角色详情 | API 优先 | 已有 `TavernCoreClient`，稳定且易测试 |
 | 聊天文件列表、导入导出、重命名删除 | API 优先，活动聊天操作需同步 runtime | 文件管理是服务端能力，原生 API 更直接 |
 | 附件上传前的系统文件选择 | 原生 + Bridge/API | Android 文件能力在原生侧，最终写入仍需 ST 语义 |
@@ -822,8 +822,25 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
 
 ## 15. 实现进度
 
-日期：2026-06-02（v0.13 原生生成承接混合过渡 + v0.12 P3 阶段 C + v0.11 P3 阶段 B + v0.10 P3 阶段 A + v0.9 P2 附件/CFG/世界书收口 + v0.8 文档收口 + v0.7 阶段 C P2 接续 + adapter 契约修正）
-状态：**P0 基础框架落地 + P1 基本可用 + P2 全部落地 + P3 阶段 A+B+C 已落地 + 原生生成（Chat Completion）混合过渡已落地（实验开关，WebView 保留兜底）**
+日期：2026-06-02（v0.14 Text Completion 原生生成首批接线 + v0.13 原生生成承接混合过渡 + v0.12 P3 阶段 C + v0.11 P3 阶段 B + v0.10 P3 阶段 A + v0.9 P2 附件/CFG/世界书收口 + v0.8 文档收口 + v0.7 阶段 C P2 接续 + adapter 契约修正）
+状态：**P0 基础框架落地 + P1 基本可用 + P2 全部落地 + P3 阶段 A+B+C 已落地 + 原生生成（Chat Completion + 首批 Text Completion）混合过渡已落地（实验开关，WebView 保留兜底）**
+
+### v0.14 Text Completion 原生生成首批接线：E1+E2+E3（2026-06-02）
+
+Phase E 已把「原生生成（实验）」从 Chat Completion 扩到首批 Text Completion 后端：`ooba` / `koboldcpp` / `llamacpp` / `ollama`。核心策略仍是保守 gating：单聊、无附件、支持的 `api_type`、简单 context story string 才走原生；复杂 Handlebars、未覆盖后端、群聊、附件、regenerate/continue 继续 bridge 兜底。
+
+- **API 层（E1）**：`TavernCoreApi` 新增 `generateTextCompletion` / `generateTextCompletionStream`，走 `/api/backends/text-completions/generate`；SSE delta 解析抽到 `GenerationDeltaParser`，CC/TC 共用，覆盖 `choices[0].delta.content`、`choices[0].text`、Anthropic `delta.text`、Google parts、llama.cpp `{content}`。`resolveTextGenServer(settings, apiType)` 成为 TC server 唯一解析来源：固定 hosted server 仅 `featherless/mancer/togetherai/infermaticai/dreamgen/openrouter`，其余读 `textgenerationwebui_settings.server_urls[type]`，并把 `localhost` 归一到 `127.0.0.1`；状态检查不再给 `ollama/koboldcpp/llamacpp` 自造默认 URL。
+- **提示词组装（E2）**：新增纯 Kotlin `InstructTemplate` / `StopStringBuilder` / `TextPromptBuilder`。支持 `names_behavior`、`system_same_as_user`、input/output/system sequence、first/last sequence、suffix、wrap、`{{name}}/{{char}}/{{user}}` macro；context `story_string` 只做简单占位替换，遇到 `{{#`、`{{/`、`{{else}}`、helper 调用、`instruct.enabled=false`、story prefix/suffix、作者注等未实现语义直接 `Unsupported` 让引擎兜底。TC prompt 会按粗略 token budget 裁掉旧历史，并向 payload 写入 `truncation_length`（Ollama/llama.cpp 另带 `num_ctx`）。
+- **引擎接线（E3）**：`NativeChatEngine` 增加 `engineMode(settings)`：`openai` 走 CC，支持的 `textgenerationwebui` 走 TC，其他走 fallback。TC 分支复用世界书扫描/persona 上下文，调用 `TextPromptBuilder` → `generateTextCompletionStream` → 同样的占位消息、~60ms 节流、JSONL 落盘、`bridge.reloadChat()` 对齐；落盘 `extra.api = "textgenerationwebui"`，并记录 `type`。
+- **原生打开角色聊天补线**：`NativeChatLoader` 在「原生生成（实验）」打开时先通过 API 读取角色卡 + JSONL，构造 `ChatSnapshot` 并填充 `ChatStore`，不再必须等隐藏 WebView 的 `chat.openCharacter` / `getChat` 快照才能显示目标聊天；隐藏 runtime ready 后仍打开同一目标，作为编辑、swipe、quick reply、checkpoint 等未迁移动作的兜底对齐。
+
+#### 单元测试
+
+新增 `GenerationDeltaParserTest`、`TextGenerationServerResolverTest`、`InstructTemplateTest`、`StopStringBuilderTest`、`TextPromptBuilderTest`、`NativeEngineModeTest`、`NativeChatLoaderTest`，覆盖 E1/E2/E3 的纯逻辑与 API 契约。
+
+#### 仍后置
+
+复杂 Handlebars 条件/循环与宏全集、instruct disabled 非模板格式、story prefix/suffix、作者注插入位置、instruct `activation_regex`/角色卡覆盖、`sampler_order/sampler_priority`、`<START>` 示例块精细解析、reasoning/thinking、tool calling、正则、扩展注入、`vllm/tabby/mancer/openrouter(text)` 等后端继续兜底。
 
 ### v0.13 原生生成承接（混合过渡）：引擎接缝 + 原生 Chat Completion + 流式（2026-06-02）
 

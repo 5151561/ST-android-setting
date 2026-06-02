@@ -50,7 +50,6 @@ class ChatRuntimeBridge(
         when (event) {
             is BridgeEvent.RuntimeReady -> {
                 store.markRuntimeReady()
-                requestSnapshot()
                 connect(auto = true)
                 loadQuickReplies()
                 loadExtensions()

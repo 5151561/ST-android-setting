@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import io.github.sanitised.st.chat.prompt.GenerationDeltaParser
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -368,6 +369,10 @@ interface TavernCoreApi {
     suspend fun generateChatCompletion(payload: Map<String, Any?>): String
     /** Streams a chat-completion (SSE), emitting incremental text deltas. Forces `stream=true`. */
     fun generateChatCompletionStream(payload: Map<String, Any?>): Flow<String>
+    /** Posts an already-assembled text-completion payload and returns the generated text. */
+    suspend fun generateTextCompletion(payload: Map<String, Any?>): String
+    /** Streams a text-completion (SSE), emitting incremental text deltas. Forces `stream=true`. */
+    fun generateTextCompletionStream(payload: Map<String, Any?>): Flow<String>
 }
 
 class TavernCoreClient(
@@ -844,7 +849,7 @@ class TavernCoreClient(
             )
             "tc" -> {
                 val server = apiServer.ifBlank {
-                    textCompletionDefaultServer(sourceValue)
+                    resolveTextGenServer(fetchSettings().settings, sourceValue)
                 }
                 postJson(
                     "api/backends/text-completions/status",
@@ -873,17 +878,6 @@ class TavernCoreClient(
             map.stringValue("id").takeIf { it.isNotBlank() }
                 ?: map.stringValue("name").takeIf { it.isNotBlank() }
         }.distinct().sorted()
-    }
-
-    private fun textCompletionDefaultServer(apiType: String): String {
-        return when (apiType) {
-            "featherless" -> "https://api.featherless.ai/v1"
-            "mancer" -> "https://neuro.mancer.tech"
-            "ollama" -> "http://127.0.0.1:11434"
-            "koboldcpp" -> "http://127.0.0.1:5001"
-            "llamacpp" -> "http://127.0.0.1:8080"
-            else -> ""
-        }
     }
 
     override suspend fun getPresetLibrary(): PresetLibrary {
@@ -1411,7 +1405,7 @@ class TavernCoreClient(
                         if (!line.startsWith("data:")) continue
                         val data = line.removePrefix("data:").trim()
                         if (data.isEmpty() || data == "[DONE]") continue
-                        extractStreamDelta(data)?.takeIf { it.isNotEmpty() }?.let { trySend(it) }
+                        GenerationDeltaParser.extract(data)?.takeIf { it.isNotEmpty() }?.let { trySend(it) }
                     }
                 }
                 close()
@@ -1425,24 +1419,65 @@ class TavernCoreClient(
         }
     }
 
-    /** Extracts an incremental text delta from one SSE `data:` JSON across OpenAI/Claude/Google shapes. */
-    private fun extractStreamDelta(dataJson: String): String? {
-        val obj = runCatching { yaml.load<Any?>(dataJson) }.getOrNull() as? Map<*, *> ?: return null
-        // OpenAI-compatible: choices[0].delta.content (or .text)
-        (obj["choices"] as? List<*>)?.firstOrNull()?.let { choice ->
-            val choiceMap = choice as? Map<*, *>
-            ((choiceMap?.get("delta") as? Map<*, *>)?.get("content") as? String)?.let { return it }
-            (choiceMap?.get("text") as? String)?.let { return it }
+    override suspend fun generateTextCompletion(payload: Map<String, Any?>): String =
+        withContext(Dispatchers.IO) {
+            val body = postJsonForGeneration("api/backends/text-completions/generate", jsonValue(payload))
+            extractTextCompletionResponse(body)
         }
-        // Anthropic: { type: content_block_delta, delta: { text: "..." } }
-        ((obj["delta"] as? Map<*, *>)?.get("text") as? String)?.let { return it }
-        // Google: candidates[0].content.parts[].text
-        (obj["candidates"] as? List<*>)?.firstOrNull()?.let { cand ->
-            val parts = ((cand as? Map<*, *>)?.get("content") as? Map<*, *>)?.get("parts") as? List<*>
-            val text = parts?.mapNotNull { (it as? Map<*, *>)?.get("text") as? String }?.joinToString("")
-            if (!text.isNullOrEmpty()) return text
+
+    private fun extractTextCompletionResponse(body: String): String {
+        val map = yaml.load<Any?>(body) as? Map<*, *>
+            ?: throw IllegalStateException("生成响应无法解析")
+        map["error"]?.takeIf { it != false }?.let { error ->
+            val message = (error as? Map<*, *>)?.get("message")?.toString()
+                ?: map["message"]?.toString()
+                ?: "生成失败"
+            throw IllegalStateException(message)
         }
-        return null
+        val choices = map["choices"] as? List<*>
+        val first = choices?.firstOrNull() as? Map<*, *>
+        val message = first?.get("message") as? Map<*, *>
+        return (first?.get("text") as? String)
+            ?: (message?.get("content") as? String)
+            ?: (map["content"] as? String)
+            ?: (map["response"] as? String)
+            ?: throw IllegalStateException("生成响应为空")
+    }
+
+    override fun generateTextCompletionStream(payload: Map<String, Any?>): Flow<String> = callbackFlow {
+        val streamPayload = payload.toMutableMap().apply { put("stream", true) }
+        val builder = Request.Builder()
+            .url(normalizedBaseUrl + "api/backends/text-completions/generate")
+            .header("Accept", "text/event-stream")
+            .post(jsonValue(streamPayload).toRequestBody(jsonMediaType))
+        csrfToken().takeIf { it.isNotBlank() }?.let { builder.header("x-csrf-token", it) }
+        val call = generationHttpClient.newCall(builder.build())
+
+        val worker = launch(Dispatchers.IO) {
+            try {
+                call.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        val err = response.body?.string().orEmpty()
+                        throw IllegalStateException("SillyTavern API ${response.code}: $err")
+                    }
+                    val source = response.body?.source() ?: throw IllegalStateException("生成响应为空")
+                    while (isActive && !source.exhausted()) {
+                        val line = source.readUtf8Line() ?: break
+                        if (!line.startsWith("data:")) continue
+                        val data = line.removePrefix("data:").trim()
+                        if (data.isEmpty() || data == "[DONE]") continue
+                        GenerationDeltaParser.extract(data)?.takeIf { it.isNotEmpty() }?.let { trySend(it) }
+                    }
+                }
+                close()
+            } catch (e: Throwable) {
+                close(e)
+            }
+        }
+        awaitClose {
+            call.cancel()
+            worker.cancel()
+        }
     }
 
     private companion object {

@@ -586,6 +586,12 @@ class MainActivity : ComponentActivity() {
             // bridge remains the default + fallback.
             val chatScope = rememberCoroutineScope()
             val nativeGenerationEnabled = viewModel.nativeGeneration.value
+            val nativeChatLoader = remember(chatStore) {
+                NativeChatLoader(
+                    store = chatStore,
+                    clientProvider = { TavernCoreClient(SillyTavernUrl.localWebUrl(statusState.value.port)) }
+                )
+            }
             val chatEngine = remember(chatBridge, nativeGenerationEnabled) {
                 if (nativeGenerationEnabled) {
                     NativeChatEngine(
@@ -751,6 +757,8 @@ class MainActivity : ComponentActivity() {
                                     store = chatStore,
                                     bridge = chatBridge,
                                     engine = chatEngine,
+                                    nativeChatLoadingEnabled = nativeGenerationEnabled,
+                                    nativeChatLoader = nativeChatLoader,
                                     settingsDirty = runtimeSettingsDirty,
                                     onSettingsConsumed = { runtimeSettingsDirty = false },
                                     onBackToHome = {

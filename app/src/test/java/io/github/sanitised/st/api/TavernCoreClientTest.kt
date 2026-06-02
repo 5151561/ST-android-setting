@@ -1,6 +1,7 @@
 package io.github.sanitised.st.api
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.toList
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -50,6 +51,119 @@ class TavernCoreClientTest {
         val client = TavernCoreClient(baseUrl = server.url("/").toString())
 
         assertFalse(client.healthCheck().ok)
+    }
+
+    @Test
+    fun generateTextCompletionPostsToTextGenerateEndpointAndReturnsTextChoice() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"choices":[{"text":"TC reply"}]}""")
+        )
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val reply = client.generateTextCompletion(
+            mapOf(
+                "api_type" to "ooba",
+                "api_server" to "http://127.0.0.1:7860",
+                "prompt" to "Say hi",
+                "stream" to false,
+            )
+        )
+
+        assertEquals("TC reply", reply)
+        assertCsrfRequest()
+        val request = server.takeRequest()
+        assertEquals("/api/backends/text-completions/generate", request.path)
+        val body = request.body.readUtf8()
+        assertTrue(body.contains(""""api_type":"ooba""""))
+        assertTrue(body.contains(""""prompt":"Say hi""""))
+    }
+
+    @Test
+    fun generateTextCompletionParsesOllamaNonStreamResponse() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"response":"Ollama reply"}""")
+        )
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val reply = client.generateTextCompletion(
+            mapOf(
+                "api_type" to "ollama",
+                "api_server" to "http://127.0.0.1:11434",
+                "prompt" to "Say hi",
+            )
+        )
+
+        assertEquals("Ollama reply", reply)
+    }
+
+    @Test
+    fun generateTextCompletionThrowsBackendErrorMessage() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"error":true,"message":"bad upstream"}""")
+        )
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val error = runCatching {
+            client.generateTextCompletion(
+                mapOf(
+                    "api_type" to "ooba",
+                    "api_server" to "http://127.0.0.1:7860",
+                    "prompt" to "Say hi",
+                )
+            )
+        }.exceptionOrNull()
+
+        assertEquals("bad upstream", error?.message)
+    }
+
+    @Test
+    fun generateTextCompletionStreamForcesStreamAndParsesTextDeltas() = runBlocking {
+        enqueueCsrf()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    data: {"choices":[{"text":"Hel"}]}
+
+                    data: {"content":"lo"}
+
+                    data: [DONE]
+
+                    """.trimIndent()
+                )
+        )
+
+        val client = TavernCoreClient(baseUrl = server.url("/").toString())
+
+        val chunks = client.generateTextCompletionStream(
+            mapOf(
+                "api_type" to "llamacpp",
+                "api_server" to "http://127.0.0.1:8080",
+                "prompt" to "Say hi",
+                "stream" to false,
+            )
+        ).toList()
+
+        assertEquals(listOf("Hel", "lo"), chunks)
+        assertCsrfRequest()
+        val request = server.takeRequest()
+        assertEquals("/api/backends/text-completions/generate", request.path)
+        assertEquals("text/event-stream", request.getHeader("Accept"))
+        assertTrue(request.body.readUtf8().contains(""""stream":true"""))
     }
 
     @Test
