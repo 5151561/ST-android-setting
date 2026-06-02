@@ -17,6 +17,7 @@ data class PrototypeChatItem(
     val id: String,
     val characterId: String,
     val chatFile: String?,
+    val avatarUrl: String? = null,
     val title: String,
     val preview: String,
     val time: String,
@@ -28,6 +29,7 @@ data class PrototypeChatItem(
 @Immutable
 data class PrototypeCharacterCard(
     val id: String,
+    val avatarUrl: String? = null,
     val name: String,
     val subtitle: String,
     val tags: List<String>,
@@ -71,15 +73,16 @@ data class PrototypeDrawerState(
     }
 }
 
-fun ChatSummary.toPrototypeChatItem(index: Int): PrototypeChatItem {
+fun ChatSummary.toPrototypeChatItem(): PrototypeChatItem {
     val parsedChatFile = id.substringAfter('/', missingDelimiterValue = "").ifBlank { null }
     return PrototypeChatItem(
         id = id,
         characterId = characterId,
         chatFile = parsedChatFile,
+        avatarUrl = avatarUrl ?: characterId.takeIf { it.isNotBlank() },
         title = characterName.ifBlank { characterId.readableName() },
         preview = lastMessage?.trim().orEmpty().ifBlank { "还没有消息，点开开始一段新对话。" },
-        time = lastUpdated.toPrototypeTime(),
+        time = prototypeRelativeTimeLabel(lastUpdated),
         initial = characterName.initial(),
         favorite = isPinned,
         kind = PrototypeChatKind.DIRECT
@@ -121,6 +124,7 @@ fun prototypeCharacterTagFilters(
 fun CharacterSummary.toPrototypeCharacterCard(index: Int): PrototypeCharacterCard {
     return PrototypeCharacterCard(
         id = id,
+        avatarUrl = avatarUrl,
         name = name.ifBlank { id.readableName() },
         subtitle = creatorNotes.ifBlank {
             when {
@@ -140,6 +144,7 @@ fun CharacterSummary.toPrototypeCharacterCard(index: Int): PrototypeCharacterCar
 fun CharacterDetail.toPrototypeCharacterCard(index: Int): PrototypeCharacterCard {
     return PrototypeCharacterCard(
         id = id,
+        avatarUrl = avatarUrl,
         name = name.ifBlank { id.readableName() },
         subtitle = creatorNotes.ifBlank { description.linePreview().ifBlank { "SillyTavern 角色卡" } },
         tags = tags.filter { it.isNotBlank() }.take(2),
@@ -171,19 +176,14 @@ private fun String.readableName(): String =
 private fun String.linePreview(): String =
     lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
 
-private fun String.isVisiblePrototypeTagFilter(): Boolean {
-    val normalized = lowercase()
-    if (normalized in hiddenPrototypeTagFilters) return false
-    if (normalized.matches(Regex("v\\d+"))) return false
-    if (normalized.startsWith("内部:") || normalized.startsWith("internal:")) return false
-    return true
-}
-
-private fun Long.toPrototypeTime(): String {
-    if (this <= 0L) {
+internal fun prototypeRelativeTimeLabel(
+    timestampMs: Long,
+    nowMs: Long = System.currentTimeMillis()
+): String {
+    if (timestampMs <= 0L) {
         return "未知时间"
     }
-    val age = System.currentTimeMillis() - this
+    val age = (nowMs - timestampMs).coerceAtLeast(0L)
     val minute = 60_000L
     val hour = minute * 60
     val day = hour * 24
@@ -194,6 +194,14 @@ private fun Long.toPrototypeTime(): String {
         age < day * 2 -> "昨天"
         else -> "${(age / day).coerceAtLeast(1)} 天前"
     }
+}
+
+private fun String.isVisiblePrototypeTagFilter(): Boolean {
+    val normalized = lowercase()
+    if (normalized in hiddenPrototypeTagFilters) return false
+    if (normalized.matches(Regex("v\\d+"))) return false
+    if (normalized.startsWith("内部:") || normalized.startsWith("internal:")) return false
+    return true
 }
 
 private fun Int.floorMod(other: Int): Int = ((this % other) + other) % other

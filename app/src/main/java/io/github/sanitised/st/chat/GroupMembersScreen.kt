@@ -58,10 +58,12 @@ fun GroupMembersScreen(
         val characters = runCatching { client.listCharacters() }.getOrDefault(emptyList())
         val byId = characters.associateBy { it.id }
         fun toMember(avatar: String, index: Int): DemoGroupMember {
-            val name = byId[avatar]?.name ?: avatar.removeSuffix(".png")
+            val character = byId[avatar]
+            val name = character?.name ?: avatar.removeSuffix(".png")
             return DemoGroupMember(
                 id = avatar, name = name, subtitle = "", accent = gradientFor(avatar).last(),
                 role = "", queue = index + 1, muted = avatar in group.disabledMembers,
+                avatarUrl = character?.avatarUrl ?: avatar,
                 avatarGrad = gradientFor(avatar), initial = memberInitial(name)
             )
         }

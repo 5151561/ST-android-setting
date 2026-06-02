@@ -1,5 +1,4 @@
 package io.github.sanitised.st.ui.prototype
-
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -70,12 +69,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import io.github.sanitised.st.AppPaths
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.CharacterDetail
@@ -84,6 +86,7 @@ import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 import io.github.sanitised.st.ui.screens.readPickedDocument
+import java.io.File
 import kotlinx.coroutines.launch
 
 private val characterImportMimeTypes = arrayOf(
@@ -272,6 +275,7 @@ fun PrototypeCharacterLibraryScreen(
                         items(cards, key = { it.id }) { card ->
                             PrototypeCharacterCardView(
                                 card = card,
+                                baseUrl = baseUrl,
                                 onClick = { onOpenCharacter(card.id) },
                                 onOpenChat = { onOpenChat(card.id) }
                             )
@@ -307,6 +311,7 @@ fun PrototypeCharacterProfileScreen(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val serverRunning = status.state == NodeState.RUNNING
     var detail by remember(avatar) { mutableStateOf<CharacterDetail?>(null) }
     var loading by remember { mutableStateOf(false) }
@@ -326,9 +331,15 @@ fun PrototypeCharacterProfileScreen(
         loading = false
     }
 
-    val fallback = remember(avatar) {
+    val fallback = remember(context, avatar) {
+        val localAvatarUrl = avatar?.takeIf { it.isNotBlank() }
+            ?.let { File(AppPaths(context).dataDir, "default-user/characters/$it") }
+            ?.takeIf { it.exists() }
+            ?.toURI()
+            ?.toString()
         PrototypeCharacterCard(
             id = avatar.orEmpty(),
+            avatarUrl = localAvatarUrl,
             name = avatar?.substringBeforeLast('.')?.replace('_', ' ')?.trim()?.ifBlank { "未知角色" } ?: "未知角色",
             subtitle = "本地角色卡",
             tags = emptyList(),
@@ -372,7 +383,7 @@ fun PrototypeCharacterProfileScreen(
                 )
             }
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                CharacterHero(card = card)
+                CharacterHero(card = card, baseUrl = baseUrl)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -541,7 +552,8 @@ fun PrototypeCharacterCreateScreen(
                         messageCount = 0,
                         favorite = false,
                         gradient = prototypeGradientFor(4)
-                    )
+                    ),
+                    baseUrl = baseUrl
                 )
                 if (!running) {
                     PrototypeOfflineBlock(onStartService = onStartService)
@@ -586,6 +598,7 @@ fun PrototypeCharacterCreateScreen(
 @Composable
 private fun PrototypeCharacterCardView(
     card: PrototypeCharacterCard,
+    baseUrl: String,
     onClick: () -> Unit,
     onOpenChat: () -> Unit
 ) {
@@ -604,6 +617,19 @@ private fun PrototypeCharacterCardView(
                     .height(170.dp)
                     .background(Brush.linearGradient(card.gradient.map { Color(it) }))
             ) {
+                var avatarLoadFailed by remember(card.avatarUrl, baseUrl) { mutableStateOf(false) }
+                val avatarModel = remember(card.avatarUrl, baseUrl) {
+                    prototypeAvatarImageUrl(baseUrl, card.avatarUrl)
+                }
+                if (avatarModel != null && !avatarLoadFailed) {
+                    AsyncImage(
+                        model = avatarModel,
+                        contentDescription = card.name,
+                        contentScale = ContentScale.Crop,
+                        onError = { avatarLoadFailed = true },
+                        modifier = Modifier.matchParentSize()
+                    )
+                }
                 val density = LocalDensity.current
                 val heightPx = remember { with(density) { 170.dp.toPx() } }
                 Box(
@@ -616,15 +642,17 @@ private fun PrototypeCharacterCardView(
                             )
                         )
                 )
-                Text(
-                    text = card.initial,
-                    style = androidx.compose.ui.text.TextStyle(
-                        fontSize = 84.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.align(Alignment.Center)
-                )
+                if (avatarModel == null || avatarLoadFailed) {
+                    Text(
+                        text = card.initial,
+                        style = androidx.compose.ui.text.TextStyle(
+                            fontSize = 84.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
                 if (card.favorite) {
                     Surface(
                         modifier = Modifier
@@ -698,7 +726,7 @@ private fun PrototypeCharacterCardView(
 }
 
 @Composable
-private fun CharacterHero(card: PrototypeCharacterCard) {
+private fun CharacterHero(card: PrototypeCharacterCard, baseUrl: String) {
     val gradientColors = remember(card.gradient) { card.gradient.map { Color(it) } }
     Box(
         modifier = Modifier
@@ -706,6 +734,19 @@ private fun CharacterHero(card: PrototypeCharacterCard) {
             .height(220.dp)
             .background(Brush.linearGradient(gradientColors))
     ) {
+        var avatarLoadFailed by remember(card.avatarUrl, baseUrl) { mutableStateOf(false) }
+        val avatarModel = remember(card.avatarUrl, baseUrl) {
+            prototypeAvatarImageUrl(baseUrl, card.avatarUrl)
+        }
+        if (avatarModel != null && !avatarLoadFailed) {
+            AsyncImage(
+                model = avatarModel,
+                contentDescription = card.name,
+                contentScale = ContentScale.Crop,
+                onError = { avatarLoadFailed = true },
+                modifier = Modifier.matchParentSize()
+            )
+        }
         val density = LocalDensity.current
         val heightPx = remember { with(density) { 220.dp.toPx() } }
         Box(
@@ -718,15 +759,17 @@ private fun CharacterHero(card: PrototypeCharacterCard) {
                     )
                 )
         )
-        Text(
-            text = card.initial,
-            style = androidx.compose.ui.text.TextStyle(
-                fontSize = 110.sp,
-                fontWeight = FontWeight.Bold
-            ),
-            color = Color.White.copy(alpha = 0.85f),
-            modifier = Modifier.align(Alignment.Center)
-        )
+        if (avatarModel == null || avatarLoadFailed) {
+            Text(
+                text = card.initial,
+                style = androidx.compose.ui.text.TextStyle(
+                    fontSize = 110.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
         val surfaceColor = MaterialTheme.colorScheme.surface
         Box(
             modifier = Modifier

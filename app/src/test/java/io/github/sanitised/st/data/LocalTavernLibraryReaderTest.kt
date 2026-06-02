@@ -33,12 +33,18 @@ class LocalTavernLibraryReaderTest {
             reader.listCharacters().map { it.name }
         )
         assertEquals("New Friend.png", reader.listCharacters().first().id)
+        assertEquals(
+            File(charactersDir, "New Friend.png").toURI().toString(),
+            reader.listCharacters().first().avatarUrl
+        )
         assertEquals(oldCharacter.name, reader.listCharacters().last().id)
     }
 
     @Test
     fun listRecentChatsReturnsNewestJsonlChatsWithLastMessagePreview() {
         val dataRoot = temp.newFolder("data")
+        val charactersDir = File(dataRoot, "default-user/characters").apply { mkdirs() }
+        val characterAvatar = File(charactersDir, "Seraphina.png").apply { writeText("png") }
         val chatsDir = File(dataRoot, "default-user/chats/Seraphina").apply { mkdirs() }
         val oldChat = File(chatsDir, "old.jsonl").apply {
             writeText("""{"name":"Seraphina","mes":"older reply"}""")
@@ -62,6 +68,7 @@ class LocalTavernLibraryReaderTest {
 
         assertEquals(listOf("new", "old"), chats.map { it.id.substringAfter('/') })
         assertEquals("Seraphina", chats.first().characterName)
+        assertEquals(characterAvatar.toURI().toString(), chats.first().avatarUrl)
         assertEquals("latest reply", chats.first().lastMessage)
         assertEquals(newChat.lastModified(), chats.first().lastUpdated)
         assertEquals(oldChat.lastModified(), chats.last().lastUpdated)

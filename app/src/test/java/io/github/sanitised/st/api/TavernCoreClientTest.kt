@@ -35,6 +35,12 @@ class TavernCoreClientTest {
         assertEquals("GET", request.method)
     }
 
+    private fun assertContainsAll(source: String, vararg snippets: String) {
+        snippets.forEach { snippet ->
+            assertTrue("Expected body to contain <$snippet>, but was:\n$source", source.contains(snippet))
+        }
+    }
+
     @Test
     fun healthCheckReturnsOkWhenRootRespondsSuccessfully() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(200).setBody("<html>SillyTavern</html>"))
@@ -78,8 +84,11 @@ class TavernCoreClientTest {
         val request = server.takeRequest()
         assertEquals("/api/backends/text-completions/generate", request.path)
         val body = request.body.readUtf8()
-        assertTrue(body.contains(""""api_type":"ooba""""))
-        assertTrue(body.contains(""""prompt":"Say hi""""))
+        assertContainsAll(
+            body,
+            """"api_type":"ooba"""",
+            """"prompt":"Say hi""""
+        )
     }
 
     @Test
@@ -850,17 +859,20 @@ class TavernCoreClientTest {
         assertEquals("/api/characters/create", request.path)
         assertTrue(request.getHeader("Content-Type").orEmpty().startsWith("multipart/form-data"))
         val body = request.body.readUtf8()
-        assertTrue(body.contains("name=\"avatar\"; filename=\"avatar.png\""))
-        assertTrue(body.contains("name=\"ch_name\""))
-        assertTrue(body.contains("Seraphina"))
-        assertTrue(body.contains("name=\"description\""))
-        assertTrue(body.contains("A careful archivist."))
-        assertTrue(body.contains("name=\"first_mes\""))
-        assertTrue(body.contains("Welcome back."))
-        assertTrue(body.contains("name=\"tags\""))
-        assertTrue(body.contains("archive"))
-        assertTrue(body.contains("name=\"fav\""))
-        assertTrue(body.contains("true"))
+        assertContainsAll(
+            body,
+            "name=\"avatar\"; filename=\"avatar.png\"",
+            "name=\"ch_name\"",
+            "Seraphina",
+            "name=\"description\"",
+            "A careful archivist.",
+            "name=\"first_mes\"",
+            "Welcome back.",
+            "name=\"tags\"",
+            "archive",
+            "name=\"fav\"",
+            "true"
+        )
         assertEquals("Seraphina.png", avatar)
     }
 
@@ -908,55 +920,58 @@ class TavernCoreClientTest {
         assertEquals("/api/characters/edit", request.path)
         assertTrue(request.getHeader("Content-Type").orEmpty().startsWith("multipart/form-data"))
         val body = request.body.readUtf8()
-        assertTrue(body, body.contains("name=\"avatar\"; filename=\"avatar.png\""))
-        assertTrue(body, body.contains("name=\"avatar_url\""))
-        assertTrue(body, body.contains("Seraphina.png"))
-        assertTrue(body, body.contains("name=\"ch_name\""))
-        assertTrue(body, body.contains("Seraphina"))
-        assertTrue(body, body.contains("name=\"description\""))
-        assertTrue(body, body.contains("Updated description"))
-        assertTrue(body, body.contains("name=\"first_mes\""))
-        assertTrue(body, body.contains("Updated hello"))
-        assertTrue(body, body.contains("name=\"personality\""))
-        assertTrue(body, body.contains("Careful and direct."))
-        assertTrue(body, body.contains("name=\"scenario\""))
-        assertTrue(body, body.contains("Inside the archive."))
-        assertTrue(body, body.contains("name=\"mes_example\""))
-        assertTrue(body, body.contains("<START>"))
-        assertTrue(body, body.contains("name=\"creator_notes\""))
-        assertTrue(body, body.contains("Notes for users."))
-        assertTrue(body, body.contains("name=\"system_prompt\""))
-        assertTrue(body, body.contains("Stay precise."))
-        assertTrue(body, body.contains("name=\"post_history_instructions\""))
-        assertTrue(body, body.contains("Use the ledger."))
-        assertTrue(body, body.contains("name=\"tags\""))
-        assertTrue(body, body.contains("archive, updated"))
-        assertTrue(body, body.contains("name=\"creator\""))
-        assertTrue(body, body.contains("Tester"))
-        assertTrue(body, body.contains("name=\"character_version\""))
-        assertTrue(body, body.contains("1.1"))
-        assertTrue(body, body.contains("name=\"world\""))
-        assertTrue(body, body.contains("Archive World"))
-        assertTrue(body, body.contains("name=\"talkativeness\""))
-        assertTrue(body, body.contains("0.8"))
-        assertTrue(body, body.contains("name=\"alternate_greetings\""))
-        assertTrue(body, body.contains("Hello again."))
-        assertTrue(body, body.contains("name=\"depth_prompt_prompt\""))
-        assertTrue(body, body.contains("Keep context."))
-        assertTrue(body, body.contains("name=\"depth_prompt_depth\""))
-        assertTrue(body, body.contains("2"))
-        assertTrue(body, body.contains("name=\"depth_prompt_role\""))
-        assertTrue(body, body.contains("user"))
-        assertTrue(body, body.contains("name=\"chat\""))
-        assertTrue(body, body.contains("Seraphina - 2026.jsonl"))
-        assertTrue(body, body.contains("name=\"create_date\""))
-        assertTrue(body, body.contains("2026-05-26T10:00:00.000Z"))
-        assertTrue(body, body.contains("name=\"json_data\""))
-        assertTrue(body, body.contains(complexJsonData))
-        assertTrue(body, body.contains("name=\"extensions\""))
-        assertTrue(body, body.contains("\"source_url\":\"https://example.test/seraphina\""))
-        assertTrue(body, body.contains("name=\"fav\""))
-        assertTrue(body, body.contains("false"))
+        assertContainsAll(
+            body,
+            "name=\"avatar\"; filename=\"avatar.png\"",
+            "name=\"avatar_url\"",
+            "Seraphina.png",
+            "name=\"ch_name\"",
+            "Seraphina",
+            "name=\"description\"",
+            "Updated description",
+            "name=\"first_mes\"",
+            "Updated hello",
+            "name=\"personality\"",
+            "Careful and direct.",
+            "name=\"scenario\"",
+            "Inside the archive.",
+            "name=\"mes_example\"",
+            "<START>",
+            "name=\"creator_notes\"",
+            "Notes for users.",
+            "name=\"system_prompt\"",
+            "Stay precise.",
+            "name=\"post_history_instructions\"",
+            "Use the ledger.",
+            "name=\"tags\"",
+            "archive, updated",
+            "name=\"creator\"",
+            "Tester",
+            "name=\"character_version\"",
+            "1.1",
+            "name=\"world\"",
+            "Archive World",
+            "name=\"talkativeness\"",
+            "0.8",
+            "name=\"alternate_greetings\"",
+            "Hello again.",
+            "name=\"depth_prompt_prompt\"",
+            "Keep context.",
+            "name=\"depth_prompt_depth\"",
+            "2",
+            "name=\"depth_prompt_role\"",
+            "user",
+            "name=\"chat\"",
+            "Seraphina - 2026.jsonl",
+            "name=\"create_date\"",
+            "2026-05-26T10:00:00.000Z",
+            "name=\"json_data\"",
+            complexJsonData,
+            "name=\"extensions\"",
+            "\"source_url\":\"https://example.test/seraphina\"",
+            "name=\"fav\"",
+            "false"
+        )
     }
 
     @Test
@@ -975,10 +990,13 @@ class TavernCoreClientTest {
         val request = server.takeRequest()
         assertEquals("/api/characters/merge-attributes", request.path)
         val body = request.body.readUtf8()
-        assertTrue(body.contains("\"avatar\":\"Seraphina.png\""))
-        assertTrue(body.contains("\"fav\":true"))
-        assertTrue(body.contains("\"tags\":[\"archive\",\"assistant\"]"))
-        assertTrue(body.contains("\"extensions\":{\"fav\":true}"))
+        assertContainsAll(
+            body,
+            "\"avatar\":\"Seraphina.png\"",
+            "\"fav\":true",
+            "\"tags\":[\"archive\",\"assistant\"]",
+            "\"extensions\":{\"fav\":true}"
+        )
     }
 
     @Test
@@ -1110,13 +1128,16 @@ class TavernCoreClientTest {
         assertEquals("/api/chats/import", request.path)
         assertTrue(request.getHeader("Content-Type").orEmpty().startsWith("multipart/form-data"))
         val body = request.body.readUtf8()
-        assertTrue(body.contains("name=\"avatar\"; filename=\"chat.jsonl\""))
-        assertTrue(body.contains("name=\"file_type\""))
-        assertTrue(body.contains("jsonl"))
-        assertTrue(body.contains("name=\"avatar_url\""))
-        assertTrue(body.contains("Seraphina.png"))
-        assertTrue(body.contains("name=\"character_name\""))
-        assertTrue(body.contains("Seraphina"))
+        assertContainsAll(
+            body,
+            "name=\"avatar\"; filename=\"chat.jsonl\"",
+            "name=\"file_type\"",
+            "jsonl",
+            "name=\"avatar_url\"",
+            "Seraphina.png",
+            "name=\"character_name\"",
+            "Seraphina"
+        )
         assertEquals(listOf("Seraphina imported.jsonl"), imported)
     }
 
@@ -1213,23 +1234,32 @@ class TavernCoreClientTest {
         val importRequest = server.takeRequest()
         assertEquals("/api/characters/import", importRequest.path)
         val importBody = importRequest.body.readUtf8()
-        assertTrue(importBody.contains("name=\"avatar\"; filename=\"Imported.png\""))
-        assertTrue(importBody.contains("name=\"file_type\""))
-        assertTrue(importBody.contains("png"))
+        assertContainsAll(
+            importBody,
+            "name=\"avatar\"; filename=\"Imported.png\"",
+            "name=\"file_type\"",
+            "png"
+        )
         assertEquals("Imported.png", imported)
 
         val avatarRequest = server.takeRequest()
         assertEquals("/api/characters/edit-avatar", avatarRequest.path)
         val avatarBody = avatarRequest.body.readUtf8()
-        assertTrue(avatarBody.contains("name=\"avatar\"; filename=\"avatar.png\""))
-        assertTrue(avatarBody.contains("name=\"avatar_url\""))
-        assertTrue(avatarBody.contains("Imported.png"))
+        assertContainsAll(
+            avatarBody,
+            "name=\"avatar\"; filename=\"avatar.png\"",
+            "name=\"avatar_url\"",
+            "Imported.png"
+        )
 
         val exportRequest = server.takeRequest()
         assertEquals("/api/characters/export", exportRequest.path)
         val exportBody = exportRequest.body.readUtf8()
-        assertTrue(exportBody.contains("\"avatar_url\":\"Imported.png\""))
-        assertTrue(exportBody.contains("\"format\":\"json\""))
+        assertContainsAll(
+            exportBody,
+            "\"avatar_url\":\"Imported.png\"",
+            "\"format\":\"json\""
+        )
         assertEquals("Imported.json", exported.fileName)
         assertEquals("application/json", exported.contentType)
         assertEquals("""{"name":"Imported"}""", exported.bytes.toString(Charsets.UTF_8))

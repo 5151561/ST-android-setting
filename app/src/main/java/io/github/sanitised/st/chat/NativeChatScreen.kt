@@ -246,6 +246,12 @@ fun NativeChatScreen(
     } else {
         target.displayLabel()
     }
+    val chatBaseUrl = remember(status.port) { "http://127.0.0.1:${status.port}" }
+    val visibleAvatarUrl = if (targetMatched) {
+        store.avatarUrl
+    } else {
+        (target as? WebViewTarget.CharacterChat)?.avatar.orEmpty()
+    }
     val nativeReadyForTarget = nativeChatLoadingEnabled && targetMatched
     val readyForTarget = (store.runtimeState == RuntimeState.READY || nativeReadyForTarget) && targetMatched
     val isGroupMode = store.mode == "group"
@@ -261,6 +267,8 @@ fun NativeChatScreen(
         ) {
             ChatHeader(
                 characterName = visibleCharacterName,
+                avatarUrl = visibleAvatarUrl,
+                baseUrl = chatBaseUrl,
                 isGenerating = store.isGenerating,
                 isGroupMode = isGroupMode,
                 runtimeState = store.runtimeState,
@@ -306,6 +314,8 @@ fun NativeChatScreen(
                     MessageList(
                         messages = store.messages,
                         characterName = visibleCharacterName,
+                        assistantAvatarUrl = visibleAvatarUrl,
+                        baseUrl = chatBaseUrl,
                         port = status.port,
                         editingMessageId = editingMessageId,
                         editText = editText,
@@ -621,6 +631,8 @@ internal fun attachmentSizeLabel(size: Long): String {
 @Composable
 private fun ChatHeader(
     characterName: String,
+    avatarUrl: String,
+    baseUrl: String,
     isGenerating: Boolean,
     isGroupMode: Boolean,
     runtimeState: RuntimeState,
@@ -660,11 +672,15 @@ private fun ChatHeader(
                 if (isGroupMode) {
                     PrototypeGroupAvatar(
                         initials = characterName.take(2).map { it.uppercase() }.ifEmpty { listOf("群") },
+                        imageUrls = listOf(avatarUrl),
+                        baseUrl = baseUrl,
                         size = 36.dp
                     )
                 } else {
                     PrototypeAvatar(
                         label = characterName.ifBlank { "?" },
+                        imageUrl = avatarUrl,
+                        baseUrl = baseUrl,
                         size = 36.dp
                     )
                 }
@@ -798,6 +814,8 @@ private fun ChatLoadingView(
 private fun MessageList(
     messages: List<ChatMessage>,
     characterName: String,
+    assistantAvatarUrl: String,
+    baseUrl: String,
     port: Int,
     editingMessageId: Int,
     editText: String,
@@ -844,6 +862,8 @@ private fun MessageList(
                 MessageEditBubble(
                     message = message,
                     characterName = characterName,
+                    assistantAvatarUrl = assistantAvatarUrl,
+                    baseUrl = baseUrl,
                     editText = editText,
                     onEditTextChange = onEditTextChange,
                     maxWidth = if (message.isUser) screenWidth * 0.82f else screenWidth * 0.92f,
@@ -855,6 +875,8 @@ private fun MessageList(
                 MessageBubble(
                     message = message,
                     characterName = characterName,
+                    assistantAvatarUrl = assistantAvatarUrl,
+                    baseUrl = baseUrl,
                     port = port,
                     lastAssistant = !message.isUser && visibleMessages.lastOrNull()?.id == message.id,
                     maxWidth = if (message.isUser) screenWidth * 0.82f else screenWidth * 0.92f,
@@ -874,6 +896,8 @@ private fun MessageList(
 private fun MessageBubble(
     message: ChatMessage,
     characterName: String,
+    assistantAvatarUrl: String,
+    baseUrl: String,
     port: Int,
     lastAssistant: Boolean,
     maxWidth: androidx.compose.ui.unit.Dp,
@@ -924,7 +948,13 @@ private fun MessageBubble(
             }
         } else {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PrototypeAvatar(label = message.name.ifBlank { characterName }, size = 36.dp)
+                val messageAvatarUrl = message.extra.optString("force_avatar").ifBlank { assistantAvatarUrl }
+                PrototypeAvatar(
+                    label = message.name.ifBlank { characterName },
+                    imageUrl = messageAvatarUrl,
+                    baseUrl = baseUrl,
+                    size = 36.dp
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1318,6 +1348,8 @@ private fun AssistantMessageControls(
 private fun MessageEditBubble(
     message: ChatMessage,
     characterName: String,
+    assistantAvatarUrl: String,
+    baseUrl: String,
     editText: String,
     onEditTextChange: (String) -> Unit,
     maxWidth: androidx.compose.ui.unit.Dp,
@@ -1423,7 +1455,13 @@ private fun MessageEditBubble(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                PrototypeAvatar(label = message.name.ifBlank { characterName }, size = 36.dp)
+                val messageAvatarUrl = message.extra.optString("force_avatar").ifBlank { assistantAvatarUrl }
+                PrototypeAvatar(
+                    label = message.name.ifBlank { characterName },
+                    imageUrl = messageAvatarUrl,
+                    baseUrl = baseUrl,
+                    size = 36.dp
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     content()
                 }

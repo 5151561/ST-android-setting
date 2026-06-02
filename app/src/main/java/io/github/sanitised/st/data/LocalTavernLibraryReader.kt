@@ -22,7 +22,8 @@ class LocalTavernLibraryReader(
             .map { file ->
                 CharacterSummary(
                     id = file.name,
-                    name = file.displayName()
+                    name = file.displayName(),
+                    avatarUrl = file.toURI().toString()
                 )
             }
             .toList()
@@ -46,6 +47,7 @@ class LocalTavernLibraryReader(
                     id = "${characterDir.name}/${chatFile.nameWithoutExtension}",
                     characterId = characterDir.name,
                     characterName = characterDir.displayName(),
+                    avatarUrl = characterDir.characterAvatarUrl(),
                     lastMessage = chatFile.lastMessagePreview(),
                     lastUpdated = chatFile.lastModified()
                 )
@@ -62,6 +64,17 @@ class LocalTavernLibraryReader(
     private fun File.displayName(): String {
         val baseName = if (isFile) nameWithoutExtension else name
         return baseName.replace('_', ' ').trim().ifBlank { name }
+    }
+
+    private fun File.characterAvatarUrl(): String? {
+        val charactersDir = File(userDir, "characters")
+        val candidates = listOf(name, "$name.png").distinct()
+        return candidates
+            .asSequence()
+            .map { File(charactersDir, it) }
+            .firstOrNull { it.isFile }
+            ?.toURI()
+            ?.toString()
     }
 
     private fun File.lastMessagePreview(): String? {

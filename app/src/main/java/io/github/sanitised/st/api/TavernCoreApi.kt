@@ -248,6 +248,7 @@ data class ChatSummary(
     val id: String,
     val characterId: String,
     val characterName: String,
+    val avatarUrl: String? = null,
     val lastMessage: String? = null,
     val lastUpdated: Long = 0,
     val isPinned: Boolean = false

@@ -41,7 +41,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,11 +52,40 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+
+internal fun prototypeAvatarImageUrl(baseUrl: String, imageUrl: String?): String? {
+    val trimmed = imageUrl?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (
+        trimmed.startsWith("http://") ||
+        trimmed.startsWith("https://") ||
+        trimmed.startsWith("file:") ||
+        trimmed.startsWith("content:") ||
+        trimmed.startsWith("data:")
+    ) {
+        return trimmed
+    }
+    val normalizedBase = baseUrl.trimEnd('/')
+    return when {
+        normalizedBase.isBlank() -> trimmed
+        trimmed.startsWith("/thumbnail") -> normalizedBase + trimmed
+        trimmed.startsWith("thumbnail") -> "$normalizedBase/$trimmed"
+        trimmed.startsWith("/") -> normalizedBase + trimmed
+        trimmed.startsWith("img/") || trimmed.startsWith("user/") -> "$normalizedBase/$trimmed"
+        else -> "$normalizedBase/thumbnail?type=avatar&file=${trimmed.urlEncodedPathSegment()}"
+    }
+}
+
+private fun String.urlEncodedPathSegment(): String =
+    URLEncoder.encode(this, StandardCharsets.UTF_8.toString()).replace("+", "%20")
 
 @Composable
 fun PrototypeTopHeader(
@@ -149,6 +181,8 @@ fun PrototypeIconButton(
 fun PrototypeAvatar(
     label: String,
     modifier: Modifier = Modifier,
+    imageUrl: String? = null,
+    baseUrl: String = "",
     size: Dp = 48.dp,
     square: Boolean = false,
     ringColor: Color? = null,
@@ -157,6 +191,8 @@ fun PrototypeAvatar(
     val density = LocalDensity.current
     val shape = if (square) RoundedCornerShape((size.value * 0.18f).dp) else CircleShape
     val sizePx = remember(size, density) { with(density) { size.toPx() } }
+    var imageLoadFailed by remember(imageUrl, baseUrl) { mutableStateOf(false) }
+    val imageModel = remember(imageUrl, baseUrl) { prototypeAvatarImageUrl(baseUrl, imageUrl) }
     Box(
         modifier = modifier
             .size(size)
@@ -165,6 +201,15 @@ fun PrototypeAvatar(
             .then(if (ringColor != null) Modifier.border(2.dp, ringColor, shape) else Modifier),
         contentAlignment = Alignment.Center
     ) {
+        if (imageModel != null && !imageLoadFailed) {
+            AsyncImage(
+                model = imageModel,
+                contentDescription = label,
+                contentScale = ContentScale.Crop,
+                onError = { imageLoadFailed = true },
+                modifier = Modifier.matchParentSize()
+            )
+        }
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -175,12 +220,14 @@ fun PrototypeAvatar(
                     )
                 )
         )
-        Text(
-            text = label.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-            style = MaterialTheme.typography.titleMedium,
-            color = Color.White.copy(alpha = 0.94f),
-            fontWeight = FontWeight.SemiBold
-        )
+        if (imageModel == null || imageLoadFailed) {
+            Text(
+                text = label.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White.copy(alpha = 0.94f),
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
 }
 
@@ -188,6 +235,8 @@ fun PrototypeAvatar(
 fun PrototypeGroupAvatar(
     initials: List<String>,
     modifier: Modifier = Modifier,
+    imageUrls: List<String?> = emptyList(),
+    baseUrl: String = "",
     size: Dp = 52.dp
 ) {
     Box(
@@ -211,6 +260,8 @@ fun PrototypeGroupAvatar(
             
             PrototypeAvatar(
                 label = label,
+                imageUrl = imageUrls.getOrNull(index),
+                baseUrl = baseUrl,
                 size = avatarSize,
                 gradient = gradient,
                 ringColor = MaterialTheme.colorScheme.surface,
@@ -331,7 +382,6 @@ fun PrototypeSectionHeader(
 @Composable
 fun PrototypeListSurface(
     modifier: Modifier = Modifier,
-    color: Color = Color.Transparent,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(

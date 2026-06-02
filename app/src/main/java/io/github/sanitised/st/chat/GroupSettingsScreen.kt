@@ -87,10 +87,12 @@ fun GroupSettingsScreen(
         members.clear(); members.addAll(group.members)
         membersMockList.clear()
         membersMockList.addAll(group.members.mapIndexed { index, avatar ->
-            val name = byId[avatar]?.name ?: avatar.removeSuffix(".png")
+            val character = byId[avatar]
+            val name = character?.name ?: avatar.removeSuffix(".png")
             DemoGroupMember(
                 id = avatar, name = name, subtitle = "", accent = gradientFor(avatar).last(),
                 role = "", queue = index + 1, muted = avatar in group.disabledMembers,
+                avatarUrl = character?.avatarUrl ?: avatar,
                 avatarGrad = gradientFor(avatar), initial = memberInitial(name)
             )
         })
@@ -161,7 +163,7 @@ fun GroupSettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Box(modifier = Modifier.size(72.dp)) {
-                        GroupAvatar(ids = members, members = membersMockList, size = 72.dp)
+                        GroupAvatar(ids = members, members = membersMockList, baseUrl = baseUrl, size = 72.dp)
                         // Edit Avatar small button
                         Box(
                             modifier = Modifier
@@ -586,4 +588,3 @@ fun SetIcon(
         )
     }
 }
-

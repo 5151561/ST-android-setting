@@ -87,6 +87,7 @@ fun PrototypeGroupChatScreen(
 
     GroupListView(
         groups = groups,
+        baseUrl = baseUrl,
         loading = loading,
         serverRunning = serverRunning,
         onStartService = onStartService,
@@ -101,6 +102,7 @@ fun PrototypeGroupChatScreen(
 @Composable
 private fun GroupListView(
     groups: List<GroupSummary>,
+    baseUrl: String,
     loading: Boolean,
     serverRunning: Boolean,
     onStartService: () -> Unit,
@@ -171,6 +173,7 @@ private fun GroupListView(
                     else -> items(groups, key = { it.id }) { group ->
                         GroupListItem(
                             group = group,
+                            baseUrl = baseUrl,
                             onClick = { onOpenGroupChat(group.id, group.chatId.takeIf { it.isNotBlank() }) }
                         )
                     }
@@ -194,6 +197,7 @@ private fun GroupListView(
 @Composable
 private fun GroupListItem(
     group: GroupSummary,
+    baseUrl: String,
     onClick: () -> Unit
 ) {
     Surface(
@@ -207,10 +211,22 @@ private fun GroupListItem(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            PrototypeGroupAvatar(
-                initials = group.members.take(3).map { it.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?" }.ifEmpty { listOf("群") },
-                size = 52.dp
-            )
+            if (group.avatarUrl.isNotBlank()) {
+                PrototypeAvatar(
+                    label = group.name.ifBlank { "群" },
+                    imageUrl = group.avatarUrl,
+                    baseUrl = baseUrl,
+                    size = 52.dp,
+                    gradient = prototypeGradientFor(group.id.hashCode())
+                )
+            } else {
+                PrototypeGroupAvatar(
+                    initials = group.members.take(3).map { it.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?" }.ifEmpty { listOf("群") },
+                    imageUrls = group.members.take(3),
+                    baseUrl = baseUrl,
+                    size = 52.dp
+                )
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(
@@ -228,7 +244,7 @@ private fun GroupListItem(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = group.lastUpdated.toGroupTimeLabel(),
+                        text = prototypeRelativeTimeLabel(group.lastUpdated),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
@@ -247,20 +263,5 @@ private fun GroupListItem(
                 )
             }
         }
-    }
-}
-
-private fun Long.toGroupTimeLabel(): String {
-    if (this <= 0L) return "未知时间"
-    val age = System.currentTimeMillis() - this
-    val minute = 60_000L
-    val hour = minute * 60
-    val day = hour * 24
-    return when {
-        age < minute -> "刚才"
-        age < hour -> "${age / minute} 分钟前"
-        age < day -> "今天"
-        age < day * 2 -> "昨天"
-        else -> "${(age / day).coerceAtLeast(1)} 天前"
     }
 }

@@ -66,8 +66,9 @@ fun PrototypeChatListScreen(
 ) {
     val openDrawer = LocalSTOpenDrawer.current
     val chatItems = remember(recentChats) {
-        recentChats.mapIndexed { index, chat -> chat.toPrototypeChatItem(index) }
+        recentChats.map { chat -> chat.toPrototypeChatItem() }
     }
+    val baseUrl = remember(status.port) { "http://127.0.0.1:${status.port}" }
     var selectedFilter by remember { mutableIntStateOf(0) }
 
     val filteredChats = remember(chatItems, selectedFilter) {
@@ -137,6 +138,7 @@ fun PrototypeChatListScreen(
                 items(filteredChats, key = { it.id }) { chat ->
                     PrototypeChatListItem(
                         item = chat,
+                        baseUrl = baseUrl,
                         onClick = { onOpenChat(chat) }
                     )
                 }
@@ -160,6 +162,7 @@ fun PrototypeChatListScreen(
 @Composable
 private fun PrototypeChatListItem(
     item: PrototypeChatItem,
+    baseUrl: String,
     onClick: () -> Unit
 ) {
     Surface(
@@ -176,11 +179,15 @@ private fun PrototypeChatListItem(
             if (item.kind == PrototypeChatKind.GROUP) {
                 PrototypeGroupAvatar(
                     initials = listOf(item.initial),
+                    imageUrls = listOf(item.avatarUrl),
+                    baseUrl = baseUrl,
                     size = 52.dp
                 )
             } else {
                 PrototypeAvatar(
                     label = item.initial,
+                    imageUrl = item.avatarUrl,
+                    baseUrl = baseUrl,
                     size = 52.dp,
                     gradient = prototypeGradientFor(item.id.hashCode())
                 )

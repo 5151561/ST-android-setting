@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -54,6 +55,8 @@ import io.github.sanitised.st.chat.engine.GroupReply
 import io.github.sanitised.st.chat.engine.NativeGroupGenerator
 import io.github.sanitised.st.chat.engine.pickGroupSpeaker
 import io.github.sanitised.st.ui.prototype.PrototypeAvatar
+import io.github.sanitised.st.ui.prototype.prototypeAvatarImageUrl
+import coil.compose.AsyncImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -90,6 +93,7 @@ data class DemoGroupMember(
     val role: String,
     val queue: Int,
     val muted: Boolean,
+    val avatarUrl: String?,
     val avatarGrad: List<Color>,
     val initial: String
 )
@@ -153,6 +157,7 @@ fun GroupChatScreen(
                 role = "",
                 queue = index + 1,
                 muted = avatar in group.disabledMembers,
+                avatarUrl = character?.avatarUrl ?: avatar,
                 avatarGrad = gradientFor(avatar),
                 initial = memberInitial(name)
             )
@@ -379,6 +384,7 @@ fun GroupChatScreen(
             GroupChatHeader(
                 group = groupState.value,
                 members = membersList,
+                baseUrl = baseUrl,
                 onBack = onBack,
                 onHeaderClick = { showConversationSwitcher = true },
                 onMembersIconClick = onNavigateToMembers,
@@ -418,6 +424,7 @@ fun GroupChatScreen(
                                 GroupMesAssistant(
                                     msg = msg,
                                     member = member,
+                                    baseUrl = baseUrl,
                                     isLast = isLast,
                                     onSwipeLeft = {
                                         val i = threadMessages.indexOf(msg)
@@ -441,7 +448,7 @@ fun GroupChatScreen(
                         item {
                             val member = membersList.find { it.id == typingSpeakerId }
                             if (member != null) {
-                                TypingRow(member = member)
+                                TypingRow(member = member, baseUrl = baseUrl)
                             }
                         }
                     }
@@ -466,6 +473,7 @@ fun GroupChatScreen(
         if (showSpeakerSheet) {
             SpeakerSheet(
                 members = membersList,
+                baseUrl = baseUrl,
                 onDismiss = { showSpeakerSheet = false },
                 onSelectSpeaker = { id ->
                     showSpeakerSheet = false
@@ -502,6 +510,7 @@ fun GroupChatScreen(
             ConversationSwitcherSheet(
                 group = groupState.value,
                 members = membersList,
+                baseUrl = baseUrl,
                 conversations = conversations,
                 onDismiss = { showConversationSwitcher = false },
                 onSelectConversation = { cid ->
@@ -541,7 +550,7 @@ fun GroupChatScreen(
 // GroupAvatar — 将群成员头像拼贴成圆角格栅
 // ─────────────────────────────────────────────────────────────
 @Composable
-fun GroupAvatar(ids: List<String>, members: List<DemoGroupMember>, size: Dp, modifier: Modifier = Modifier) {
+fun GroupAvatar(ids: List<String>, members: List<DemoGroupMember>, baseUrl: String, size: Dp, modifier: Modifier = Modifier) {
     val activeMembers = ids.take(4).mapNotNull { id -> members.find { it.id == id } }
     val radius = size * 0.28f
     val gap = 1.5.dp
@@ -557,76 +566,70 @@ fun GroupAvatar(ids: List<String>, members: List<DemoGroupMember>, size: Dp, mod
             Text("群", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = (size.value * 0.4f).sp, fontWeight = FontWeight.Bold)
         } else if (activeMembers.size == 1) {
             val m = activeMembers[0]
-            Box(
+            GroupAvatarTile(
+                member = m,
+                baseUrl = baseUrl,
+                fontSize = (size.value * 0.42f).sp,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Brush.linearGradient(m.avatarGrad)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(m.initial, color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.Bold)
-            }
+            )
         } else if (activeMembers.size == 3) {
             Row(modifier = Modifier.fillMaxSize()) {
                 // Left Column - Full Height
-                Box(
+                GroupAvatarTile(
+                    member = activeMembers[0],
+                    baseUrl = baseUrl,
+                    fontSize = (size.value * 0.3f).sp,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .background(Brush.linearGradient(activeMembers[0].avatarGrad)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(activeMembers[0].initial, color = Color.White, fontSize = (size.value * 0.3f).sp, fontWeight = FontWeight.Bold)
-                }
+                )
                 Spacer(modifier = Modifier.width(gap))
                 // Right Column - Two Rows (top and bottom)
                 Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    Box(
+                    GroupAvatarTile(
+                        member = activeMembers[1],
+                        baseUrl = baseUrl,
+                        fontSize = (size.value * 0.22f).sp,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .background(Brush.linearGradient(activeMembers[1].avatarGrad)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(activeMembers[1].initial, color = Color.White, fontSize = (size.value * 0.22f).sp, fontWeight = FontWeight.Bold)
-                    }
+                    )
                     Spacer(modifier = Modifier.height(gap))
-                    Box(
+                    GroupAvatarTile(
+                        member = activeMembers[2],
+                        baseUrl = baseUrl,
+                        fontSize = (size.value * 0.22f).sp,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .background(Brush.linearGradient(activeMembers[2].avatarGrad)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(activeMembers[2].initial, color = Color.White, fontSize = (size.value * 0.22f).sp, fontWeight = FontWeight.Bold)
-                    }
+                    )
                 }
             }
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     // Top Left
-                    Box(
+                    GroupAvatarTile(
+                        member = activeMembers[0],
+                        baseUrl = baseUrl,
+                        fontSize = (size.value * 0.22f).sp,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .background(Brush.linearGradient(activeMembers[0].avatarGrad)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(activeMembers[0].initial, color = Color.White, fontSize = (size.value * 0.22f).sp, fontWeight = FontWeight.Bold)
-                    }
+                    )
                     Spacer(modifier = Modifier.width(gap))
                     // Top Right
                     val topRight = activeMembers.getOrNull(1)
                     if (topRight != null) {
-                        Box(
+                        GroupAvatarTile(
+                            member = topRight,
+                            baseUrl = baseUrl,
+                            fontSize = (size.value * 0.22f).sp,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .background(Brush.linearGradient(topRight.avatarGrad)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(topRight.initial, color = Color.White, fontSize = (size.value * 0.22f).sp, fontWeight = FontWeight.Bold)
-                        }
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(gap))
@@ -634,32 +637,95 @@ fun GroupAvatar(ids: List<String>, members: List<DemoGroupMember>, size: Dp, mod
                     // Bottom Left
                     val bottomLeft = activeMembers.getOrNull(2)
                     if (bottomLeft != null) {
-                        Box(
+                        GroupAvatarTile(
+                            member = bottomLeft,
+                            baseUrl = baseUrl,
+                            fontSize = (size.value * 0.22f).sp,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .background(Brush.linearGradient(bottomLeft.avatarGrad)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(bottomLeft.initial, color = Color.White, fontSize = (size.value * 0.22f).sp, fontWeight = FontWeight.Bold)
-                        }
+                        )
                     }
                     Spacer(modifier = Modifier.width(gap))
                     // Bottom Right
                     val bottomRight = activeMembers.getOrNull(3)
                     if (bottomRight != null) {
-                        Box(
+                        GroupAvatarTile(
+                            member = bottomRight,
+                            baseUrl = baseUrl,
+                            fontSize = (size.value * 0.22f).sp,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .background(Brush.linearGradient(bottomRight.avatarGrad)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(bottomRight.initial, color = Color.White, fontSize = (size.value * 0.22f).sp, fontWeight = FontWeight.Bold)
-                        }
+                        )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun GroupAvatarTile(
+    member: DemoGroupMember,
+    baseUrl: String,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    modifier: Modifier = Modifier
+) {
+    var imageLoadFailed by remember(member.avatarUrl, baseUrl) { mutableStateOf(false) }
+    val imageModel = remember(member.avatarUrl, baseUrl) { prototypeAvatarImageUrl(baseUrl, member.avatarUrl) }
+    Box(
+        modifier = modifier.background(Brush.linearGradient(member.avatarGrad)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (imageModel != null && !imageLoadFailed) {
+            AsyncImage(
+                model = imageModel,
+                contentDescription = member.name,
+                contentScale = ContentScale.Crop,
+                onError = { imageLoadFailed = true },
+                modifier = Modifier.matchParentSize()
+            )
+        }
+        if (imageModel == null || imageLoadFailed) {
+            Text(member.initial, color = Color.White, fontSize = fontSize, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun GroupMemberAvatar(
+    member: DemoGroupMember,
+    baseUrl: String,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    alpha: Float = 1f,
+    ringColor: Color? = null,
+    ringWidth: Dp = 0.dp
+) {
+    var imageLoadFailed by remember(member.avatarUrl, baseUrl) { mutableStateOf(false) }
+    val imageModel = remember(member.avatarUrl, baseUrl) { prototypeAvatarImageUrl(baseUrl, member.avatarUrl) }
+    val shape = CircleShape
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(shape)
+            .alpha(alpha)
+            .background(Brush.linearGradient(member.avatarGrad))
+            .border(ringWidth, ringColor ?: Color.Transparent, shape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (imageModel != null && !imageLoadFailed) {
+            AsyncImage(
+                model = imageModel,
+                contentDescription = member.name,
+                contentScale = ContentScale.Crop,
+                onError = { imageLoadFailed = true },
+                modifier = Modifier.matchParentSize()
+            )
+        }
+        if (imageModel == null || imageLoadFailed) {
+            Text(member.initial, color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -672,6 +738,7 @@ fun GroupAvatar(ids: List<String>, members: List<DemoGroupMember>, size: Dp, mod
 fun GroupChatHeader(
     group: DemoGroup,
     members: List<DemoGroupMember>,
+    baseUrl: String,
     onBack: () -> Unit,
     onHeaderClick: () -> Unit,
     onMembersIconClick: () -> Unit,
@@ -702,7 +769,7 @@ fun GroupChatHeader(
                     .padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                GroupAvatar(ids = group.members, members = members, size = 38.dp)
+                GroupAvatar(ids = group.members, members = members, baseUrl = baseUrl, size = 38.dp)
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -765,6 +832,7 @@ fun GroupChatHeader(
         // 横向滚动成员指示器
         MemberStrip(
             members = members,
+            baseUrl = baseUrl,
             onAddMemberClick = onMembersIconClick,
             onMemberClick = onMemberClick
         )
@@ -779,6 +847,7 @@ fun GroupChatHeader(
 @Composable
 fun MemberStrip(
     members: List<DemoGroupMember>,
+    baseUrl: String,
     onAddMemberClick: () -> Unit,
     onMemberClick: (String) -> Unit
 ) {
@@ -792,8 +861,7 @@ fun MemberStrip(
     ) {
         members.forEach { m ->
             val alpha = if (m.muted) 0.45f else 1f
-            val shape = CircleShape
-            
+
             Column(
                 modifier = Modifier
                     .width(52.dp)
@@ -802,17 +870,14 @@ fun MemberStrip(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Box(modifier = Modifier.size(44.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(shape)
-                            .alpha(alpha)
-                            .background(Brush.linearGradient(m.avatarGrad))
-                            .border(if (!m.muted) 2.dp else 0.dp, if (!m.muted) m.accent else Color.Transparent, shape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(m.initial, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    }
+                    GroupMemberAvatar(
+                        member = m,
+                        baseUrl = baseUrl,
+                        size = 44.dp,
+                        alpha = alpha,
+                        ringColor = if (!m.muted) m.accent else Color.Transparent,
+                        ringWidth = if (!m.muted) 2.dp else 0.dp
+                    )
                     
                     // 右下角徽章
                     Box(
@@ -950,6 +1015,7 @@ fun GText(text: String) {
 fun GroupMesAssistant(
     msg: DemoGroupMessage,
     member: DemoGroupMember,
+    baseUrl: String,
     isLast: Boolean,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
@@ -963,16 +1029,7 @@ fun GroupMesAssistant(
             .padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // 头像
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Brush.linearGradient(member.avatarGrad)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(member.initial, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        }
+        GroupMemberAvatar(member = member, baseUrl = baseUrl, size = 36.dp)
         
         Column(modifier = Modifier.weight(1f)) {
             // Header Row
@@ -1107,7 +1164,7 @@ fun GroupMesUser(msg: DemoGroupMessage) {
 // TypingRow — 动态脉动的成员打字状态
 // ─────────────────────────────────────────────────────────────
 @Composable
-fun TypingRow(member: DemoGroupMember) {
+fun TypingRow(member: DemoGroupMember, baseUrl: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1115,15 +1172,7 @@ fun TypingRow(member: DemoGroupMember) {
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Brush.linearGradient(member.avatarGrad)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(member.initial, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        }
+        GroupMemberAvatar(member = member, baseUrl = baseUrl, size = 36.dp)
         
         Spacer(modifier = Modifier.width(10.dp))
 
@@ -1431,6 +1480,7 @@ fun GroupComposer(
 @Composable
 fun SpeakerSheet(
     members: List<DemoGroupMember>,
+    baseUrl: String,
     onDismiss: () -> Unit,
     onSelectSpeaker: (String) -> Unit,
     onToggleMute: (String) -> Unit,
@@ -1540,17 +1590,14 @@ fun SpeakerSheet(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Box(modifier = Modifier.size(44.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape)
-                                .alpha(if (m.muted) 0.5f else 1f)
-                                .background(Brush.linearGradient(m.avatarGrad))
-                                .border(2.dp, if (!m.muted) m.accent else Color.Transparent, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(m.initial, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        }
+                        GroupMemberAvatar(
+                            member = m,
+                            baseUrl = baseUrl,
+                            size = 44.dp,
+                            alpha = if (m.muted) 0.5f else 1f,
+                            ringColor = if (!m.muted) m.accent else Color.Transparent,
+                            ringWidth = 2.dp
+                        )
                     }
                     
                     Column(modifier = Modifier.weight(1f)) {
@@ -1680,6 +1727,7 @@ data class DemoConversation(
 fun ConversationSwitcherSheet(
     group: DemoGroup,
     members: List<DemoGroupMember>,
+    baseUrl: String,
     conversations: List<DemoConversation>,
     onDismiss: () -> Unit,
     onSelectConversation: (String) -> Unit,
@@ -1724,7 +1772,7 @@ fun ConversationSwitcherSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                GroupAvatar(ids = group.members, members = members, size = 40.dp)
+                GroupAvatar(ids = group.members, members = members, baseUrl = baseUrl, size = 40.dp)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "切换对话",

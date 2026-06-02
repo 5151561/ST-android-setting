@@ -15,12 +15,14 @@ class PrototypeModelsTest {
             id = "aria/session",
             characterId = "aria.png",
             characterName = "Aria",
+            avatarUrl = "aria.png",
             lastMessage = "那我多加了一份饼干哦，别告诉店长。",
             lastUpdated = 1_700_000_000_000L,
             isPinned = true
-        ).toPrototypeChatItem(index = 0)
+        ).toPrototypeChatItem()
 
         assertEquals("aria/session", row.id)
+        assertEquals("aria.png", row.avatarUrl)
         assertEquals("Aria", row.title)
         assertEquals("那我多加了一份饼干哦，别告诉店长。", row.preview)
         assertEquals("A", row.initial)
@@ -35,9 +37,21 @@ class PrototypeModelsTest {
             characterId = "aria.png",
             characterName = "Aria",
             lastUpdated = 0
-        ).toPrototypeChatItem(index = 0)
+        ).toPrototypeChatItem()
 
         assertEquals("未知时间", row.time)
+    }
+
+    @Test
+    fun relativeTimeLabelCoversPrototypeListRows() {
+        val now = 1_700_000_000_000L
+
+        assertEquals("未知时间", prototypeRelativeTimeLabel(timestampMs = 0L, nowMs = now))
+        assertEquals("刚才", prototypeRelativeTimeLabel(timestampMs = now - 30_000L, nowMs = now))
+        assertEquals("12 分钟前", prototypeRelativeTimeLabel(timestampMs = now - 12 * 60_000L, nowMs = now))
+        assertEquals("今天", prototypeRelativeTimeLabel(timestampMs = now - 2 * 60 * 60_000L, nowMs = now))
+        assertEquals("昨天", prototypeRelativeTimeLabel(timestampMs = now - 25 * 60 * 60_000L, nowMs = now))
+        assertEquals("3 天前", prototypeRelativeTimeLabel(timestampMs = now - 3 * 24 * 60 * 60_000L, nowMs = now))
     }
 
     @Test
@@ -45,6 +59,7 @@ class PrototypeModelsTest {
         val card = CharacterSummary(
             id = "vex.png",
             name = "Captain Vex",
+            avatarUrl = "vex.png",
             tags = listOf("科幻", "反英雄", "冒险"),
             creatorNotes = "银河走私船 Wraith 号船长",
             isFavorite = true,
@@ -52,12 +67,31 @@ class PrototypeModelsTest {
         ).toPrototypeCharacterCard(index = 1)
 
         assertEquals("vex.png", card.id)
+        assertEquals("vex.png", card.avatarUrl)
         assertEquals("Captain Vex", card.name)
         assertEquals("银河走私船 Wraith 号船长", card.subtitle)
         assertEquals(listOf("科幻", "反英雄"), card.tags)
         assertEquals("C", card.initial)
         assertEquals(89, card.messageCount)
         assertTrue(card.favorite)
+    }
+
+    @Test
+    fun avatarImageUrlResolvesSillyTavernCharacterAndStaticPaths() {
+        val baseUrl = "http://127.0.0.1:8000/"
+
+        assertEquals(
+            "http://127.0.0.1:8000/thumbnail?type=avatar&file=Aria.png",
+            prototypeAvatarImageUrl(baseUrl, "Aria.png")
+        )
+        assertEquals(
+            "http://127.0.0.1:8000/img/ai4.png",
+            prototypeAvatarImageUrl(baseUrl, "img/ai4.png")
+        )
+        assertEquals(
+            "file:/tmp/Aria.png",
+            prototypeAvatarImageUrl(baseUrl, "file:/tmp/Aria.png")
+        )
     }
 
     @Test
