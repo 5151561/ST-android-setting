@@ -63,6 +63,50 @@ class NativeGroupGeneratorTest {
     }
 
     @Test
+    fun refusesToRepeatTheSoleEligibleSpeakerWhenSelfResponsesOff() {
+        // Only kael is eligible (others muted) and kael just spoke; with self
+        // responses off the picker must refuse rather than repeat kael.
+        assertNull(
+            pickGroupSpeaker(
+                members,
+                disabledMembers = setOf("aria.png", "eleanor.png"),
+                lastSpeakerAvatar = "kael.png",
+                activationStrategy = 1,
+                allowSelfResponses = false
+            )
+        )
+    }
+
+    @Test
+    fun pooledExcludesLastSpeakerWhenSelfResponsesOff() {
+        // eligible = [aria, eleanor, kael], last = aria. With self off and random
+        // forced to index 0, the pool excludes aria so eleanor is chosen.
+        val pick = pickGroupSpeaker(
+            members,
+            disabledMembers = emptySet(),
+            lastSpeakerAvatar = "aria.png",
+            activationStrategy = 3,
+            allowSelfResponses = false,
+            random = { 0.0 }
+        )
+        assertEquals("eleanor.png", pick)
+    }
+
+    @Test
+    fun listRotationStillAdvancesWhenSelfResponsesOff() {
+        assertEquals(
+            "eleanor.png",
+            pickGroupSpeaker(
+                members,
+                disabledMembers = emptySet(),
+                lastSpeakerAvatar = "aria.png",
+                activationStrategy = 1,
+                allowSelfResponses = false
+            )
+        )
+    }
+
+    @Test
     fun returnsNullWhenAllMembersAreDisabled() {
         assertNull(
             pickGroupSpeaker(members, disabledMembers = members.toSet(), lastSpeakerAvatar = null, activationStrategy = 1)

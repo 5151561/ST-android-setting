@@ -54,7 +54,10 @@ import io.github.sanitised.st.chat.engine.GroupReply
 import io.github.sanitised.st.chat.engine.NativeGroupGenerator
 import io.github.sanitised.st.chat.engine.pickGroupSpeaker
 import io.github.sanitised.st.ui.prototype.PrototypeAvatar
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -200,6 +203,12 @@ fun GroupChatScreen(
 
     val generator = remember { NativeGroupGenerator { TavernCoreClient(baseUrl) } }
     var isGenerating by remember { mutableStateOf(false) }
+    // Serializes every read-modify-write of the group JSONL so the user-message
+    // save and the generation save can never interleave and drop each other.
+    val saveMutex = remember { Mutex() }
+    // Tracks the most recent (possibly in-flight) user-message save so generation
+    // can wait for it before persisting its reply.
+    var pendingUserSave by remember { mutableStateOf<Job?>(null) }
 
     // 发送用户消息：追加到本地并真实落库（群聊 JSONL）。
     fun sendUserMessage(text: String) {
@@ -219,13 +228,15 @@ fun GroupChatScreen(
                 text = trimmed
             )
         )
-        scope.launch {
+        pendingUserSave = scope.launch {
             runCatching {
-                val client = TavernCoreClient(baseUrl)
-                val chat = client.getGroupChatJsonl(activeChatId)
-                ensureGroupHeader(chat, userName, groupState.value.name, date)
-                chat.add(groupUserMessageMap(userName, trimmed, date))
-                client.saveGroupChatJsonl(activeChatId, chat)
+                saveMutex.withLock {
+                    val client = TavernCoreClient(baseUrl)
+                    val chat = client.getGroupChatJsonl(activeChatId)
+                    ensureGroupHeader(chat, userName, groupState.value.name, date)
+                    chat.add(groupUserMessageMap(userName, trimmed, date))
+                    client.saveGroupChatJsonl(activeChatId, chat)
+                }
             }.onFailure { error -> onShowMessage(error.message ?: "保存消息失败") }
         }
     }
@@ -238,7 +249,13 @@ fun GroupChatScreen(
         val disabled = membersList.filter { it.muted }.map { it.id }.toSet()
         val lastSpeaker = threadMessages.lastOrNull { it.role == "assistant" }?.speaker
         val speakerAvatar = memberId
-            ?: pickGroupSpeaker(membersList.map { it.id }, disabled, lastSpeaker, strategyInt)
+            ?: pickGroupSpeaker(
+                memberAvatars = membersList.map { it.id },
+                disabledMembers = disabled,
+                lastSpeakerAvatar = lastSpeaker,
+                activationStrategy = strategyInt,
+                allowSelfResponses = groupState.value.selfResponses
+            )
         if (speakerAvatar == null) {
             onShowMessage(if (groupState.value.strategy == "manual") "请先点名一位发言者" else "没有可发言的成员")
             return
@@ -279,6 +296,9 @@ fun GroupChatScreen(
         isGenerating = true
         scope.launch {
             try {
+                // Make sure the just-sent user message is on disk before we read
+                // the chat for our own append, so neither save clobbers the other.
+                pendingUserSave?.join()
                 val reply = generator.generate(
                     speakerAvatar = member.id,
                     userName = userName,
@@ -299,11 +319,13 @@ fun GroupChatScreen(
                     }
                 } else {
                     val date = groupSendDate()
-                    val client = TavernCoreClient(baseUrl)
-                    val chat = client.getGroupChatJsonl(activeChatId)
-                    ensureGroupHeader(chat, userName, groupState.value.name, date)
-                    chat.add(groupAssistantMessageMap(reply, date))
-                    client.saveGroupChatJsonl(activeChatId, chat)
+                    saveMutex.withLock {
+                        val client = TavernCoreClient(baseUrl)
+                        val chat = client.getGroupChatJsonl(activeChatId)
+                        ensureGroupHeader(chat, userName, groupState.value.name, date)
+                        chat.add(groupAssistantMessageMap(reply, date))
+                        client.saveGroupChatJsonl(activeChatId, chat)
+                    }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -328,23 +350,25 @@ fun GroupChatScreen(
         threadMessages[uiIndex] = msg.copy(swipes = Pair(newSwipeId, texts.size), text = newText)
         scope.launch {
             runCatching {
-                val client = TavernCoreClient(baseUrl)
-                val chat = client.getGroupChatJsonl(activeChatId)
-                var seen = -1
-                for (j in chat.indices) {
-                    val line = chat[j] as? Map<*, *> ?: continue
-                    if (!line.containsKey("mes")) continue
-                    seen++
-                    if (seen == uiIndex) {
-                        val updated = LinkedHashMap<String, Any?>()
-                        line.forEach { (k, v) -> updated[k.toString()] = v }
-                        updated["swipe_id"] = newSwipeId
-                        updated["mes"] = newText
-                        chat[j] = updated
-                        break
+                saveMutex.withLock {
+                    val client = TavernCoreClient(baseUrl)
+                    val chat = client.getGroupChatJsonl(activeChatId)
+                    var seen = -1
+                    for (j in chat.indices) {
+                        val line = chat[j] as? Map<*, *> ?: continue
+                        if (!line.containsKey("mes")) continue
+                        seen++
+                        if (seen == uiIndex) {
+                            val updated = LinkedHashMap<String, Any?>()
+                            line.forEach { (k, v) -> updated[k.toString()] = v }
+                            updated["swipe_id"] = newSwipeId
+                            updated["mes"] = newText
+                            chat[j] = updated
+                            break
+                        }
                     }
+                    client.saveGroupChatJsonl(activeChatId, chat)
                 }
-                client.saveGroupChatJsonl(activeChatId, chat)
             }.onFailure { onShowMessage(it.message ?: "保存 swipe 失败") }
         }
     }

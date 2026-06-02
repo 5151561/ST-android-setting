@@ -211,17 +211,31 @@ fun pickGroupSpeaker(
     disabledMembers: Set<String>,
     lastSpeakerAvatar: String?,
     activationStrategy: Int,
+    allowSelfResponses: Boolean = true,
     random: () -> Double = { Math.random() },
 ): String? {
     val eligible = memberAvatars.filter { it !in disabledMembers }
     if (eligible.isEmpty()) return null
     return when (activationStrategy) {
         2 -> null // manual: caller must name the speaker
-        3 -> eligible[(random() * eligible.size).toInt().coerceIn(0, eligible.lastIndex)] // pooled
+        3 -> {
+            // pooled: random among eligible; when self-responses are off, exclude
+            // the last speaker (unless they are the only eligible member).
+            val pool = if (!allowSelfResponses && lastSpeakerAvatar != null && eligible.size > 1) {
+                eligible.filter { it != lastSpeakerAvatar }
+            } else {
+                eligible
+            }
+            if (pool.isEmpty()) null
+            else pool[(random() * pool.size).toInt().coerceIn(0, pool.lastIndex)]
+        }
         else -> {
             // natural (MVP) and list: next eligible member after the last speaker.
             val startIdx = lastSpeakerAvatar?.let { eligible.indexOf(it) } ?: -1
-            eligible[(startIdx + 1) % eligible.size]
+            val next = eligible[(startIdx + 1) % eligible.size]
+            // Refuse to repeat the same speaker when self-responses are disabled
+            // (happens only when they are the sole eligible member).
+            if (!allowSelfResponses && next == lastSpeakerAvatar) null else next
         }
     }
 }
