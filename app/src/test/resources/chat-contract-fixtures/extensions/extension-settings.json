@@ -1,0 +1,20 @@
+{
+  "regex": [
+    {
+      "scriptName": "strip-asterisks",
+      "findRegex": "/\\*+/g",
+      "replaceString": "",
+      "placement": [1],
+      "disabled": false
+    }
+  ],
+  "quickReply": {
+    "quickReplyEnabled": true,
+    "setList": [
+      {
+        "name": "Greetings",
+        "isVisible": true
+      }
+    ]
+  }
+}

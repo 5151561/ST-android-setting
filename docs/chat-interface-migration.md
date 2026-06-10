@@ -1,8 +1,8 @@
 # SillyTavern Chat 原生界面迁移方案
 
-版本：0.14
-日期：2026-06-02
-状态：**P0 已收口 + P1 基本可用（保存错误检测 best-effort）+ P2 全部落地 + P3 阶段 A+B+C 已落地（logprobs 因 ST 未导出阻塞、TTS/翻译/生图后续专项）+ 原生生成承接混合过渡已落地**（隐藏 WebView 运行时常驻保活并作为兜底；「原生生成（实验）」开关下，1v1 + Chat Completion source 或首批 Text Completion 后端 + 无附件走原生流式生成，其余兜底 WebView。详见 §15 v0.14）
+版本：0.15
+日期：2026-06-03
+状态：**P0 已收口 + P1 基本可用（保存错误检测 best-effort）+ P2 全部落地 + P3 阶段 A+B+C 已落地（logprobs 因 ST 未导出阻塞、TTS/翻译/生图后续专项）+ 原生生成承接混合过渡已落地 + Native ChatSession Phase 1 已补安全护栏**（「原生生成（实验）」开关下，单聊打开、编辑、删除、隐藏、swipe 和生成成功路径可由原生 runtime 完成；生成成功后不再依赖隐藏 WebView reload，仍走 Bridge 的写操作会先 reload 对齐。详见 `docs/native-chat-webview-exit-plan.md` 与 `docs/native-chat-phase1-progress.md`。）
 适用范围：ST-android 下一阶段 Chat 原生化、JS Bridge、SillyTavern 运行时复用、API 对接
 
 ## 1. 背景和目标
@@ -822,8 +822,21 @@ Bridge adapter 需要在命令失败时向原生端返回明确的错误原因�
 
 ## 15. 实现进度
 
-日期：2026-06-02（v0.14 Text Completion 原生生成首批接线 + v0.13 原生生成承接混合过渡 + v0.12 P3 阶段 C + v0.11 P3 阶段 B + v0.10 P3 阶段 A + v0.9 P2 附件/CFG/世界书收口 + v0.8 文档收口 + v0.7 阶段 C P2 接续 + adapter 契约修正）
-状态：**P0 基础框架落地 + P1 基本可用 + P2 全部落地 + P3 阶段 A+B+C 已落地 + 原生生成（Chat Completion + 首批 Text Completion）混合过渡已落地（实验开关，WebView 保留兜底）**
+日期：2026-06-03（v0.15 Native ChatSession Phase 1 安全护栏 + v0.14 Text Completion 原生生成首批接线 + v0.13 原生生成承接混合过渡 + v0.12 P3 阶段 C + v0.11 P3 阶段 B + v0.10 P3 阶段 A + v0.9 P2 附件/CFG/世界书收口 + v0.8 文档收口 + v0.7 阶段 C P2 接续 + adapter 契约修正）
+状态：**P0 基础框架落地 + P1 基本可用 + P2 全部落地 + P3 阶段 A+B+C 已落地 + 原生生成（Chat Completion + 首批 Text Completion）混合过渡已落地 + Native ChatSession Phase 1 已补安全护栏（实验开关，WebView 保留兼容兜底）**
+
+### v0.15 Native ChatSession Phase 1：单聊事实源与安全护栏（2026-06-03）
+
+本轮沿 `docs/native-chat-webview-exit-plan.md` v0.5 口径推进，重点不是直接删除 WebView，而是先避免 split-brain：
+
+- **原生生成成功路径**：`NativeChatEngine` 成功保存 JSONL 后不再主动 `bridge.reloadChat()`；UI 由 native store + JSONL 保持一致。
+- **Bridge 写前对齐**：fallback send、regenerate、continue 仍走 Bridge 时，先 `reloadChat()` 再派发写命令，避免隐藏 WebView 用旧快照覆盖磁盘。
+- **安全保存**：`NativeChatRepository.save` 统一执行写前 integrity 校验、退避备份、刷新 header `chat_metadata.integrity`、同一 avatar/chatFile 写串行化；`NativeChatEngine` 也复用该 Repository 保存，不再绕过护栏。
+- **单聊消息操作原生化**：`NativeChatRuntime` + `NativeChatJsonOps` 覆盖编辑、删除、隐藏/取消隐藏、移动、reasoning、附件/媒体 metadata、swipe previous/next/create/delete；`NativeChatScreen` 单聊优先调用 native runtime。
+- **隐藏 WebView 启动收敛**：原生生成开启时，进入 Chat 或打开角色聊天不再自动激活隐藏 WebView；群聊和未迁移能力仍保留兼容路径。
+- **测试修正**：Phase 1 契约测试已从源码 grep 改为行为/产物断言：`NativeChatEnginePhase1ContractTest`、`NativeChatRepositorySafetyTest`、`NativeChatUiRoutingTest`、`NativeChatRuntimeTest`、`NativeChatJsonOpsTest`。
+
+限制：checkpoint / branch 已有原生实现，但按 v0.5 不纳入 Phase 1 验收；完整 prompt 语义、群聊统一 runtime、扩展能力仍后置。
 
 ### v0.14 Text Completion 原生生成首批接线：E1+E2+E3（2026-06-02）
 

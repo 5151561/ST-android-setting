@@ -74,6 +74,7 @@ import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.CharacterChatSummary
 import io.github.sanitised.st.api.ChatExportFormat
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.chat.isNativeChatBackupName
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -108,7 +109,7 @@ fun PrototypePastChatsScreen(
         scope.launch {
             loading = true
             runCatching { TavernCoreClient(baseUrl = baseUrl).listCharacterChats(avatar) }
-                .onSuccess { chatFiles = it }
+                .onSuccess { chatFiles = filterVisibleCharacterChats(it) }
                 .onFailure { onShowMessage(it.message ?: "加载聊天列表失败") }
             loading = false
         }
@@ -315,6 +316,11 @@ fun PrototypePastChatsScreen(
         )
     }
 }
+
+internal fun filterVisibleCharacterChats(chats: List<CharacterChatSummary>): List<CharacterChatSummary> =
+    chats.filterNot { chat ->
+        isNativeChatBackupName(chat.id) || isNativeChatBackupName(chat.fileName)
+    }
 
 @Composable
 private fun SearchField(

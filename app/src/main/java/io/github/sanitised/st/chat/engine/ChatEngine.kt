@@ -10,9 +10,9 @@ package io.github.sanitised.st.chat.engine
  *  - `NativeChatEngine` (Phase B): assembles the prompt on-device and calls the
  *    backend generate endpoint directly.
  *
- * Only the core generation actions live here. Advanced, ST-specific actions
- * (edit / delete / swipe / checkpoints / quick replies / world info, etc.)
- * continue to go through `ChatRuntimeBridge` directly until they are migrated.
+ * Only the core generation actions live here. Phase 1 single-chat message
+ * mutations now route through `NativeChatRuntime`; still-unmigrated commands
+ * such as quick replies and extension-specific UI remain on `ChatRuntimeBridge`.
  */
 interface ChatEngine {
     /** Send a user message and generate a reply. Pending attachments are read from the store. */

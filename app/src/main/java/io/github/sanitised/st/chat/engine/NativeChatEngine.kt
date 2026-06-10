@@ -1,11 +1,11 @@
 package io.github.sanitised.st.chat.engine
 
-import android.util.Log
 import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.api.TavernCoreApi
 import io.github.sanitised.st.api.WorldInfoEntry
 import io.github.sanitised.st.chat.ChatMessage
-import io.github.sanitised.st.chat.ChatRuntimeBridge
+import io.github.sanitised.st.chat.NativeChatRepository
+import io.github.sanitised.st.chat.TavernNativeChatDataSource
 import io.github.sanitised.st.chat.ChatStore
 import io.github.sanitised.st.chat.prompt.PromptBuilder
 import io.github.sanitised.st.chat.prompt.TextPromptBuildResult
@@ -61,8 +61,7 @@ fun engineMode(settings: Map<String, Any?>, authorsNote: String = ""): NativeEng
 /**
  * Native generation engine: assembles the prompt on-device ([PromptBuilder] / [TextPromptBuilder]),
  * calls the backend generate endpoint directly, mirrors the reply into [ChatStore]
- * for immediate UI, persists the canonical JSONL via [TavernCoreApi], then asks the
- * hidden runtime to reload from disk so it stays the single source of truth.
+ * for immediate UI, and persists the canonical JSONL via [TavernCoreApi].
  *
  * MVP: 1v1 character chats for Chat Completion and first-batch Text Completion.
  * Groups, attachments, complex templates, and unsupported APIs fall back to [BridgeChatEngine].
@@ -70,8 +69,9 @@ fun engineMode(settings: Map<String, Any?>, authorsNote: String = ""): NativeEng
 class NativeChatEngine(
     private val scope: CoroutineScope,
     private val store: ChatStore,
-    private val bridge: ChatRuntimeBridge,
+    private val bridge: ChatRuntimeBridgeActions,
     private val clientProvider: () -> TavernCoreApi,
+    private val logger: NativeChatLogger = NativeChatLogger.Android,
 ) : ChatEngine {
 
     private var job: Job? = null
@@ -90,7 +90,7 @@ class NativeChatEngine(
         // clears the pending attachments and reuses the full ST semantics.
         if (store.mode == "group" || store.pendingAttachments.isNotEmpty()) {
             activeGenerationRoute = ActiveGenerationRoute.BRIDGE
-            bridge.sendMessage(message)
+            runBridgeWrite { sendMessage(message) }
             return
         }
         val avatar = store.avatarUrl
@@ -106,7 +106,7 @@ class NativeChatEngine(
             if (mode == NativeEngineMode.FALLBACK) {
                 activeGenerationRoute = ActiveGenerationRoute.BRIDGE
                 store.isGenerating = false
-                bridge.sendMessage(message)
+                runBridgeWrite { sendMessage(message) }
                 return@launchGeneration
             }
             activeGenerationRoute = ActiveGenerationRoute.NATIVE
@@ -118,8 +118,8 @@ class NativeChatEngine(
             var persisted = false
 
             try {
-                // Optimistic user + empty assistant placeholder for live streaming; both are
-                // replaced by the canonical snapshot after the runtime reloads from disk below.
+                // Optimistic user + empty assistant placeholder for live streaming; once saved,
+                // this native store plus JSONL is the current session source of truth.
                 val userId = store.messages.size
                 optimisticUserId = userId
                 store.addMessage(message(userId, userName, message, isUser = true))
@@ -153,9 +153,9 @@ class NativeChatEngine(
                         type = payload["api_type"] as? String,
                     )
                 }
-                client.saveChatJsonl(avatar, chatFile, chat)
+                NativeChatRepository(dataSourceProvider = { TavernNativeChatDataSource(client) })
+                    .save(avatar, chatFile, chat)
                 persisted = true
-                bridge.reloadChat()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (!persisted) rollbackOptimisticMessages(store, optimisticUserId, optimisticAssistantId)
                 throw e
@@ -173,12 +173,12 @@ class NativeChatEngine(
         // Native regenerate would drop the existing swipe history (swipes/swipe_id),
         // which is real data loss. Until native swipe semantics are aligned, regenerate
         // stays on the WebView runtime which preserves swipes correctly.
-        bridge.regenerate()
+        runBridgeWrite { regenerate() }
     }
 
     override fun continueGeneration() {
         // MVP: continue is not yet implemented natively; fall back to the runtime.
-        bridge.continueGeneration()
+        runBridgeWrite { continueGeneration() }
     }
 
     override fun stop() {
@@ -305,7 +305,7 @@ class NativeChatEngine(
         stream: () -> Flow<String>,
         generate: suspend () -> String,
     ): String {
-        Log.i(TAG, "stream source=$source model=$model")
+        logger.info(TAG, "stream source=$source model=$model")
         val acc = StringBuilder()
         fun apply() {
             val idx = store.messages.indexOfFirst { it.id == aiId }
@@ -332,7 +332,7 @@ class NativeChatEngine(
                 apply()
                 throw IllegalStateException("源=$source 模型=${model.ifBlank { "(空!)" }}：${e.message}", e)
             }
-            Log.w(TAG, "stream failed, falling back to non-stream: ${e.message}")
+            logger.warn(TAG, "stream failed, falling back to non-stream: ${e.message}")
         }
         if (acc.isEmpty() && !stopRequested) {
             val reply = runGenerate(source, model, generate)
@@ -363,7 +363,7 @@ class NativeChatEngine(
                 throw e
             } catch (e: Exception) {
                 val msg = e.message ?: "生成失败"
-                Log.w(TAG, "native generation failed: $msg", e)
+                logger.warn(TAG, "native generation failed: $msg", e)
                 store.runtimeError = msg
                 store.pushToast("error", "原生生成失败", msg)
             } finally {
@@ -387,6 +387,11 @@ class NativeChatEngine(
             swipes = if (isUser) emptyList() else listOf(text),
             extra = JSONObject()
         )
+
+    private fun runBridgeWrite(block: ChatRuntimeBridgeActions.() -> Unit) {
+        bridge.reloadChat()
+        bridge.block()
+    }
 
     private fun userMessageMap(name: String, text: String, date: String): Map<String, Any?> =
         linkedMapOf(

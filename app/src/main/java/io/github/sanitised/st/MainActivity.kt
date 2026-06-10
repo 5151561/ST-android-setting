@@ -114,6 +114,7 @@ import io.github.sanitised.st.ui.components.STDialogButtonStyle
 import io.github.sanitised.st.ui.theme.STAppTheme
 import io.github.sanitised.st.chat.*
 import io.github.sanitised.st.chat.engine.BridgeChatEngine
+import io.github.sanitised.st.chat.engine.DefaultChatRuntimeBridgeActions
 import io.github.sanitised.st.chat.engine.NativeChatEngine
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.CharacterSummary
@@ -594,12 +595,17 @@ class MainActivity : ComponentActivity() {
                     clientProvider = { TavernCoreClient(SillyTavernUrl.localWebUrl(statusState.value.port)) }
                 )
             }
+            val nativeChatRuntime = remember(chatStore) {
+                NativeChatRuntime(chatStore) {
+                    TavernNativeChatDataSource(TavernCoreClient(SillyTavernUrl.localWebUrl(statusState.value.port)))
+                }
+            }
             val chatEngine = remember(chatBridge, nativeGenerationEnabled) {
                 if (nativeGenerationEnabled) {
                     NativeChatEngine(
                         scope = chatScope,
                         store = chatStore,
-                        bridge = chatBridge,
+                        bridge = DefaultChatRuntimeBridgeActions(chatBridge),
                         clientProvider = { TavernCoreClient(SillyTavernUrl.localWebUrl(statusState.value.port)) }
                     )
                 } else {
@@ -620,7 +626,9 @@ class MainActivity : ComponentActivity() {
                 if (route == STRoutes.CHAT) {
                     // Keep the already-loaded chat state so returning to the tab is
                     // instant; only set the target to the current chat snapshot.
-                    chatRuntimeActivated = true
+                    if (NativeChatUiRouting.shouldActivateHiddenWebViewForChatEntry(nativeGenerationEnabled)) {
+                        chatRuntimeActivated = true
+                    }
                     pendingWebViewTarget = WebViewTarget.CHAT
                 }
                 navController.navigate(route) {
@@ -632,7 +640,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val openCharacterChatFromCharacterManagement: (String, String?) -> Unit = { avatar, chatFile ->
-                chatRuntimeActivated = true
+                if (NativeChatUiRouting.shouldActivateHiddenWebViewForChatEntry(nativeGenerationEnabled)) {
+                    chatRuntimeActivated = true
+                }
                 pendingWebViewTarget = WebViewTarget.CharacterChat(avatar, chatFile)
                 navController.navigate(STRoutes.CHAT) {
                     launchSingleTop = true
@@ -761,6 +771,7 @@ class MainActivity : ComponentActivity() {
                                     engine = chatEngine,
                                     nativeChatLoadingEnabled = nativeGenerationEnabled,
                                     nativeChatLoader = nativeChatLoader,
+                                    nativeChatRuntime = if (nativeGenerationEnabled) nativeChatRuntime else null,
                                     settingsDirty = runtimeSettingsDirty,
                                     onSettingsConsumed = { runtimeSettingsDirty = false },
                                     onBackToHome = {

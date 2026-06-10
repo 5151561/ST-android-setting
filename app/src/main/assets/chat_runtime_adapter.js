@@ -193,7 +193,7 @@
       messages: chat.map(function (msg, i) { return serializeMessage(msg, i); }).filter(Boolean),
       metadata: {
         integrity: chatMetadata.integrity || '',
-        authorsNote: chatMetadata.authors_note || '',
+        authorsNote: chatMetadata.note_prompt || chatMetadata.authors_note || '',
         cfgScale: Number(chatMetadata.cfg_guidance_scale) || 1.0,
         cfgNegativePrompt: chatMetadata.cfg_negative_prompt || '',
         cfgPositivePrompt: chatMetadata.cfg_positive_prompt || '',
@@ -413,6 +413,20 @@
     }, 200);
   }
 
+  var commandQueue = Promise.resolve();
+  function enqueueCommand(cmdId, handler) {
+    var next = commandQueue.then(function () {
+      return Promise.resolve().then(handler).catch(function (e) {
+        console.error('[STAndroidChatRuntime] dispatch error', e);
+        if (cmdId) {
+          postError(cmdId, 'dispatch error: ' + (e && e.message ? e.message : e));
+        }
+      });
+    });
+    commandQueue = next.catch(function () {});
+    return next;
+  }
+
   // --- Command dispatch from Android ---
   window.STAndroidChatRuntime = {
     dispatch: function (jsonStr) {
@@ -423,140 +437,112 @@
         var payload = msg.payload || {};
         cmdId = msg.id || '';
 
-        switch (name) {
-          case 'runtime.getSnapshot':
-            var snap = buildSnapshot();
-            if (snap) {
-              postEvent('chat.loaded', snap);
-              postResult(cmdId, snap);
-            } else {
-              postError(cmdId, 'Runtime not ready');
-            }
-            break;
+        enqueueCommand(cmdId, function () {
+          switch (name) {
+            case 'runtime.getSnapshot':
+              var snap = buildSnapshot();
+              if (snap) {
+                postEvent('chat.loaded', snap);
+                postResult(cmdId, snap);
+              } else {
+                postError(cmdId, 'Runtime not ready');
+              }
+              return;
 
-          case 'runtime.save':
-            handleSave(cmdId);
-            break;
+            case 'runtime.save':
+              return handleSave(cmdId);
 
-          case 'runtime.connect':
-            handleConnect(cmdId, !!payload.auto);
-            break;
+            case 'runtime.connect':
+              return handleConnect(cmdId, !!payload.auto);
 
-          case 'runtime.reloadSettings':
-            handleReloadSettings(cmdId);
-            break;
+            case 'runtime.reloadSettings':
+              return handleReloadSettings(cmdId);
 
-          case 'chat.openCharacter':
-            handleOpenCharacter(payload, cmdId);
-            break;
+            case 'chat.openCharacter':
+              return handleOpenCharacter(payload, cmdId);
 
-          case 'chat.openGroup':
-            handleOpenGroup(payload, cmdId);
-            break;
+            case 'chat.openGroup':
+              return handleOpenGroup(payload, cmdId);
 
-          case 'chat.send':
-            handleSend(payload, cmdId);
-            break;
+            case 'chat.send':
+              return handleSend(payload, cmdId);
 
-          case 'generation.stop':
-            handleStop(cmdId);
-            break;
+            case 'generation.stop':
+              return handleStop(cmdId);
 
-          case 'generation.regenerate':
-            handleRegenerate(cmdId);
-            break;
+            case 'generation.regenerate':
+              return handleRegenerate(cmdId);
 
-          case 'generation.continue':
-            handleContinue(cmdId);
-            break;
+            case 'generation.continue':
+              return handleContinue(cmdId);
 
-          case 'chat.new':
-            handleNewChat(cmdId);
-            break;
+            case 'chat.new':
+              return handleNewChat(cmdId);
 
-          case 'chat.reload':
-            handleReload(cmdId);
-            break;
+            case 'chat.reload':
+              return handleReload(cmdId);
 
-          case 'message.swipePrevious':
-            handleSwipe(payload, cmdId, 'left');
-            break;
+            case 'message.swipePrevious':
+              return handleSwipe(payload, cmdId, 'left');
 
-          case 'message.swipeNext':
-            handleSwipe(payload, cmdId, 'right');
-            break;
+            case 'message.swipeNext':
+              return handleSwipe(payload, cmdId, 'right');
 
-          case 'message.edit':
-            handleEditMessage(payload, cmdId);
-            break;
+            case 'message.edit':
+              return handleEditMessage(payload, cmdId);
 
-          case 'message.delete':
-            handleDeleteMessage(payload, cmdId);
-            break;
+            case 'message.delete':
+              return handleDeleteMessage(payload, cmdId);
 
-          case 'message.hide':
-            handleHideMessage(payload, cmdId);
-            break;
+            case 'message.hide':
+              return handleHideMessage(payload, cmdId);
 
-          case 'message.unhide':
-            handleUnhideMessage(payload, cmdId);
-            break;
+            case 'message.unhide':
+              return handleUnhideMessage(payload, cmdId);
 
-          case 'authorsNote.get':
-            handleGetAuthorsNote(cmdId);
-            break;
+            case 'authorsNote.get':
+              return handleGetAuthorsNote(cmdId);
 
-          case 'authorsNote.set':
-            handleSetAuthorsNote(payload, cmdId);
-            break;
+            case 'authorsNote.set':
+              return handleSetAuthorsNote(payload, cmdId);
 
-          case 'cfg.get':
-            handleGetCfg(cmdId);
-            break;
+            case 'cfg.get':
+              return handleGetCfg(cmdId);
 
-          case 'cfg.set':
-            handleSetCfg(payload, cmdId);
-            break;
+            case 'cfg.set':
+              return handleSetCfg(payload, cmdId);
 
-          case 'worldInfo.get':
-            handleGetWorldInfo(cmdId);
-            break;
+            case 'worldInfo.get':
+              return handleGetWorldInfo(cmdId);
 
-          case 'quickReply.list':
-            handleListQuickReplies(cmdId);
-            break;
+            case 'quickReply.list':
+              return handleListQuickReplies(cmdId);
 
-          case 'quickReply.execute':
-            handleExecuteQuickReply(payload, cmdId);
-            break;
+            case 'quickReply.execute':
+              return handleExecuteQuickReply(payload, cmdId);
 
-          case 'chat.createCheckpoint':
-            handleCreateCheckpoint(payload, cmdId);
-            break;
+            case 'chat.createCheckpoint':
+              return handleCreateCheckpoint(payload, cmdId);
 
-          case 'chat.createBranch':
-            handleCreateBranch(payload, cmdId);
-            break;
+            case 'chat.createBranch':
+              return handleCreateBranch(payload, cmdId);
 
-          case 'chat.openCheckpoint':
-            handleOpenCheckpoint(payload, cmdId);
-            break;
+            case 'chat.openCheckpoint':
+              return handleOpenCheckpoint(payload, cmdId);
 
-          case 'extensions.list':
-            handleListExtensions(cmdId);
-            break;
+            case 'extensions.list':
+              return handleListExtensions(cmdId);
 
-          case 'itemizedPrompt.get':
-            handleGetItemizedPrompt(payload, cmdId);
-            break;
+            case 'itemizedPrompt.get':
+              return handleGetItemizedPrompt(payload, cmdId);
 
-          case 'dataBank.list':
-            handleListDataBank(cmdId);
-            break;
+            case 'dataBank.list':
+              return handleListDataBank(cmdId);
 
-          default:
-            postError(cmdId, 'Unknown command: ' + name);
-        }
+            default:
+              return postError(cmdId, 'Unknown command: ' + name);
+          }
+        });
       } catch (e) {
         console.error('[STAndroidChatRuntime] dispatch error', e);
         // Safety net: a handler that throws before replying must not leave the
@@ -737,12 +723,15 @@
     pendingSendAttachments = normalizePendingAttachments(payload.attachments);
     textarea.value = text;
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    setTimeout(function () {
-      sendBtn.click();
-      watchGenerationState();
-      postResult(cmdId, {});
-      setTimeout(postSnapshot, 300);
-    }, 50);
+    await new Promise(function (resolve) {
+      setTimeout(function () {
+        sendBtn.click();
+        watchGenerationState();
+        postResult(cmdId, {});
+        setTimeout(postSnapshot, 300);
+        resolve();
+      }, 50);
+    });
   }
 
   function normalizePendingAttachments(attachments) {
@@ -808,9 +797,14 @@
           return;
         }
         watchGenerationState();
-        await groupModule.regenerateGroup();
-        postSnapshot();
-        postResult(cmdId, {});
+        Promise.resolve().then(function () {
+          return groupModule.regenerateGroup();
+        }).then(function () {
+          postSnapshot();
+          postResult(cmdId, {});
+        }).catch(function (err) {
+          postError(cmdId, 'regenerateGroup failed: ' + (err && err.message ? err.message : err));
+        });
       } catch (err) {
         postError(cmdId, 'regenerateGroup failed: ' + (err && err.message ? err.message : err));
       }
@@ -860,21 +854,22 @@
     }
   }
 
-  function handleReload(cmdId) {
+  async function handleReload(cmdId) {
     var ctx = getContext();
     if (ctx && typeof ctx.reloadCurrentChat === 'function') {
-      ctx.reloadCurrentChat().then(function () {
+      try {
+        await ctx.reloadCurrentChat();
         postSnapshot();
         postResult(cmdId, {});
-      }).catch(function (err) {
+      } catch (err) {
         postError(cmdId, 'reloadCurrentChat failed: ' + (err && err.message ? err.message : err));
-      });
+      }
     } else {
       postError(cmdId, 'reloadCurrentChat not available');
     }
   }
 
-  function handleSwipe(payload, cmdId, direction) {
+  async function handleSwipe(payload, cmdId, direction) {
     var ctx = getContext();
     if (!ctx || !ctx.swipe) {
       postError(cmdId, 'Swipe runtime not available');
@@ -887,12 +882,13 @@
       postError(cmdId, 'Message cannot be swiped');
       return;
     }
-    Promise.resolve(action(null, { message: message })).then(function () {
+    try {
+      await Promise.resolve(action(null, { message: message }));
       postSnapshot();
       postResult(cmdId, {});
-    }).catch(function (err) {
+    } catch (err) {
       postError(cmdId, 'swipe failed: ' + (err && err.message ? err.message : err));
-    });
+    }
   }
 
   async function handleEditMessage(payload, cmdId) {
@@ -1040,7 +1036,7 @@
     if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
     var metadata = ctx.chatMetadata || {};
     postResult(cmdId, {
-      text: metadata.authors_note || '',
+      text: metadata.note_prompt || metadata.authors_note || '',
       position: metadata.authors_note_position || 'after',
       depth: Number(metadata.authors_note_depth) || 4
     });
@@ -1051,7 +1047,9 @@
       var ctx = getContext();
       if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
       if (!ctx.chatMetadata) ctx.chatMetadata = {};
-      ctx.chatMetadata.authors_note = payload.text || '';
+      // ST 作者注扩展读 chat_metadata.note_prompt（authors-note.js metadata_keys.prompt)。
+      ctx.chatMetadata.note_prompt = payload.text || '';
+      delete ctx.chatMetadata.authors_note;
       await safeSave();
       postSnapshot();
       postResult(cmdId, {});

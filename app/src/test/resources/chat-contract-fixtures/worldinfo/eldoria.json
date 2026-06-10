@@ -1,0 +1,78 @@
+{
+  "name": "eldoria",
+  "entries": {
+    "1": {
+      "uid": 1,
+      "key": [],
+      "keysecondary": [],
+      "comment": "Grove Heart (constant)",
+      "content": "The Grove Heart is an ancient tree at the center of Eldoria.",
+      "constant": true,
+      "selective": false,
+      "order": 100,
+      "position": 0,
+      "disable": false
+    },
+    "2": {
+      "uid": 2,
+      "key": ["eldoria"],
+      "keysecondary": [],
+      "comment": "Eldoria (keyword)",
+      "content": "Eldoria is an enchanted forest realm.",
+      "constant": false,
+      "selective": false,
+      "order": 50,
+      "position": 0,
+      "disable": false
+    },
+    "3": {
+      "uid": 3,
+      "key": ["ruins"],
+      "keysecondary": ["map"],
+      "comment": "Ruins (selective AND_ANY)",
+      "content": "The ruins hide a sealed gate.",
+      "constant": false,
+      "selective": true,
+      "selectiveLogic": 0,
+      "order": 10,
+      "position": 1,
+      "disable": false
+    },
+    "4": {
+      "uid": 4,
+      "key": [],
+      "keysecondary": [],
+      "comment": "Disabled constant",
+      "content": "Should never appear.",
+      "constant": true,
+      "selective": false,
+      "order": 1,
+      "position": 0,
+      "disable": true
+    },
+    "5": {
+      "uid": 5,
+      "key": ["whisper"],
+      "keysecondary": [],
+      "comment": "Matching key, empty content",
+      "content": "",
+      "constant": false,
+      "selective": false,
+      "order": 5,
+      "position": 0,
+      "disable": false
+    },
+    "6": {
+      "uid": 6,
+      "key": ["dragon"],
+      "keysecondary": [],
+      "comment": "Key absent from scan text",
+      "content": "Dragons sleep beneath the mountains.",
+      "constant": false,
+      "selective": false,
+      "order": 1,
+      "position": 0,
+      "disable": false
+    }
+  }
+}
