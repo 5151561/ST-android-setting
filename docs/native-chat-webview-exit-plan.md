@@ -1,12 +1,13 @@
 # Chat 全面原生化与隐藏 WebView 退出计划
 
-版本：0.6.1
+版本：0.7
 日期：2026-06-10
 方向：从“原生 UI + 隐藏 WebView runtime 兜底”逐步迁移到“原生 Chat runtime 为主，WebView 仅作为临时兼容壳，最终默认关闭并移除”。
 
 > v0.5 变更：补上 Phase 1 的“单一写者”安全护栏与并发/integrity 保护，修正 Phase 1 验收范围与阶段优先级矛盾，明确群聊双入口写者归属，纠正测试基础设施与契约测试方法（见各阶段及 §5、§9）。
 > v0.6 变更：补上 v0.5 护栏的时序缺口：adapter 命令队列会等待 `chat.reload` 完成后再执行后续写命令，且不会阻塞 `generation.stop`；`NativeChatScreen` 的 Bridge fallback 写操作统一 reload 后再执行；原生备份改用固定前缀、聊天列表过滤备份，并默认保留最近 5 份。同步标出 Phase 0 未完成交付。
 > v0.6.1 变更：补上群聊 regenerate 的 stop 回归，群聊生成启动后也会释放命令队列；过往聊天页面复用备份名过滤，备份副本不再显示在用户列表里。
+> v0.7 变更：Phase 0 欠账清零——落地 `chat-contract-fixtures` 样本集、native vs ST 的 payload/stop strings/世界书激活对照测试、消息操作契约测试，以及机器裁决的 known-diff 矩阵（双向强制：未登记的差异失败、已收敛的登记项也失败）。§8 切口 4 完成。详见 `docs/native-chat-phase0-audit.md` §5.1/§5.2。
 
 ## 1. 目标
 
@@ -128,7 +129,7 @@ Optional WebView Compatibility Host
 
 目标：先把当前已经能原生跑的路径固定成测试、能力矩阵和回退原因，避免后续扩展时把已打通的实验路径弄回 WebView。
 
-状态：Phase 0 基线检查已记录在 `docs/native-chat-phase0-audit.md`。已完成交付 1、2、6；交付 3、4、5 仍是 Phase 2 前置欠账，尚未建立 fixture 样本集、native vs ST payload 对照测试和消息操作契约对照测试。本阶段只做检查和冻结，不做 Phase 1 迁移。
+状态：Phase 0 基线检查已记录在 `docs/native-chat-phase0-audit.md`。交付 1、2、6 于首轮完成；交付 3、4、5（fixture 样本集、native vs ST payload 对照测试、消息操作契约对照测试）已于 2026-06-10 落地（`app/src/test/.../chat/contract/` + `chat-contract-fixtures/`，known-diff 矩阵机器裁决），欠账清零。本阶段只做检查和冻结，不做 Phase 1 迁移。
 
 交付：
 
@@ -378,7 +379,7 @@ Optional WebView Compatibility Host
 1. **原生生成基线冻结**：把单聊 Chat Completion、首批 Text Completion、群聊 `NativeGroupGenerator` 的已支持/未支持能力整理成 route matrix，并补测试保护。
 2. **已完成：去掉单聊生成后的 WebView 对齐依赖 + 补单一写者护栏**：当前用 fake `ChatRuntimeBridgeActions` 和 adapter VM 行为测试证明：(a) 生成成功落盘后不触发 `reloadChat()`；(b) 仍走 Bridge 的写操作前会先对齐磁盘；(c) adapter 等 `chat.reload` 完成后才执行后续写命令；(d) 单聊和群聊的 `generation.stop` 不被长生成队列阻塞。同时已把源码字符串断言的 `NativeChatEnginePhase1ContractTest` 替换掉。
 3. **MessageOps 原生化**：先从编辑、删除、隐藏、reasoning 编辑开始，因为它们不需要 provider；每迁完一项再按交付0 解除该项的 bridge 对齐。
-4. **PromptAssembly 契约夹具**：选 3 个角色 + 2 个世界书 + 2 套模板，逐项 diff native 产物与 ST 产物（payload 字段 / stop strings / WI 激活条目与顺序 / 保存结果），known-diff 入矩阵。
+4. **已完成：PromptAssembly 契约夹具**：3 个角色 + 2 个世界书 + 2 套模板（上游 Alpaca/ChatML 预设原文）落地为 `chat-contract-fixtures`；payload 字段 / stop strings / WI 激活条目与顺序 / 消息操作保存结果均有逐项 diff 测试，12 条 known-diff 入机器裁决矩阵（含一条建议 Phase 2 优先修复的发现：instruct 预设中的 story_string_prefix/suffix 被原生静默忽略而非 fallback，ChatML 的 system 包装会丢失）。
 
 这四个切口完成后，再决定是优先补生成完整性，还是优先补媒体/扩展。
 

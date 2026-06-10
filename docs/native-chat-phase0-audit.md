@@ -4,6 +4,8 @@
 范围：只做 Phase 0 检查和基线冻结；不做 Phase 1 迁移，不改生成/消息操作实现。
 
 > 2026-06-10 复核：本文件完成的是 Phase 0 交付 1、2、6。交付 3（`chat-contract-fixtures` 样本集）、交付 4（native vs ST payload 对照测试）、交付 5（消息操作 vs ST 契约测试）尚未落地，仍是进入 Phase 2 前的欠账。
+>
+> 2026-06-10（同日第二轮）：交付 3、4、5 已落地，见 §5.1 / §5.2。欠账清零。
 
 ## 1. 检查目标
 
@@ -96,13 +98,41 @@ node --test app/src/test/js/chat_runtime_adapter_contract.test.mjs
 1. Gradle 目标测试：`BUILD SUCCESSFUL`。
 2. JS adapter 合同测试：Phase 0 记录时为 11 个测试全部通过；2026-06-10 复核后为 13 个测试全部通过。
 
-## 5.1 Phase 0 未完成交付
+## 5.1 Phase 0 欠账交付（2026-06-10 已落地）
 
-| 欠账 | 当前状态 | 影响 |
+| 交付 | 落地位置 | 状态 |
 |---|---|---|
-| `chat-contract-fixtures` 样本集 | `app/src/test/resources` 尚未建立角色卡、persona、世界书、设置、聊天 JSONL、群聊、附件、扩展设置组合夹具 | Phase 2 无法直接做逐项 diff |
-| native vs ST payload 对照测试 | 尚未有同一输入下比较 final generate payload、stop strings、世界书激活和保存结果的测试 | PromptAssembly 迁移缺少验收基础 |
-| 消息操作 vs ST 契约测试 | 尚未对编辑、删除、隐藏、swipe、checkpoint、branch、reasoning、附件建立 ST 对照产物 | 后续迁移只能靠原生内部测试，不能证明和 ST 一致 |
+| `chat-contract-fixtures` 样本集 | `app/src/test/resources/chat-contract-fixtures/`：3 张角色卡、persona、2 本世界书、3 套 settings（含上游 Alpaca/ChatML 预设原文）、单聊/群聊 JSONL（含 swipes、reasoning、附件）、扩展设置 | 已落地，`ChatContractFixturesTest` 冻结形状 |
+| native vs ST payload 对照测试 | `ChatCompletionPayloadContractTest`（generate payload 字段与标量）、`TextCompletionPromptContractTest`（instruct 轮次、prompt 尾部、stop strings 集合）、`WorldInfoActivationContractTest`（激活条目与顺序） | 已落地，ST 期望产物在 `goldens/` 内含 provenance |
+| 消息操作 vs ST 契约测试 | `MessageOpsContractTest`：编辑、删除、隐藏、swipe 切换/删除/新建、reasoning、checkpoint、branch | 已落地 |
+
+## 5.2 契约测试套件与 known-diff 矩阵
+
+测试位于 `app/src/test/java/io/github/sanitised/st/chat/contract/`。所有 native vs ST 对照断言走 `ContractDiffs.assertContract(id, st, native)`，由 `chat-contract-fixtures/known-diffs.json` 机器裁决：
+
+1. 一致且未登记 → 通过（契约成立）。
+2. 一致但已登记 → **失败**（矩阵过期，必须移除条目）。
+3. 不一致且已登记 → 通过（已知差异，条目含 reason / st_source / closes_in）。
+4. 不一致且未登记 → **失败**（未记录的语义漂移）。
+
+矩阵另有孤儿检查：登记 id 必须与测试行使的 id 完全一致。当前 12 条 known-diff 摘要：
+
+| 类别 | 差异 | 计划收口 |
+|---|---|---|
+| CC payload | 缺 `type`/`logit_bias`/`group_names`/reasoning/联网等字段；单条压缩 system 消息且顺序、标签与 prompt manager 不同 | Phase 2 / Phase 3 |
+| 世界书 | caseSensitive、matchWholeWords、regex key、NOT_ANY 逻辑、probability 未实现 | Phase 2 |
+| TC prompt | 轮次以 `\n` 连接（ST 为空串连接）；**instruct 预设里的 story_string_prefix/suffix 被静默忽略（ChatML 的 system 包装丢失，且不触发 fallback）**；story_string 缺 `{{mesExamples}}` 时示例对话被丢弃 | Phase 2（prefix/suffix 建议优先） |
+| 消息操作 | swipe 环绕 vs ST 边界行为（左滑 0 不动、右滑末尾生成新 swipe）；createSwipe 总是切换且 swipe_info 简化 | Phase 3 |
+
+已确认与 ST 一致（无 known-diff，断言强制相等）的契约：世界书 order 升序拼接与 AND_ANY/constant/disabled/空 content 语义；Alpaca instruct 轮次格式、prompt 尾部、stop strings 集合；上游 ChatML context 预设显式 fallback（reason 精确匹配）；CC payload 共有标量字段与历史角色序列；编辑/删除/隐藏/swipe 切换与删除/reasoning/checkpoint/branch 的保存结果（含 `bookmark_link`、`extra.branches`、`main_chat`、截断复制）。
+
+TDD 记录：先提交 5 个契约测试类（29 个测试），fixtures 缺失全部红（`Missing contract fixture: ...`）；随后补 fixtures + goldens + known-diffs.json 变绿；重构阶段把 `registeredIds()` 收敛为孤儿检查断言，其余 `no op`。
+
+验证命令：
+
+```bash
+./gradlew testDebugUnitTest --tests "io.github.sanitised.st.chat.contract.*"
+```
 
 ## 6. Phase 0 结论
 

@@ -1,0 +1,40 @@
+{
+  "provenance": "顶层字段：SillyTavern/public/scripts/openai.js sendOpenAIRequest 的 generate_data（stop 为空时删除、n 仅多 swipe 时存在，故不在 st_only_fields）；消息结构：preparePromptsForChatCompletion + PromptManager.js promptManagerDefaultPromptOrder（enhanceDefinitions 默认 disabled，已排除）",
+  "matching_fields": {
+    "model": "gpt-4o-mini",
+    "chat_completion_source": "openai",
+    "stream": false,
+    "temperature": 0.85,
+    "frequency_penalty": 0.1,
+    "presence_penalty": 0.05,
+    "top_p": 0.95,
+    "max_tokens": 250,
+    "user_name": "Alex",
+    "char_name": "Seraphina"
+  },
+  "st_only_fields": [
+    "type",
+    "logit_bias",
+    "group_names",
+    "include_reasoning",
+    "reasoning_effort",
+    "enable_web_search",
+    "request_images",
+    "request_image_resolution",
+    "request_image_aspect_ratio",
+    "custom_prompt_post_processing",
+    "verbosity"
+  ],
+  "st_system_identifier_order": [
+    "main",
+    "worldInfoBefore",
+    "personaDescription",
+    "charDescription",
+    "charPersonality",
+    "scenario",
+    "nsfw",
+    "worldInfoAfter",
+    "dialogueExamples"
+  ],
+  "history_roles": ["user", "assistant", "user"]
+}

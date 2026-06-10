@@ -1,0 +1,17 @@
+{
+  "main_api": "openai",
+  "username": "Alex",
+  "power_user": {
+    "persona_description": "Alex is a wandering cartographer who maps forgotten places."
+  },
+  "oai_settings": {
+    "chat_completion_source": "openai",
+    "openai_model": "gpt-4o-mini",
+    "temp_openai": 0.85,
+    "freq_pen_openai": 0.1,
+    "pres_pen_openai": 0.05,
+    "top_p_openai": 0.95,
+    "openai_max_tokens": 250,
+    "openai_max_context": 8192
+  }
+}

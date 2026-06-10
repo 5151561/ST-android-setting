@@ -1,0 +1,60 @@
+{
+  "_provenance": "instruct/context 均为 SillyTavern/default/content/presets/{instruct,context}/ChatML.json 原文 + enabled；上游 context story_string 带 {{#if}}，native 必须显式 fallback",
+  "main_api": "textgenerationwebui",
+  "username": "Alex",
+  "amount_gen": 200,
+  "power_user": {
+    "instruct": {
+      "enabled": true,
+      "input_sequence": "<|im_start|>user",
+      "output_sequence": "<|im_start|>assistant",
+      "last_output_sequence": "",
+      "system_sequence": "<|im_start|>system",
+      "stop_sequence": "<|im_end|>",
+      "wrap": true,
+      "macro": true,
+      "names_behavior": "force",
+      "activation_regex": "",
+      "first_output_sequence": "",
+      "skip_examples": false,
+      "output_suffix": "<|im_end|>\n",
+      "input_suffix": "<|im_end|>\n",
+      "system_suffix": "<|im_end|>\n",
+      "user_alignment_message": "",
+      "system_same_as_user": false,
+      "last_system_sequence": "",
+      "first_input_sequence": "",
+      "last_input_sequence": "",
+      "sequences_as_stop_strings": true,
+      "story_string_prefix": "<|im_start|>system",
+      "story_string_suffix": "<|im_end|>\n",
+      "name": "ChatML"
+    },
+    "context": {
+      "story_string": "{{#if anchorBefore}}{{anchorBefore}}\n{{/if}}{{#if system}}{{system}}\n{{/if}}{{#if wiBefore}}{{wiBefore}}\n{{/if}}{{#if description}}{{description}}\n{{/if}}{{#if personality}}{{personality}}\n{{/if}}{{#if scenario}}{{scenario}}\n{{/if}}{{#if wiAfter}}{{wiAfter}}\n{{/if}}{{#if persona}}{{persona}}\n{{/if}}{{#if anchorAfter}}{{anchorAfter}}\n{{/if}}{{trim}}",
+      "example_separator": "",
+      "chat_start": "",
+      "use_stop_strings": false,
+      "names_as_stop_strings": true,
+      "story_string_position": 0,
+      "story_string_depth": 1,
+      "story_string_role": 0,
+      "always_force_name2": true,
+      "trim_sentences": false,
+      "single_line": false,
+      "name": "ChatML"
+    }
+  },
+  "textgenerationwebui_settings": {
+    "type": "ollama",
+    "max_context": 4096,
+    "temp": 0.7,
+    "top_p": 0.9,
+    "top_k": 40,
+    "rep_pen": 1.1,
+    "ollama_model": "qwen-test",
+    "server_urls": {
+      "ollama": "http://127.0.0.1:11434"
+    }
+  }
+}

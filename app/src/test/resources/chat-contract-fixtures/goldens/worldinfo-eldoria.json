@@ -1,0 +1,6 @@
+{
+  "provenance": "SillyTavern/public/scripts/world-info.js：matchKeys（默认大小写不敏感子串匹配）、getScore（AND_ANY）、checkWorldInfo（sort b.order-a.order 后 unshift => 最终按 order 升序 join('\\n')；空 content 条目跳过插入）",
+  "scan_text": "Alex: We entered Eldoria carrying the old map.\nSeraphina: The whisper of the ruins guides us.",
+  "st_before": "Eldoria is an enchanted forest realm.\nThe Grove Heart is an ancient tree at the center of Eldoria.",
+  "st_after": "The ruins hide a sealed gate."
+}

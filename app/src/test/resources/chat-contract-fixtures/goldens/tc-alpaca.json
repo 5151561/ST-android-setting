@@ -1,0 +1,17 @@
+{
+  "provenance": "轮次/尾部：SillyTavern/public/scripts/instruct-mode.js formatInstructModeChat / formatInstructModePrompt（Alpaca 预设：wrap=true、macro=true、names_behavior=force => 1v1 不带名字）；stop strings：getInstructStoppingSequences + script.js getStoppingStrings（names_as_stop_strings => \\n{{user}}:，use_stop_strings => \\n+chat_start/example_separator）；轮次拼接：script.js finalMesSend join('')",
+  "st_turns": [
+    "### Instruction:\nWhere am I?\n\n",
+    "### Response:\nYou are safe in my grove.\n\n",
+    "### Instruction:\nCan you guide me home?\n\n"
+  ],
+  "st_prompt_tail": "\n### Response:\n",
+  "st_stop_strings": [
+    "\nAlex:",
+    "\n### Instruction:",
+    "\n### Response:",
+    "\n### Input:",
+    "\n***"
+  ],
+  "st_chatml_expected_reason": "complex Handlebars story_string is unsupported"
+}

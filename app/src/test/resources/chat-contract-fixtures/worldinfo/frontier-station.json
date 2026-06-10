@@ -1,0 +1,70 @@
+{
+  "name": "frontier-station",
+  "entries": {
+    "1": {
+      "uid": 1,
+      "key": ["Drake"],
+      "keysecondary": [],
+      "comment": "caseSensitive：扫描文本只有小写 drake",
+      "content": "Captain Drake commands the relay wing.",
+      "constant": false,
+      "selective": false,
+      "caseSensitive": true,
+      "order": 10,
+      "position": 0,
+      "disable": false
+    },
+    "2": {
+      "uid": 2,
+      "key": ["art"],
+      "keysecondary": [],
+      "comment": "matchWholeWords：art 只出现在 particle 内部",
+      "content": "The art gallery deck is sealed.",
+      "constant": false,
+      "selective": false,
+      "matchWholeWords": true,
+      "order": 20,
+      "position": 0,
+      "disable": false
+    },
+    "3": {
+      "uid": 3,
+      "key": ["/sig-?nal/"],
+      "keysecondary": [],
+      "comment": "regex key：应匹配 signal",
+      "content": "Encrypted signals pulse from the relay.",
+      "constant": false,
+      "selective": false,
+      "order": 30,
+      "position": 0,
+      "disable": false
+    },
+    "4": {
+      "uid": 4,
+      "key": ["station"],
+      "keysecondary": ["abandoned"],
+      "comment": "selectiveLogic NOT_ANY：secondary 命中时不应激活",
+      "content": "The station thrives with traders.",
+      "constant": false,
+      "selective": true,
+      "selectiveLogic": 2,
+      "order": 40,
+      "position": 0,
+      "disable": false
+    },
+    "5": {
+      "uid": 5,
+      "key": ["signal"],
+      "keysecondary": [],
+      "comment": "probability 1%：ST 概率激活，native 必然激活",
+      "content": "A lucky find blinks once a century.",
+      "constant": false,
+      "selective": false,
+      "useProbability": true,
+      "probability": 1,
+      "order": 50,
+      "position": 0,
+      "disable": false
+    }
+  }
+}

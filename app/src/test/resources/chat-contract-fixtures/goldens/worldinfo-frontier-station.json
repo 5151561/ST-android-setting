@@ -1,0 +1,11 @@
+{
+  "provenance": "SillyTavern/public/scripts/world-info.js matchKeys：caseSensitive 经 #transformString 保留大小写；matchWholeWords 单词用 (?:^|\\W)key(?:$|\\W) 边界；key 可为 /regex/；selectiveLogic NOT_ANY=2 要求 secondary 全不命中；useProbability/probability 为随机激活（st_active 取概率 1% 下的几乎必然结果）",
+  "scan_text": "Alex: the drake circled the particle accelerator while an abandoned station emitted a signal.",
+  "cases": [
+    {"id": "wi.frontier.case-sensitive", "uid": 1, "st_active": false},
+    {"id": "wi.frontier.whole-words", "uid": 2, "st_active": false},
+    {"id": "wi.frontier.regex-key", "uid": 3, "st_active": true},
+    {"id": "wi.frontier.selective-logic-not-any", "uid": 4, "st_active": false},
+    {"id": "wi.frontier.probability", "uid": 5, "st_active": false}
+  ]
+}
