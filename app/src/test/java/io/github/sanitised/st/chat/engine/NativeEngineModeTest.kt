@@ -25,21 +25,25 @@ class NativeEngineModeTest {
     }
 
     @Test
-    fun fallsBackForUnsupportedTextCompletionTypesAndComplexStoryStrings() {
+    fun fallsBackForUnsupportedTextCompletionTypesButAcceptsPhase2StoryStrings() {
         assertEquals(
             NativeEngineMode.FALLBACK,
             engineMode(settings(apiType = "tabby"))
         )
         assertEquals(
-            NativeEngineMode.FALLBACK,
+            NativeEngineMode.TEXT_COMPLETION,
             engineMode(settings(storyString = "{{#if description}}{{description}}{{/if}}"))
+        )
+        assertEquals(
+            NativeEngineMode.FALLBACK,
+            engineMode(settings(storyStringPosition = 1))
         )
     }
 
     @Test
-    fun fallsBackWhenTextCompletionWouldNeedUnsupportedAuthorsNote() {
+    fun authorsNoteIsSupportedByNativeTextCompletion() {
         assertEquals(
-            NativeEngineMode.FALLBACK,
+            NativeEngineMode.TEXT_COMPLETION,
             engineMode(settings(), authorsNote = "Keep the secret tone.")
         )
     }
@@ -47,12 +51,16 @@ class NativeEngineModeTest {
     private fun settings(
         apiType: String = "ooba",
         storyString: String = "{{description}}",
+        storyStringPosition: Int = 0,
     ): Map<String, Any?> =
         mapOf(
             "main_api" to "textgenerationwebui",
             "textgenerationwebui_settings" to mapOf("type" to apiType),
             "power_user" to mapOf(
-                "context" to mapOf("story_string" to storyString)
+                "context" to mapOf(
+                    "story_string" to storyString,
+                    "story_string_position" to storyStringPosition,
+                )
             )
         )
 }

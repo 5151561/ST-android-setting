@@ -7,13 +7,7 @@ import io.github.sanitised.st.ui.prototype.modelForProvider
 
 /**
  * Assembles a Chat Completion request payload on-device, replicating the core
- * subset of SillyTavern's `prepareOpenAIMessages` (openai.js). MVP scope:
- * system prompt from the character card + persona, then the visible chat history
- * as user/assistant turns, trimmed to a rough context budget.
- *
- * Advanced ST behaviour (world info, author's note, message examples, extension
- * prompts, instruct templates, regex) is intentionally out of scope here and is
- * added in later phases / kept on the WebView fallback.
+ * subset of SillyTavern's prompt manager order for Chat Completion.
  *
  * Pure Kotlin (no Android deps) so it can be unit-tested directly.
  */
@@ -47,6 +41,7 @@ object PromptBuilder {
         worldInfoAfter: String = "",
         authorsNote: String = "",
         authorsNoteDepth: Int = DEFAULT_AUTHORS_NOTE_DEPTH,
+        extensionPrompts: List<ExtensionPrompt> = emptyList(),
     ): Map<String, Any?> {
         val oai = (settings["oai_settings"] as? Map<*, *>)?.stringKeyed() ?: emptyMap()
         val source = (oai["chat_completion_source"] as? String)?.takeIf { it.isNotBlank() } ?: "openai"
@@ -57,18 +52,22 @@ object PromptBuilder {
             .replace(CHAR_MACRO, charName)
             .replace(USER_MACRO, userName)
 
-        val systemContent = buildSystemPrompt(
-            character, ::sub, sub(worldInfoBefore), sub(worldInfoAfter), sub(personaDescription)
+        val systemMessages = buildSystemMessages(
+            character = character,
+            sub = ::sub,
+            worldInfoBefore = sub(worldInfoBefore),
+            worldInfoAfter = sub(worldInfoAfter),
+            personaDescription = sub(personaDescription),
+            extensionPrompts = extensionPrompts,
         )
+        val systemTokenCost = systemMessages.sumOf { estimateTokens(it["content"] as String) }
 
         val maxTokens = oai.intValue("openai_max_tokens", DEFAULT_MAX_TOKENS)
         val maxContext = oai.intValue("openai_max_context", DEFAULT_MAX_CONTEXT)
-        val historyBudget = (maxContext - maxTokens - estimateTokens(systemContent)).coerceAtLeast(0)
+        val historyBudget = (maxContext - maxTokens - systemTokenCost).coerceAtLeast(0)
 
         val messages = mutableListOf<Map<String, Any?>>()
-        if (systemContent.isNotBlank()) {
-            messages += mapOf("role" to "system", "content" to systemContent)
-        }
+        messages += systemMessages
         messages += trimToBudget(history, historyBudget) { msg ->
             mapOf(
                 "role" to if (msg.isUser) "user" else "assistant",
@@ -79,13 +78,14 @@ object PromptBuilder {
         // Author's note: injected as a system turn `depth` messages from the end
         // (ST default depth 4), but never before the leading system prompt.
         if (authorsNote.isNotBlank()) {
-            val minIndex = if (systemContent.isNotBlank()) 1 else 0
+            val minIndex = systemMessages.size
             val insertAt = (messages.size - authorsNoteDepth).coerceIn(minIndex, messages.size)
             messages.add(insertAt, mapOf("role" to "system", "content" to sub(authorsNote)))
         }
 
         val payload = linkedMapOf<String, Any?>(
             "messages" to messages,
+            "type" to "normal",
             "model" to model,
             "chat_completion_source" to source,
             "stream" to false,
@@ -96,6 +96,16 @@ object PromptBuilder {
             "max_tokens" to maxTokens,
             "user_name" to userName,
             "char_name" to charName,
+            "logit_bias" to null,
+            "group_names" to emptyList<String>(),
+            "include_reasoning" to oai.booleanValue("show_thoughts", false),
+            "reasoning_effort" to (oai["reasoning_effort"] as? String ?: "auto"),
+            "enable_web_search" to oai.booleanValue("enable_web_search", false),
+            "request_images" to oai.booleanValue("request_images", false),
+            "request_image_resolution" to (oai["request_image_resolution"] as? String ?: "auto"),
+            "request_image_aspect_ratio" to (oai["request_image_aspect_ratio"] as? String ?: "auto"),
+            "custom_prompt_post_processing" to (oai["custom_prompt_post_processing"] as? String ?: "none"),
+            "verbosity" to (oai["verbosity"] as? String ?: "auto"),
         )
         (oai["reverse_proxy"] as? String)?.takeIf { it.isNotBlank() }?.let { proxy ->
             payload["reverse_proxy"] = proxy
@@ -104,23 +114,44 @@ object PromptBuilder {
         return payload
     }
 
-    private fun buildSystemPrompt(
+    private fun buildSystemMessages(
         character: CharacterDetail,
         sub: (String) -> String,
         worldInfoBefore: String,
         worldInfoAfter: String,
         personaDescription: String,
-    ): String {
-        val parts = mutableListOf<String>()
-        if (worldInfoBefore.isNotBlank()) parts += worldInfoBefore
-        if (character.systemPrompt.isNotBlank()) parts += sub(character.systemPrompt)
-        if (character.description.isNotBlank()) parts += sub(character.description)
-        if (character.personality.isNotBlank()) parts += "${character.name}'s personality: ${sub(character.personality)}"
-        if (character.scenario.isNotBlank()) parts += "Scenario: ${sub(character.scenario)}"
-        if (personaDescription.isNotBlank()) parts += personaDescription
-        if (character.messageExample.isNotBlank()) parts += "Example dialogue:\n${sub(character.messageExample)}"
-        if (worldInfoAfter.isNotBlank()) parts += worldInfoAfter
-        return parts.joinToString("\n\n").trim()
+        extensionPrompts: List<ExtensionPrompt>,
+    ): List<Map<String, Any?>> {
+        val messages = mutableListOf<Map<String, Any?>>()
+        fun add(role: String = "system", content: String) {
+            if (content.isNotBlank()) messages += mapOf("role" to role, "content" to content.trim())
+        }
+
+        add(content = sub(character.systemPrompt).ifBlank { sub(defaultMainPrompt(character.name)) })
+        extensionPrompts
+            .filter { it.position == ExtensionPromptPosition.BEFORE_PROMPT }
+            .forEach { add(role = it.role, content = sub(it.content)) }
+        add(content = worldInfoBefore)
+        add(content = personaDescription)
+        add(content = sub(character.description))
+        add(content = sub(character.personality))
+        add(content = sub(character.scenario))
+        extensionPrompts
+            .filter { it.position == ExtensionPromptPosition.IN_PROMPT }
+            .forEach { add(role = it.role, content = sub(it.content)) }
+        add(content = worldInfoAfter)
+        add(content = formatMessageExamples(character.messageExample, sub))
+        return messages
+    }
+
+    private fun defaultMainPrompt(charName: String): String =
+        "Write $charName's next reply in a fictional chat between $charName and {{user}}."
+
+    private fun formatMessageExamples(messageExample: String, sub: (String) -> String): String {
+        if (messageExample.isBlank()) return ""
+        return sub(messageExample)
+            .replace(Regex("<START>", RegexOption.IGNORE_CASE), "[Start a new Chat]")
+            .trim()
     }
 
     /** Keeps the most recent messages whose estimated tokens fit [budgetTokens]. */
@@ -156,6 +187,13 @@ object PromptBuilder {
         when (val v = this[key]) {
             is Number -> v.toDouble()
             is String -> v.toDoubleOrNull() ?: default
+            else -> default
+        }
+
+    private fun Map<String, Any?>.booleanValue(key: String, default: Boolean): Boolean =
+        when (val v = this[key]) {
+            is Boolean -> v
+            is String -> v.equals("true", ignoreCase = true)
             else -> default
         }
 

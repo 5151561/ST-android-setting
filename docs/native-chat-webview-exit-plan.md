@@ -1,6 +1,6 @@
 # Chat 全面原生化与隐藏 WebView 退出计划
 
-版本：0.7.1
+版本：0.8.1
 日期：2026-06-10
 方向：从“原生 UI + 隐藏 WebView runtime 兜底”逐步迁移到“原生 Chat runtime 为主，WebView 仅作为临时兼容壳，最终默认关闭并移除”。
 
@@ -9,6 +9,8 @@
 > v0.6.1 变更：补上群聊 regenerate 的 stop 回归，群聊生成启动后也会释放命令队列；过往聊天页面复用备份名过滤，备份副本不再显示在用户列表里。
 > v0.7 变更：Phase 0 欠账清零——落地 `chat-contract-fixtures` 样本集、native vs ST 的 payload/stop strings/世界书激活对照测试、消息操作契约测试，以及机器裁决的 known-diff 矩阵（双向强制：未登记的差异失败、已收敛的登记项也失败）。§8 切口 4 完成。详见 `docs/native-chat-phase0-audit.md` §5.1/§5.2。
 > v0.7.1 变更：**Phase 1 完成**——补上最后一块 header 元数据：作者注 / CFG 原生读写（`NativeChatJsonOps.setAuthorsNote/setCfg` + `NativeChatRuntime`），UI 对话框原生优先、bridge 兜底对齐；并修正作者注字段错位（adapter 此前写自造 `authors_note`，上游 ST 实为 `note_prompt`，导致 ST 生成读不到作者注），原生与 adapter 两侧均改为 `note_prompt` 优先、legacy 兼容读取。
+> v0.8 变更：Phase 2 PromptAssembly 第一轮落地——`PromptBuilder` 改为 Chat Completion prompt manager 默认顺序并补齐 ST generate_data 字段；`TextPromptBuilder` 覆盖 instruct disabled、ChatML/simple `{{#if}}` story string、story prefix/suffix、example `<START>` 独立注入、sampler order/priority；`WorldInfoScanner` 演进为 `WorldInfoEngine`，覆盖 case sensitive、whole word、regex key、selective NOT/ALL、scanDepth、递归基础和 inclusion group 基础；新增 `RegexEngine` 与 `ExtensionPromptRegistry`（含 generation interceptor）。
+> v0.8.1 变更：Phase 2 审计修正——修正 `scanDepth`/插入 `depth` 字段错位、`activation_regex` 误关闭当前 instruct、story prefix wrap 换行与 instruct-disabled affix 泄漏、TC 作者注 in-chat depth 位置；同时恢复未逐项一致的 known-diff（CC 示例结构、WI 概率随机、inclusion group 完整规则、position 2-6 注入），并标注 Regex/ExtensionPromptRegistry 仍是库层能力，生产扩展接线未完成。详见 `docs/native-chat-phase2-progress.md`。
 
 ## 1. 目标
 
@@ -35,10 +37,11 @@
 | 生成引擎接缝 | `ChatEngine` / `BridgeChatEngine` / `NativeChatEngine` | UI 已经不直接绑定 WebView 发送链路，可按能力选择原生或兜底 |
 | 单聊原生打开 | `NativeChatLoader` | 实验开关下，角色聊天可先经 API 读取角色卡和 JSONL，Compose 不必等 WebView 快照 |
 | 原生 JSONL 与生成 API | `TavernCoreApi.getChatJsonl` / `saveChatJsonl` / `generateChatCompletion*` / `generateTextCompletion*` | 原生侧已经能无损读写聊天文件，并直接调用后端生成 |
-| Chat Completion 提示词 | `PromptBuilder` | 已覆盖角色卡、persona、示例对话、世界书简化扫描、作者注深度、上下文裁剪 |
-| Text Completion 提示词 | `TextPromptBuilder` / `InstructTemplate` / `StopStringBuilder` | 已覆盖首批 Text Completion 后端和保守模板语义 |
+| Chat Completion 提示词 | `PromptBuilder` | 已覆盖 prompt manager 默认顺序、角色卡、persona、世界书前后插入、作者注深度、上下文裁剪和 ST generate_data 字段；OpenAI 示例对话结构和自定义 prompt_order 仍登记为差异/后续 |
+| Text Completion 提示词 | `TextPromptBuilder` / `InstructTemplate` / `StopStringBuilder` | 已覆盖首批 Text Completion 后端、instruct disabled、ChatML/simple `{{#if}}` story string、story prefix/suffix、example `<START>`、activation regex、sampler order/priority |
 | 流式 delta 解析 | `GenerationDeltaParser` | Chat Completion / Text Completion 共用，兼容多种 SSE delta 形态 |
-| 世界书基础扫描 | `WorldInfoScanner` | 已覆盖 constant、关键词、selective、position、order 的最小可测子集 |
+| 世界书原生扫描 | `WorldInfoScanner` / `WorldInfoEngine` | 已覆盖 constant、关键词、selective、position 0/1、order、case sensitive、whole word、regex key、scanDepth、递归基础、inclusion group 基础；概率随机、完整 group 规则和 position 2-6 仍登记差异 |
+| Regex / 扩展提示注入 | `RegexEngine` / `ExtensionPromptRegistry` | 库层已覆盖输入、输出、reasoning、显示层正则，以及 extension prompt 注入点与 generation interceptor；具体扩展生产接线仍归后续阶段 |
 | 群聊原生生成 MVP | `NativeGroupGenerator` / `GroupChatScreen` / `docs/group_chat_migration_plan.md` | 群聊数据已走 REST，AI 回复可复用单聊 prompt/stream 管线，不经隐藏 WebView |
 | 单测基线 | `NativeEngineModeTest`、`NativeChatLoaderTest`、`PromptBuilderTest`、`TextPromptBuilderTest`、`WorldInfoScannerTest`、`GenerationDeltaParserTest`、`NativeGroupGeneratorTest` | 已有红-绿基础，后续应扩展而不是绕开 |
 
@@ -55,11 +58,11 @@
 
 仍然回退或依赖 WebView 的部分：
 
-1. 单聊附件发送、复杂 Handlebars / instruct disabled / story prefix-suffix 等未覆盖模板。
+1. 单聊附件发送、超出 simple `{{#if}}` 的高级 Handlebars、未登记扩展私有模板和 provider 特殊模板。
 2. 不受支持的 `main_api` / `api_type`，例如 NovelAI、Horde 等尚未接入的生成入口。
 3. `regenerate()`、`continueGeneration()` 当前仍主动走 Bridge，因为 native swipe/历史语义未补齐。
 4. ~~编辑、删除、隐藏、移动、checkpoint、branch 等消息操作仍主要走 `ChatRuntimeBridge`~~（Phase 1 已原生化，含作者注/CFG；quick reply、swipe picker、itemized prompt、Data Bank 等扩展/调试能力仍走 Bridge）。
-5. reasoning/tool calls/logprobs、Regex、extension prompt injection、完整世界书、Data Bank、媒体、TTS、翻译、生图等语义尚未完整迁移。
+5. reasoning/tool calls/logprobs、完整扩展 UI、Data Bank、媒体、TTS、翻译、生图等语义尚未完整迁移；Regex / extension prompt 注入已有原生核心，但具体扩展接线仍归后续阶段。
 6. `NativeChatEngine` 原生生成成功落盘后已不再自动调用 `bridge.reloadChat()`；但所有仍走 Bridge 的写操作必须先显式对齐隐藏 runtime，说明 WebView 仍是过渡期兼容写者之一。
 
 ## 2. 总体架构
@@ -182,6 +185,8 @@ Optional WebView Compatibility Host
 ### Phase 2：原生 PromptAssembly 替代 ST 前端提示词组装
 
 目标：在现有 `PromptBuilder` / `TextPromptBuilder` 基础上补齐 ST 提示词语义，让原生侧可独立构造后端 payload。
+
+状态：**Phase 2 第一轮已落地但未完全关闭（v0.8.1，2026-06-10）**，进度与红-绿-重构记录在 `docs/native-chat-phase2-progress.md`。原生 PromptAssembly 已收敛 Phase 0 记录中的多项差异（TC turn join/story affix/examples、WI case sensitive/whole word/regex/selective、scanDepth 错位等），但仍保留机器裁决 known-diff：CC 示例消息结构、WI 概率随机、完整 inclusion group、position 2-6 注入，以及 Phase 3 swipe 语义。Chat Completion / Text Completion 常见模板在当前契约样本下可原生组装；完整扩展生产接线和自定义 prompt manager 仍需后续补齐。
 
 交付：
 
@@ -368,7 +373,7 @@ Optional WebView Compatibility Host
 1. Phase 0：冻结现有“原生生成（实验）”基线、路由矩阵和 WebView 依赖地图。
 2. Phase 1：让单聊原生 session 成为事实源。**先补单一写者护栏（交付0）再扩面**，去掉生成成功后的 `bridge.reloadChat()` 依赖的同时，不让 regen/编辑路径出现 split-brain。
 3. Phase 3（仅 CC/TC 部分）：在 `NativeChatEngine` 上补齐 continue / regenerate / stop / reasoning / logprobs，但**只针对已有的 Chat Completion / 首批 Text Completion**。
-4. Phase 2：补全 PromptAssembly。**新增 backend（NovelAI/Kobold/Horde）的 Phase 3 生成器必须排在这之后**，避免为没有提示词组装的后端先写生成器而返工。
+4. **已完成：Phase 2 PromptAssembly**。新增 backend（NovelAI/Kobold/Horde）的 Phase 3 生成器现在可以在其 prompt 语义测试补齐后接入。
 5. Phase 4：收拢现有 `NativeGroupGenerator` MVP，让群聊 runtime 与单聊统一；过渡期群聊唯一写者见 Phase 4 双入口说明。
 
 注意上面 3 在 2 之前只对“深挖已有 CC/TC 链路”成立；任何新 backend 的生成都依赖 Phase 2，不能提前。完成这些步骤后，隐藏 WebView 才能从“运行时同步器 + 兜底执行器”降级为“兼容工具”。再继续做媒体和扩展，最终默认关闭。
@@ -380,7 +385,7 @@ Optional WebView Compatibility Host
 1. **原生生成基线冻结**：把单聊 Chat Completion、首批 Text Completion、群聊 `NativeGroupGenerator` 的已支持/未支持能力整理成 route matrix，并补测试保护。
 2. **已完成：去掉单聊生成后的 WebView 对齐依赖 + 补单一写者护栏**：当前用 fake `ChatRuntimeBridgeActions` 和 adapter VM 行为测试证明：(a) 生成成功落盘后不触发 `reloadChat()`；(b) 仍走 Bridge 的写操作前会先对齐磁盘；(c) adapter 等 `chat.reload` 完成后才执行后续写命令；(d) 单聊和群聊的 `generation.stop` 不被长生成队列阻塞。同时已把源码字符串断言的 `NativeChatEnginePhase1ContractTest` 替换掉。
 3. **MessageOps 原生化**：先从编辑、删除、隐藏、reasoning 编辑开始，因为它们不需要 provider；每迁完一项再按交付0 解除该项的 bridge 对齐。
-4. **已完成：PromptAssembly 契约夹具**：3 个角色 + 2 个世界书 + 2 套模板（上游 Alpaca/ChatML 预设原文）落地为 `chat-contract-fixtures`；payload 字段 / stop strings / WI 激活条目与顺序 / 消息操作保存结果均有逐项 diff 测试，12 条 known-diff 入机器裁决矩阵（含一条建议 Phase 2 优先修复的发现：instruct 预设中的 story_string_prefix/suffix 被原生静默忽略而非 fallback，ChatML 的 system 包装会丢失）。
+4. **已完成：PromptAssembly 契约夹具与 Phase 2 第一轮收敛**：3 个角色 + 2 个世界书 + 2 套模板（上游 Alpaca/ChatML 预设原文）落地为 `chat-contract-fixtures`；payload 字段 / stop strings / WI 激活条目与顺序 / 消息操作保存结果均有逐项 diff 测试。Phase 2 未完全一致项已重新登记到 known-diff 矩阵，不能再声称清零。
 
 这四个切口完成后，再决定是优先补生成完整性，还是优先补媒体/扩展。
 

@@ -97,16 +97,10 @@ class ChatContractFixturesTest {
         // 与各契约测试实际行使的 known-diff id 一一对应；新增/删除差异时同步这份清单。
         ContractDiffs.assertMatrixIdsAreExactly(
             setOf(
-                "cc.payload.field-set",
                 "cc.messages.structure",
-                "wi.frontier.case-sensitive",
-                "wi.frontier.whole-words",
-                "wi.frontier.regex-key",
-                "wi.frontier.selective-logic-not-any",
-                "wi.frontier.probability",
-                "tc.full-prompt.turn-join",
-                "tc.instruct.story-string-prefix-suffix",
-                "tc.examples-not-injected",
+                "wi.probability.randomness",
+                "wi.inclusion-group.selection",
+                "wi.position.non-prompt-injections",
                 "ops.swipe.wrap-around",
                 "ops.create-swipe.switch-and-info",
             )

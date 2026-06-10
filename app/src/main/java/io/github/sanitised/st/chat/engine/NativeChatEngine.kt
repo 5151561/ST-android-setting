@@ -10,7 +10,7 @@ import io.github.sanitised.st.chat.ChatStore
 import io.github.sanitised.st.chat.prompt.PromptBuilder
 import io.github.sanitised.st.chat.prompt.TextPromptBuildResult
 import io.github.sanitised.st.chat.prompt.TextPromptBuilder
-import io.github.sanitised.st.chat.prompt.WorldInfoScanner
+import io.github.sanitised.st.chat.prompt.WorldInfoEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -246,8 +246,12 @@ class NativeChatEngine(
         settings: Map<String, Any?>,
     ): NativePromptContext {
         val entries = collectWorldInfo(client, character)
-        val scanText = history.takeLast(WI_SCAN_DEPTH).joinToString("\n") { it.mes }
-        val wi = WorldInfoScanner.scan(entries, scanText)
+        val wi = WorldInfoEngine.scan(
+            entries = entries,
+            history = history.map { it.mes },
+            recursive = true,
+            defaultScanDepth = settings.intValue("world_info_depth", DEFAULT_WI_SCAN_DEPTH),
+        )
         val personaDescription = (settings["power_user"] as? Map<*, *>)
             ?.get("persona_description") as? String ?: ""
         return NativePromptContext(
@@ -267,6 +271,13 @@ class NativeChatEngine(
             runCatching { client.getWorldInfo(name).entries }.getOrElse { emptyList() }
         }
     }
+
+    private fun Map<String, Any?>.intValue(key: String, default: Int): Int =
+        when (val value = this[key]) {
+            is Number -> value.toInt()
+            is String -> value.toIntOrNull() ?: default
+            else -> default
+        }
 
     /**
      * Streams the reply into the placeholder message [aiId], updating the store as
@@ -440,7 +451,7 @@ class NativeChatEngine(
 
     private companion object {
         const val TAG = "NativeChatEngine"
-        const val WI_SCAN_DEPTH = 3
+        const val DEFAULT_WI_SCAN_DEPTH = 2
     }
 }
 

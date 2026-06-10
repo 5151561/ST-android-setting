@@ -1,53 +1,23 @@
 {
-  "cc.payload.field-set": {
-    "reason": "native CC payload 缺少 ST generate_data 的 type/logit_bias/group_names/include_reasoning/reasoning_effort/enable_web_search/request_images*/custom_prompt_post_processing/verbosity 等字段；后端对缺省字段按默认处理，文本生成可用，但 logit bias、reasoning 开关、联网搜索等能力未透传",
-    "st_source": "SillyTavern/public/scripts/openai.js sendOpenAIRequest generate_data",
-    "closes_in": "Phase 2（PromptAssembly 补字段）/ Phase 3（reasoning、tool calls）"
-  },
   "cc.messages.structure": {
-    "reason": "ST 按 prompt manager 默认顺序产出多条 system 消息（main 在 worldInfoBefore 前、personaDescription 在 charDescription 前、dialogueExamples 独立成消息并带 [Start a new Chat] 标记）；native 将全部内容压成单条 system 消息且顺序为 wiBefore→main→description→personality→scenario→persona→examples→wiAfter，并给 personality/scenario/examples 附加了 ST CC 不使用的内联标签",
-    "st_source": "SillyTavern/public/scripts/openai.js preparePromptsForChatCompletion + PromptManager.js promptManagerDefaultPromptOrder",
-    "closes_in": "Phase 2（prompt manager 语义）"
+    "reason": "native 已按 prompt manager 默认顺序拆分 system prompt，但仍未复刻 ST 的 OpenAI 示例对话结构；ST 会把示例块拆成 [Start a new Chat] system 消息与 example_user/example_assistant 独立消息，native 仍保留为单条 system blob",
+    "st_source": "SillyTavern/public/scripts/openai.js setOpenAIMessageExamples / parseExampleIntoIndividual",
+    "closes_in": "Phase 2 follow-up（真实 ST 前端 payload golden + 示例结构对齐）"
   },
-  "wi.frontier.case-sensitive": {
-    "reason": "native WorldInfoScanner 恒定小写匹配，忽略条目 caseSensitive=true；ST 在 caseSensitive 下保留大小写导致不激活",
-    "st_source": "SillyTavern/public/scripts/world-info.js matchKeys/#transformString",
-    "closes_in": "Phase 2（WorldInfoEngine）"
+  "wi.probability.randomness": {
+    "reason": "ST 每次生成用 Math.random() 对 useProbability/probability 做随机激活；native 为了 JVM 契约测试稳定性仍使用 uid 派生的确定性 roll，生产行为不是逐次随机",
+    "st_source": "SillyTavern/public/scripts/world-info.js verifyProbability/checkWorldInfo",
+    "closes_in": "Phase 2 follow-up（为 WorldInfoEngine 注入可替换随机源，测试固定种子，生产用随机）"
   },
-  "wi.frontier.whole-words": {
-    "reason": "native 用子串包含匹配，忽略 matchWholeWords；ST 单词 key 使用 (?:^|\\W)key(?:$|\\W) 边界，art 不应命中 particle",
-    "st_source": "SillyTavern/public/scripts/world-info.js matchKeys",
-    "closes_in": "Phase 2（WorldInfoEngine）"
+  "wi.inclusion-group.selection": {
+    "reason": "ST inclusion group 支持 groupOverride 优先 winner、groupWeight 加权随机、多组名和已激活组跳过；native 目前只按 group 取 order 最大者，且 groupOverride 条目会绕过分组而非成为组内唯一 winner",
+    "st_source": "SillyTavern/public/scripts/world-info.js inclusion group selection",
+    "closes_in": "Phase 2 follow-up（完整 inclusion group 选择器）"
   },
-  "wi.frontier.regex-key": {
-    "reason": "ST 支持 /regex/ 形式的 key 并优先用正则匹配；native 将其当作字面量导致漏激活",
-    "st_source": "SillyTavern/public/scripts/world-info.js matchKeys/parseRegexFromString",
-    "closes_in": "Phase 2（WorldInfoEngine）"
-  },
-  "wi.frontier.selective-logic-not-any": {
-    "reason": "native 把 selective 一律按 AND_ANY（任一 secondary 命中即激活）处理；ST 的 NOT_ANY/NOT_ALL/AND_ALL 逻辑未实现，NOT_ANY 在 secondary 命中时应当不激活",
-    "st_source": "SillyTavern/public/scripts/world-info.js world_info_logic + getScore",
-    "closes_in": "Phase 2（WorldInfoEngine）"
-  },
-  "wi.frontier.probability": {
-    "reason": "ST 按 useProbability/probability 随机激活（fixture 取 1% 下几乎必然不激活作为 ST 期望）；native 未实现概率，必然激活",
-    "st_source": "SillyTavern/public/scripts/world-info.js checkWorldInfo probability roll",
-    "closes_in": "Phase 2（WorldInfoEngine）"
-  },
-  "tc.full-prompt.turn-join": {
-    "reason": "ST 把 instruct 格式化后的轮次用空串连接（每轮自带 suffix 换行）；native 用 \\n join blocks，轮次之间多出一个空行，最终 prompt 与 ST 不逐字一致",
-    "st_source": "SillyTavern/public/script.js finalMesSend.map(...).join('')",
-    "closes_in": "Phase 2（TextPromptBuilder 组装对齐）"
-  },
-  "tc.instruct.story-string-prefix-suffix": {
-    "reason": "新版 ST 把 story_string_prefix/suffix 放进 instruct 预设（ChatML 用它做 <|im_start|>system…<|im_end|> 包装）；native 只检查 power_user.context 下的同名字段，instruct 预设里的值被静默忽略——既不应用也不触发 fallback，ChatML 类模板的 system 包装会丢失",
-    "st_source": "SillyTavern/default/content/presets/instruct/ChatML.json + scripts/instruct-mode.js",
-    "closes_in": "Phase 2（建议优先：把 supports() 检查与应用扩展到 instruct 字段）"
-  },
-  "tc.examples-not-injected": {
-    "reason": "ST 用 formatInstructModeExamples 把 mes_example 独立注入 prompt（不依赖 story_string 占位符，受 skip_examples 控制）；native 仅在 story_string 含 {{mesExamples}} 时注入，fixture 模板缺占位符时示例对话被整体丢弃",
-    "st_source": "SillyTavern/public/scripts/instruct-mode.js formatInstructModeExamples",
-    "closes_in": "Phase 2（TextPromptBuilder 示例注入）"
+  "wi.position.non-prompt-injections": {
+    "reason": "ST 支持 world info position 2-6（AN top/bottom、@depth、EM 等）注入；native 当前 PromptAssembly 只返回 before/after 两个 prompt 位置，其他位置会被忽略",
+    "st_source": "SillyTavern/public/scripts/world-info.js worldInfoPosition / WIDepthEntries",
+    "closes_in": "Phase 2 follow-up（扩展 WorldInfoInjection 结构并接入对应 prompt 注入点）"
   },
   "ops.swipe.wrap-around": {
     "reason": "ST 在 swipe_id=0 时左滑不动作、在最后一个 swipe 右滑触发新生成；native switchSwipe 用取模环绕到另一端，不生成新 swipe",

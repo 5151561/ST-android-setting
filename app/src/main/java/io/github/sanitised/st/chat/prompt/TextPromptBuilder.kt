@@ -18,6 +18,7 @@ object TextPromptBuilder {
     private const val CHARS_PER_TOKEN = 4
     private const val PER_TURN_OVERHEAD_TOKENS = 4
     private const val DEFAULT_MAX_CONTEXT = 2048
+    private const val DEFAULT_AUTHORS_NOTE_DEPTH = 4
 
     private val supportedApiTypes = setOf("ooba", "koboldcpp", "llamacpp", "ollama")
     private val allowedStoryPlaceholders = setOf(
@@ -36,6 +37,7 @@ object TextPromptBuilder {
         "user",
         "mesExamples",
         "mesExamplesRaw",
+        "trim",
     )
 
     fun build(
@@ -48,11 +50,12 @@ object TextPromptBuilder {
         worldInfoAfter: String = "",
         authorsNote: String = "",
     ): TextPromptBuildResult {
-        unsupportedReason(settings, authorsNote)?.let { return TextPromptBuildResult.Unsupported(it) }
+        unsupportedReason(settings)?.let { return TextPromptBuildResult.Unsupported(it) }
         val textGen = settings.mapValue("textgenerationwebui_settings")
         val apiType = textGen.stringValue("type").ifBlank { "ooba" }
         val maxTokens = settings.intValue("amount_gen", 300)
         val maxContext = textGen.intValue("max_context", DEFAULT_MAX_CONTEXT)
+        val model = modelForApiType(textGen, apiType)
 
         val powerUser = settings.mapValue("power_user")
         val context = ContextTemplateSettings.fromMap(powerUser.mapValue("context"))
@@ -68,13 +71,15 @@ object TextPromptBuilder {
             personaDescription = personaDescription,
             worldInfoBefore = worldInfoBefore,
             worldInfoAfter = worldInfoAfter,
+            authorsNote = authorsNote,
             context = context,
+            instruct = instruct,
             template = template,
         )
         val stopStrings = StopStringBuilder.build(instruct, context, userName, character.name)
         val payload = linkedMapOf<String, Any?>(
             "prompt" to prompt,
-            "model" to modelForApiType(textGen, apiType),
+            "model" to model,
             "api_type" to apiType,
             "api_server" to resolveTextGenServer(settings, apiType),
             "stream" to false,
@@ -92,13 +97,16 @@ object TextPromptBuilder {
         if (apiType == "ollama" || apiType == "llamacpp") {
             payload["num_ctx"] = maxContext
         }
+        textGen.intListValue("sampler_order")?.let { payload["sampler_order"] = it }
+        textGen.stringListValue("sampler_priority")?.let { payload["sampler_priority"] = it }
         return TextPromptBuildResult.Ready(payload, prompt, stopStrings)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun supports(settings: Map<String, Any?>, authorsNote: String = ""): Boolean =
-        unsupportedReason(settings, authorsNote) == null
+        unsupportedReason(settings) == null
 
-    private fun unsupportedReason(settings: Map<String, Any?>, authorsNote: String): String? {
+    private fun unsupportedReason(settings: Map<String, Any?>): String? {
         if (settings["main_api"] != "textgenerationwebui") {
             return "main_api is not textgenerationwebui"
         }
@@ -109,21 +117,8 @@ object TextPromptBuilder {
         }
         val powerUser = settings.mapValue("power_user")
         val context = ContextTemplateSettings.fromMap(powerUser.mapValue("context"))
-        val instruct = InstructSettings.fromMap(powerUser.mapValue("instruct"))
-        if (!instruct.enabled) {
-            return "unsupported instruct.enabled=false"
-        }
-        if (context.storyStringPrefix.isNotBlank() || context.storyStringSuffix.isNotBlank()) {
-            return "unsupported story_string_prefix/suffix"
-        }
         if (context.storyStringPosition != 0) {
             return "unsupported story_string_position: ${context.storyStringPosition}"
-        }
-        if (authorsNote.isNotBlank()) {
-            return "unsupported authors_note"
-        }
-        if (hasComplexHandlebars(context.storyString)) {
-            return "complex Handlebars story_string is unsupported"
         }
         unknownStoryPlaceholder(context.storyString)?.let {
             return "unsupported story_string placeholder: $it"
@@ -140,7 +135,9 @@ object TextPromptBuilder {
         personaDescription: String,
         worldInfoBefore: String,
         worldInfoAfter: String,
+        authorsNote: String,
         context: ContextTemplateSettings,
+        instruct: InstructSettings,
         template: InstructTemplate,
     ): String {
         val values = mapOf(
@@ -159,32 +156,77 @@ object TextPromptBuilder {
             "user" to userName,
             "mesExamples" to character.messageExample,
             "mesExamplesRaw" to character.messageExample,
+            "trim" to "",
         ).mapValues { (_, value) -> substituteMacros(value, userName, character.name) }
 
-        val blocks = mutableListOf<String>()
-        renderStoryString(context.storyString, values).trimEnd().takeIf { it.isNotBlank() }?.let { blocks += it }
-        context.chatStart.takeIf { it.isNotBlank() }?.let {
-            blocks += substituteMacros(it, userName, character.name)
+        val renderedStory = renderStoryString(context.storyString, values).trimEnd()
+        val header = if (instruct.enabled) {
+            val storyPrefix = context.storyStringPrefix.ifBlank { instruct.storyStringPrefix }
+            val storySuffix = context.storyStringSuffix.ifBlank { instruct.storyStringSuffix }
+            val separator = if (instruct.wrap) "\n" else ""
+            buildString {
+                if (storyPrefix.isNotBlank()) {
+                    append(substituteStoryAffix(storyPrefix, userName, character.name))
+                    append(separator)
+                }
+                append(renderedStory)
+                if (storySuffix.isNotBlank()) {
+                    append(substituteStoryAffix(storySuffix, userName, character.name))
+                }
+            }.trimEnd()
+        } else {
+            renderedStory
         }
-        val header = blocks.joinToString("\n")
-        val promptTail = template.formatPrompt(name = character.name)
+
+        val promptTail = if (instruct.enabled) {
+            template.formatPrompt(name = character.name)
+        } else {
+            "${character.name}:"
+        }
+
         val turnBudget = (maxContext - maxTokens - estimateTokens(header) - estimateTokens(promptTail))
             .coerceAtLeast(0)
         val turns = trimTurnsToBudget(history.filter { !it.isSystem }, turnBudget)
+
+        val blocks = mutableListOf<PromptPart>()
+        header.takeIf { it.isNotBlank() }?.let { blocks += PromptPart(it) }
+        formatExamples(character.messageExample, context, instruct, template, userName, character.name)
+            .takeIf { it.isNotBlank() }
+            ?.let { blocks += PromptPart(it) }
+        context.chatStart.takeIf { it.isNotBlank() }?.let {
+            blocks += PromptPart(substituteMacros(it, userName, character.name))
+        }
+        val turnParts = mutableListOf<PromptPart>()
         turns.forEachIndexed { index, message ->
-            blocks += template.formatChat(
-                name = message.name.ifBlank { if (message.isUser) userName else character.name },
-                message = message.mes,
-                isUser = message.isUser,
-                position = when (index) {
-                    0 -> InstructTurnPosition.FIRST
-                    turns.lastIndex -> InstructTurnPosition.LAST
-                    else -> InstructTurnPosition.NORMAL
+            turnParts += PromptPart(
+                text = if (instruct.enabled) {
+                    template.formatChat(
+                        name = message.name.ifBlank { if (message.isUser) userName else character.name },
+                        message = message.mes,
+                        isUser = message.isUser,
+                        position = when (index) {
+                            0 -> InstructTurnPosition.FIRST
+                            turns.lastIndex -> InstructTurnPosition.LAST
+                            else -> InstructTurnPosition.NORMAL
+                        }
+                    )
+                } else {
+                    "${message.name.ifBlank { if (message.isUser) userName else character.name }}: ${message.mes}\n"
                 }
             )
         }
-        blocks += promptTail
-        return blocks.joinToString("\n")
+        if (authorsNote.isNotBlank()) {
+            val note = if (instruct.enabled) {
+                template.formatChat("System", authorsNote, isUser = false, isNarrator = true)
+            } else {
+                authorsNote
+            }
+            val insertAt = (turnParts.size - DEFAULT_AUTHORS_NOTE_DEPTH).coerceIn(0, turnParts.size)
+            turnParts.add(insertAt, PromptPart(note))
+        }
+        blocks += turnParts
+        blocks += PromptPart(promptTail)
+        return joinPromptParts(blocks)
     }
 
     private fun trimTurnsToBudget(history: List<ChatMessage>, budgetTokens: Int): List<ChatMessage> {
@@ -202,7 +244,7 @@ object TextPromptBuilder {
     private fun estimateTokens(text: String): Int = (text.length / CHARS_PER_TOKEN) + 1
 
     private fun renderStoryString(storyString: String, values: Map<String, String>): String {
-        var rendered = storyString
+        var rendered = renderSimpleConditionals(storyString, values)
         allowedStoryPlaceholders.forEach { key ->
             rendered = rendered.replace(
                 Regex("\\{\\{\\s*${Regex.escape(key)}\\s*\\}\\}", RegexOption.IGNORE_CASE),
@@ -212,20 +254,85 @@ object TextPromptBuilder {
         return rendered
     }
 
-    private fun hasComplexHandlebars(storyString: String): Boolean {
-        Regex("\\{\\{([^}]+)\\}\\}").findAll(storyString).forEach { match ->
-            val body = match.groupValues[1].trim()
-            if (body.startsWith("#") || body.startsWith("/") || body == "else") return true
-            if (body.any { it.isWhitespace() }) return true
+    private fun renderSimpleConditionals(storyString: String, values: Map<String, String>): String {
+        var rendered = storyString
+        val block = Regex(
+            "\\{\\{#if\\s+([A-Za-z0-9_]+)\\s*}}(.*?)\\{\\{/if}}",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        )
+        var changed: Boolean
+        do {
+            changed = false
+            rendered = block.replace(rendered) { match ->
+                changed = true
+                val key = match.groupValues[1]
+                if (values[key].orEmpty().isNotBlank()) match.groupValues[2] else ""
+            }
+        } while (changed)
+        return rendered.replace(Regex("\\{\\{\\s*trim\\s*}}", RegexOption.IGNORE_CASE), "")
+    }
+
+    private fun formatExamples(
+        messageExample: String,
+        context: ContextTemplateSettings,
+        instruct: InstructSettings,
+        template: InstructTemplate,
+        userName: String,
+        charName: String,
+    ): String {
+        if (messageExample.isBlank()) return ""
+        val examples = messageExample
+            .replace("\r", "")
+            .replace(Regex("<START>\\s*", RegexOption.IGNORE_CASE), "")
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .mapNotNull { line ->
+                val separator = line.indexOf(':')
+                if (separator <= 0) return@mapNotNull null
+                val rawName = line.substring(0, separator).trim()
+                val message = substituteMacros(line.substring(separator + 1).trim(), userName, charName)
+                val isUser = rawName.equals("{{user}}", ignoreCase = true) ||
+                    rawName.equals(userName, ignoreCase = true)
+                val name = if (isUser) userName else charName
+                if (instruct.enabled && !instruct.skipExamples) {
+                    template.formatChat(name = name, message = message, isUser = isUser)
+                } else {
+                    "$name: $message\n"
+                }
+            }
+            .toList()
+        if (examples.isEmpty()) return ""
+        val heading = context.exampleSeparator
+            .takeIf { it.isNotBlank() }
+            ?.let { substituteMacros(it, userName, charName) + "\n" }
+            .orEmpty()
+        return heading + examples.joinToString("")
+    }
+
+    private data class PromptPart(val text: String)
+
+    private fun joinPromptParts(parts: List<PromptPart>): String = buildString {
+        parts.filter { it.text.isNotBlank() }.forEachIndexed { index, part ->
+            if (index > 0 && isNotEmpty() && !endsWith("\n")) append('\n')
+            append(part.text)
         }
-        return false
     }
 
     private fun unknownStoryPlaceholder(storyString: String): String? =
         Regex("\\{\\{([^}]+)\\}\\}").findAll(storyString)
             .map { it.groupValues[1].trim() }
             .firstOrNull { body ->
-                allowedStoryPlaceholders.none { allowed -> allowed.equals(body, ignoreCase = true) }
+                when {
+                    body.startsWith("#if ", ignoreCase = true) -> {
+                        val key = body.removePrefix("#if").trim()
+                        allowedStoryPlaceholders.none { allowed -> allowed.equals(key, ignoreCase = true) }
+                    }
+                    body.equals("/if", ignoreCase = true) -> false
+                    body.equals("trim", ignoreCase = true) -> false
+                    body.any { it.isWhitespace() } -> true
+                    else -> allowedStoryPlaceholders.none { allowed -> allowed.equals(body, ignoreCase = true) }
+                }
             }
 
     private fun modelForApiType(textGen: Map<String, Any?>, apiType: String): String =
@@ -241,6 +348,10 @@ object TextPromptBuilder {
         text
             .replace(Regex("\\{\\{char\\}\\}", RegexOption.IGNORE_CASE), charName)
             .replace(Regex("\\{\\{user\\}\\}", RegexOption.IGNORE_CASE), userName)
+
+    private fun substituteStoryAffix(text: String, userName: String, charName: String): String =
+        substituteMacros(text, userName, charName)
+            .replace(Regex("\\{\\{name\\}\\}", RegexOption.IGNORE_CASE), "System")
 
     private fun Map<String, Any?>.mapValue(key: String): Map<String, Any?> =
         (this[key] as? Map<*, *>)?.entries?.associate { (k, v) -> k.toString() to v } ?: emptyMap()
@@ -258,4 +369,16 @@ object TextPromptBuilder {
             is String -> value.toDoubleOrNull() ?: default
             else -> default
         }
+
+    private fun Map<String, Any?>.intListValue(key: String): List<Int>? =
+        (this[key] as? List<*>)?.mapNotNull { value ->
+            when (value) {
+                is Number -> value.toInt()
+                is String -> value.toIntOrNull()
+                else -> null
+            }
+        }?.takeIf { it.isNotEmpty() }
+
+    private fun Map<String, Any?>.stringListValue(key: String): List<String>? =
+        (this[key] as? List<*>)?.map { it.toString() }?.takeIf { it.isNotEmpty() }
 }

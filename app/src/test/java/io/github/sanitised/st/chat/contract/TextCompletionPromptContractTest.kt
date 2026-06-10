@@ -87,44 +87,46 @@ class TextCompletionPromptContractTest {
     }
 
     @Test
-    fun turnJoiningDiffersOnlyAsRegistered() {
+    fun turnJoiningMatchesStWithoutExtraSeparators() {
         val result = buildAlpaca()
         val stTurns = golden.strList("st_turns")
-        val nativeChatSegment = stTurns.joinToString("\n")
         assertTrue(
-            "native prompt 应包含按 \\n 连接的轮次（实现变化请同步契约）",
-            result.prompt.contains(nativeChatSegment),
-        )
-        ContractDiffs.assertContract("tc.full-prompt.turn-join", stTurns.joinToString(""), nativeChatSegment)
-    }
-
-    @Test
-    fun instructStoryStringSuffixHandlingDiffersOnlyAsRegistered() {
-        // 上游 Alpaca instruct 预设携带 story_string_suffix="\n\n"（新版 ST 放在 instruct 字段），
-        // native 只检查 power_user.context 下的同名字段，因此该后缀被静默忽略而非 fallback。
-        ContractDiffs.assertContract(
-            "tc.instruct.story-string-prefix-suffix",
-            "ST 应用 instruct 预设中的 story_string_prefix/suffix（如 ChatML 的 <|im_start|>system 包装）",
-            "native 忽略 instruct 预设中的 story_string_prefix/suffix，仅检查 power_user.context",
+            "native prompt 应包含按 ST 空串拼接的轮次，不额外插入空行",
+            result.prompt.contains(stTurns.joinToString("")),
         )
     }
 
     @Test
-    fun mesExamplesInjectionDiffersOnlyAsRegistered() {
+    fun instructStoryStringAffixesFromInstructPresetAreApplied() {
+        val settings = ContractFixtures.json("settings/text-completion-chatml-ollama.json")
+        val result = TextPromptBuilder.build(
+            character = ContractFixtures.character("seraphina.json"),
+            userName = "Alex",
+            history = ContractFixtures.chatHistory("seraphina-main.jsonl").take(1),
+            settings = settings,
+        ) as? TextPromptBuildResult.Ready
+            ?: error("ChatML fixture 应当由 Phase 2 原生 story renderer 接受")
+
+        assertTrue(result.prompt.startsWith("<|im_start|>system"))
+        assertTrue(result.prompt.contains("Write Seraphina's next reply"))
+        assertTrue(result.prompt.contains("<|im_end|>\n"))
+    }
+
+    @Test
+    fun mesExamplesAreInjectedIndependentlyOfStoryStringPlaceholder() {
         val result = buildAlpaca()
         assertTrue(
-            "fixture story_string 不含 {{mesExamples}}，native 应当丢弃示例对话（实现变化请同步契约）",
-            !result.prompt.contains("Who guards this grove"),
+            "ST 通过 formatInstructModeExamples 独立注入 mes_example，native 也必须保留示例对话",
+            result.prompt.contains("Who guards this grove"),
         )
-        ContractDiffs.assertContract(
-            "tc.examples-not-injected",
-            "ST 通过 formatInstructModeExamples 独立注入 mes_example（不依赖 story_string 占位符）",
-            "native 仅在 story_string 含 {{mesExamples}} 时注入，否则丢弃示例对话",
+        assertTrue(
+            "示例对话应使用当前 instruct preset 格式化",
+            result.prompt.contains("### Instruction:\nWho guards this grove?"),
         )
     }
 
     @Test
-    fun upstreamChatmlPresetIsExplicitFallbackNotSilentDivergence() {
+    fun upstreamChatmlPresetBuildsNativePrompt() {
         val settings = ContractFixtures.json("settings/text-completion-chatml-ollama.json")
         val result = TextPromptBuilder.build(
             character = ContractFixtures.character("seraphina.json"),
@@ -132,12 +134,10 @@ class TextCompletionPromptContractTest {
             history = ContractFixtures.chatHistory("seraphina-main.jsonl").take(3),
             settings = settings,
         )
-        val reason = (result as? TextPromptBuildResult.Unsupported)?.reason
-            ?: error("上游 ChatML context 预设含 {{#if}}，native 必须显式 fallback 而不是静默组装：$result")
-        ContractDiffs.assertContract(
-            "tc.chatml.explicit-fallback",
-            golden.str("st_chatml_expected_reason"),
-            reason,
-        )
+        val ready = result as? TextPromptBuildResult.Ready
+            ?: error("Phase 2 应支持 ChatML 常见模板，不再 fallback：$result")
+        assertTrue(ready.prompt.contains("<|im_start|>user"))
+        assertTrue(ready.prompt.contains("<|im_start|>assistant"))
+        assertTrue(ready.stopStrings.any { it.contains("<|im_end|>") })
     }
 }

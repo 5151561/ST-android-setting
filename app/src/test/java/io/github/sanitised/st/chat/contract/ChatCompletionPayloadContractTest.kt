@@ -6,7 +6,7 @@ import io.github.sanitised.st.chat.contract.ContractFixtures.strList
 import io.github.sanitised.st.chat.prompt.PromptBuilder
 import io.github.sanitised.st.chat.prompt.WorldInfoScanner
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -54,35 +54,60 @@ class ChatCompletionPayloadContractTest {
         val payload = buildNativePayload()
         val stFields = golden["matching_fields"].asStringKeyMap().keys +
             golden.strList("st_only_fields") + "messages"
-        ContractDiffs.assertContract(
-            "cc.payload.field-set",
-            stFields.sorted(),
-            payload.keys.sorted(),
-        )
-        // ST 独有字段必须确实不在 native payload 里，防止矩阵记录过期。
-        golden.strList("st_only_fields").forEach { field ->
-            assertFalse("字段 '$field' 已出现在 native payload，请更新 golden", payload.containsKey(field))
-        }
+        assertEquals(stFields.sorted(), payload.keys.sorted())
     }
 
     @Test
-    fun messageStructureDiffersOnlyAsRegistered() {
+    fun systemMessagesFollowPromptManagerOrder() {
         val payload = buildNativePayload()
 
         @Suppress("UNCHECKED_CAST")
         val messages = payload["messages"] as List<Map<String, Any?>>
         val systemMessages = messages.filter { it["role"] == "system" }
 
-        // native 当前把所有 prompt-manager 条目压成单条 system 消息：登记为 known-diff。
-        assertEquals(1, systemMessages.size)
-        ContractDiffs.assertContract(
-            "cc.messages.structure",
-            golden.strList("st_system_identifier_order"),
-            listOf("native-single-squashed-system-message"),
+        assertTrue(systemMessages.size > 1)
+        val systemContents = systemMessages.map { it["content"].toString() }
+        val expectedOrder = listOf(
+            "Write Seraphina's next reply",
+            "Eldoria is an enchanted forest realm",
+            "Alex is a wandering cartographer",
+            "Seraphina is a gentle forest guardian",
+            "kind, protective",
+            "Alex wakes up wounded",
+            "The ruins hide a sealed gate",
+            "Start a new Chat",
         )
+        var lastIndex = -1
+        expectedOrder.forEach { needle ->
+            val nextIndex = systemContents.indexOfFirst { it.contains(needle) }
+            assertTrue("缺少 system prompt 片段：$needle\n$systemContents", nextIndex >= 0)
+            assertTrue("system prompt 片段顺序错误：$needle\n$systemContents", nextIndex > lastIndex)
+            lastIndex = nextIndex
+        }
 
         // 历史轮次的角色序列必须与 ST 一致（无 known-diff 余地）。
         val historyRoles = messages.dropWhile { it["role"] == "system" }.map { it["role"] }
         ContractDiffs.assertContract("cc.messages.history-roles", golden.strList("history_roles"), historyRoles)
+    }
+
+    @Test
+    fun openAiExampleMessageStructureDiffersOnlyAsRegistered() {
+        val payload = buildNativePayload()
+
+        @Suppress("UNCHECKED_CAST")
+        val messages = payload["messages"] as List<Map<String, Any?>>
+        val nativeExampleShape = messages
+            .filter { it["content"].toString().contains("Start a new Chat") }
+            .map { "${it["role"]}:${it["content"]}" }
+
+        ContractDiffs.assertContract(
+            "cc.messages.structure",
+            listOf(
+                "system:[Start a new Chat]",
+                "user:Who guards this grove?",
+                "assistant:I do, little wanderer.",
+            ),
+            nativeExampleShape,
+        )
     }
 }

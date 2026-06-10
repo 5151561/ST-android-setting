@@ -50,14 +50,14 @@ class PromptBuilderTest {
         @Suppress("UNCHECKED_CAST")
         val messages = payload["messages"] as List<Map<String, Any?>>
         assertEquals("system", messages.first()["role"])
-        val system = messages.first()["content"] as String
+        val system = messages.filter { it["role"] == "system" }.joinToString("\n") { it["content"] as String }
         // Macros substituted, persona/scenario folded in.
         assertTrue(system.contains("Alice is a curious explorer talking to Alex."))
         assertTrue(system.contains("Brave and witty"))
         assertTrue(system.contains("A dusty library at midnight"))
 
         // History preserved in order with correct roles.
-        val turns = messages.drop(1)
+        val turns = messages.dropWhile { it["role"] == "system" }
         assertEquals(listOf("user", "assistant", "user"), turns.map { it["role"] })
         assertEquals("Who are you?", turns.last()["content"])
     }
@@ -72,9 +72,9 @@ class PromptBuilderTest {
 
         @Suppress("UNCHECKED_CAST")
         val messages = payload["messages"] as List<Map<String, Any?>>
-        val system = messages.first()["content"] as String
+        val system = messages.filter { it["role"] == "system" }.joinToString("\n") { it["content"] as String }
         assertTrue(system.contains("Alex is a tired night-shift nurse."))
-        assertTrue(system.contains("Example dialogue:"))
+        assertTrue(system.contains("Start a new Chat"))
         assertTrue(system.contains("hello Alex!")) // macro substituted in examples
     }
 
@@ -91,11 +91,14 @@ class PromptBuilderTest {
 
         @Suppress("UNCHECKED_CAST")
         val messages = payload["messages"] as List<Map<String, Any?>>
-        val system = messages.first()["content"] as String
-        assertTrue(system.startsWith("LORE-BEFORE about Alice")) // before char defs + macro
-        assertTrue(system.contains("LORE-AFTER")) // after char defs
-        assertTrue(system.indexOf("LORE-BEFORE") < system.indexOf("curious explorer"))
-        assertTrue(system.indexOf("LORE-AFTER") > system.indexOf("curious explorer"))
+        val systemMessages = messages.filter { it["role"] == "system" }.map { it["content"] as String }
+        val beforeIndex = systemMessages.indexOfFirst { it.contains("LORE-BEFORE about Alice") }
+        val descriptionIndex = systemMessages.indexOfFirst { it.contains("curious explorer") }
+        val afterIndex = systemMessages.indexOfFirst { it.contains("LORE-AFTER") }
+        assertTrue(beforeIndex >= 0)
+        assertTrue(afterIndex >= 0)
+        assertTrue(beforeIndex < descriptionIndex)
+        assertTrue(afterIndex > descriptionIndex)
 
         // Author's note injected as a system turn 2 positions from the end.
         val anIndex = messages.indexOfFirst { it["content"] == "Stay in character." }

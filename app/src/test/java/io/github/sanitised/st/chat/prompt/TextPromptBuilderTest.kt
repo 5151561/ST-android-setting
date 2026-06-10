@@ -57,18 +57,18 @@ class TextPromptBuilderTest {
     }
 
     @Test
-    fun reportsUnsupportedForComplexHandlebarsStoryString() {
+    fun rendersSimpleHandlebarsIfBlocksInStoryString() {
         val result = TextPromptBuilder.build(
             character = character(),
             userName = "Alex",
             history = emptyList(),
             settings = settings(
-                storyString = "{{#if description}}{{description}}{{/if}}"
+                storyString = "{{#if system}}System={{system}}\n{{/if}}{{#if wiBefore}}WI={{wiBefore}}\n{{/if}}{{trim}}"
             ),
-        )
+            worldInfoBefore = "Lore",
+        ) as TextPromptBuildResult.Ready
 
-        assertTrue(result is TextPromptBuildResult.Unsupported)
-        assertTrue((result as TextPromptBuildResult.Unsupported).reason.contains("Handlebars"))
+        assertTrue(result.prompt.startsWith("System=Rules for Alice\nWI=Lore"))
     }
 
     @Test
@@ -117,35 +117,69 @@ class TextPromptBuilderTest {
     }
 
     @Test
-    fun reportsUnsupportedForInstructDisabledStoryStringAffixesAndAuthorsNote() {
-        assertEquals(
-            TextPromptBuildResult.Unsupported("unsupported instruct.enabled=false"),
-            TextPromptBuilder.build(
-                character = character(),
-                userName = "Alex",
-                history = emptyList(),
-                settings = settings(instructEnabled = false),
-            )
-        )
-        assertEquals(
-            TextPromptBuildResult.Unsupported("unsupported story_string_prefix/suffix"),
-            TextPromptBuilder.build(
-                character = character(),
-                userName = "Alex",
-                history = emptyList(),
-                settings = settings(storyStringPrefix = "prefix"),
-            )
-        )
-        assertEquals(
-            TextPromptBuildResult.Unsupported("unsupported authors_note"),
-            TextPromptBuilder.build(
-                character = character(),
-                userName = "Alex",
-                history = emptyList(),
-                settings = settings(),
-                authorsNote = "Keep it tense.",
-            )
-        )
+    fun supportsInstructDisabledStoryStringAffixesAndAuthorsNote() {
+        val disabled = TextPromptBuilder.build(
+            character = character(),
+            userName = "Alex",
+            history = listOf(message(0, "hello", isUser = true)),
+            settings = settings(instructEnabled = false),
+        ) as TextPromptBuildResult.Ready
+        assertTrue(disabled.prompt.contains("Alex: hello"))
+        assertTrue(disabled.prompt.endsWith("Alice:"))
+
+        val affixed = TextPromptBuilder.build(
+            character = character(),
+            userName = "Alex",
+            history = emptyList(),
+            settings = settings(storyStringPrefix = "<SYS>", storyStringSuffix = "</SYS>"),
+        ) as TextPromptBuildResult.Ready
+        assertTrue(affixed.prompt.startsWith("<SYS>\n"))
+        assertTrue(affixed.prompt.contains("</SYS>"))
+
+        val disabledAffix = TextPromptBuilder.build(
+            character = character(),
+            userName = "Alex",
+            history = emptyList(),
+            settings = settings(
+                instructEnabled = false,
+                storyStringPrefix = "<SYS>",
+                storyStringSuffix = "</SYS>",
+            ),
+        ) as TextPromptBuildResult.Ready
+        assertTrue(!disabledAffix.prompt.contains("<SYS>"))
+        assertTrue(!disabledAffix.prompt.contains("</SYS>"))
+
+        val withAuthorsNote = TextPromptBuilder.build(
+            character = character(),
+            userName = "Alex",
+            history = listOf(
+                message(0, "one", isUser = true),
+                message(1, "two", isUser = false),
+            ),
+            settings = settings(),
+            authorsNote = "Keep it tense.",
+        ) as TextPromptBuildResult.Ready
+        assertTrue(withAuthorsNote.prompt.contains("Keep it tense."))
+    }
+
+    @Test
+    fun authorsNoteIsInsertedAtInChatDepthForTextCompletion() {
+        val history = (1..6).map { message(it, "turn $it", isUser = it % 2 == 1) }
+        val result = TextPromptBuilder.build(
+            character = character().copy(messageExample = ""),
+            userName = "Alex",
+            history = history,
+            settings = settings(storyString = "{{description}}\n"),
+            authorsNote = "Keep it tense.",
+        ) as TextPromptBuildResult.Ready
+
+        val prompt = result.prompt
+        val beforeNote = prompt.indexOf("turn 2")
+        val note = prompt.indexOf("Keep it tense.")
+        val afterNote = prompt.indexOf("turn 3")
+        assertTrue(beforeNote >= 0)
+        assertTrue(note > beforeNote)
+        assertTrue(afterNote > note)
     }
 
     @Test
@@ -213,6 +247,26 @@ class TextPromptBuilderTest {
         )
     }
 
+    @Test
+    fun activationRegexDoesNotDisableTheCurrentlySelectedInstructPresetAndSamplerFieldsAreCarried() {
+        val result = TextPromptBuilder.build(
+            character = character(),
+            userName = "Alex",
+            history = listOf(message(0, "hello", isUser = true)),
+            settings = settings(
+                activationRegex = "qwen",
+                customModel = "llama-local",
+                samplerOrder = listOf(6, 0, 1),
+                samplerPriority = listOf("temperature", "top_p"),
+            ),
+        ) as TextPromptBuildResult.Ready
+
+        assertTrue(result.prompt.contains("Alex: hello"))
+        assertTrue(result.prompt.contains("<U Alex>"))
+        assertEquals(listOf(6, 0, 1), result.payload["sampler_order"])
+        assertEquals(listOf("temperature", "top_p"), result.payload["sampler_priority"])
+    }
+
     private fun settings(
         apiType: String = "ooba",
         lastOutputSequence: String = "<A {{name}}>",
@@ -222,6 +276,10 @@ class TextPromptBuilderTest {
         storyStringSuffix: String = "",
         maxContext: Int = 2048,
         amountGen: Int = 120,
+        activationRegex: String = "",
+        customModel: String = "model-a",
+        samplerOrder: List<Int>? = null,
+        samplerPriority: List<String>? = null,
         storyString: String = (
             "System={{system}}\n" +
                 "Desc={{description}}\n" +
@@ -236,17 +294,19 @@ class TextPromptBuilderTest {
             "main_api" to "textgenerationwebui",
             "username" to "Alex",
             "amount_gen" to amountGen,
-            "textgenerationwebui_settings" to mapOf(
+            "textgenerationwebui_settings" to (mapOf(
                 "type" to apiType,
                 "server_urls" to mapOf(apiType to "http://localhost:7860"),
-                "custom_model" to "model-a",
+                "custom_model" to customModel,
                 "ollama_model" to "ollama-a",
                 "max_context" to maxContext,
                 "temp" to 0.8,
                 "top_p" to 0.9,
                 "top_k" to 50,
                 "rep_pen" to 1.1,
-            ),
+            ) +
+                (samplerOrder?.let { mapOf("sampler_order" to it) } ?: emptyMap()) +
+                (samplerPriority?.let { mapOf("sampler_priority" to it) } ?: emptyMap())),
             "power_user" to mapOf(
                 "context" to mapOf(
                     "story_string" to storyString,
@@ -267,6 +327,7 @@ class TextPromptBuilderTest {
                     "last_output_sequence" to lastOutputSequence,
                     "input_suffix" to "</U>",
                     "output_suffix" to "</A>",
+                    "activation_regex" to activationRegex,
                     "names_behavior" to "always",
                     "sequences_as_stop_strings" to true,
                 ),

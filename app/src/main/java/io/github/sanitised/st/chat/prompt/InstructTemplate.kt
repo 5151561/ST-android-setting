@@ -21,6 +21,8 @@ data class InstructSettings(
     val enabled: Boolean = true,
     val wrap: Boolean = false,
     val macro: Boolean = false,
+    val storyStringPrefix: String = "",
+    val storyStringSuffix: String = "",
     val inputSequence: String = "",
     val inputSuffix: String = "",
     val outputSequence: String = "",
@@ -36,12 +38,16 @@ data class InstructSettings(
     val namesBehavior: NamesBehavior = NamesBehavior.FORCE,
     val systemSameAsUser: Boolean = false,
     val sequencesAsStopStrings: Boolean = true,
+    val activationRegex: String = "",
+    val skipExamples: Boolean = false,
 ) {
     companion object {
         fun fromMap(map: Map<String, Any?>): InstructSettings = InstructSettings(
             enabled = map.booleanValue("enabled", true),
             wrap = map.booleanValue("wrap", false),
             macro = map.booleanValue("macro", false),
+            storyStringPrefix = map.stringValue("story_string_prefix"),
+            storyStringSuffix = map.stringValue("story_string_suffix"),
             inputSequence = map.stringValue("input_sequence"),
             inputSuffix = map.stringValue("input_suffix"),
             outputSequence = map.stringValue("output_sequence"),
@@ -57,6 +63,8 @@ data class InstructSettings(
             namesBehavior = NamesBehavior.from(map["names_behavior"]),
             systemSameAsUser = map.booleanValue("system_same_as_user", false),
             sequencesAsStopStrings = map.booleanValue("sequences_as_stop_strings", true),
+            activationRegex = map.stringValue("activation_regex"),
+            skipExamples = map.booleanValue("skip_examples", false),
         )
     }
 }
