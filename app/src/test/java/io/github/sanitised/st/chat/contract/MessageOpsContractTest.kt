@@ -133,6 +133,26 @@ class MessageOpsContractTest {
     }
 
     @Test
+    fun authorsNoteWriteUsesUpstreamMetadataKeyLikeSt() {
+        // ST 作者注扩展读写 chat_metadata.note_prompt（authors-note.js metadata_keys.prompt）。
+        val chat = chat()
+        NativeChatJsonOps.setAuthorsNote(chat, "Keep the tone gentle.")
+        val metadata = chat.first().asStringKeyMap()["chat_metadata"].asStringKeyMap()
+        assertEquals("Keep the tone gentle.", metadata["note_prompt"])
+    }
+
+    @Test
+    fun cfgWriteUsesUpstreamMetadataKeysLikeSt() {
+        // ST CFG 扩展读写 cfg-scale.js metadataKeys 定义的三个 chat_metadata 字段。
+        val chat = chat()
+        NativeChatJsonOps.setCfg(chat, scale = 1.5, negativePrompt = "neg", positivePrompt = "pos")
+        val metadata = chat.first().asStringKeyMap()["chat_metadata"].asStringKeyMap()
+        assertEquals(1.5, metadata["cfg_guidance_scale"])
+        assertEquals("neg", metadata["cfg_negative_prompt"])
+        assertEquals("pos", metadata["cfg_positive_prompt"])
+    }
+
+    @Test
     fun reasoningEditAndDeleteKeepExtraShape() {
         val chat = chat()
         NativeChatJsonOps.setReasoning(chat, 1, "Revised chain of thought.")

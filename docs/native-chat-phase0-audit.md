@@ -40,20 +40,20 @@ Phase 0 的目标是先回答三个问题：
 | `generation.stop` | `BridgeChatEngine.stop()` / bridge route | `handleStop` | ST generation controller | 原生单聊 native route 可本地 stop；bridge route 仍依赖 |
 | `generation.regenerate` | `NativeChatScreen` / `NativeChatEngine.regenerate()` | `handleRegenerate` | ST swipe/regenerate 语义 | 未迁移 |
 | `generation.continue` | `NativeChatScreen` / `NativeChatEngine.continueGeneration()` | `handleContinue` | ST continue 语义 | 未迁移 |
-| `message.edit` | `NativeChatScreen` edit save | `handleEditMessage` | `chat[]`、`MESSAGE_EDITED`、DOM formatting、`saveChat` | 未迁移 |
-| `message.delete` | delete dialog | `handleDeleteMessage` | `deleteMessage`、itemized prompt cleanup、mesid 更新 | 未迁移 |
-| `message.hide/unhide` | action sheet | `handleHideMessage` / `handleUnhideMessage` | `scripts/chats.js` hide/unhide semantics | 未迁移 |
-| `message.swipePrevious/Next` | message swipe controls | `handleSwipe` | `swipe()`、swipe button refresh、save | 未迁移 |
-| `authorsNote.set` | 作者注 dialog | `handleSetAuthorsNote` | `chat_metadata` + `saveChat` | 未迁移 |
-| `cfg.set` | CFG dialog | `handleSetCfg` | `chat_metadata` + `saveChat` | 未迁移 |
+| `message.edit` | `NativeChatScreen` edit save | `handleEditMessage` | `chat[]`、`MESSAGE_EDITED`、DOM formatting、`saveChat` | Phase 1 已原生化（`NativeChatRuntime`；bridge 仅兜底且写前对齐） |
+| `message.delete` | delete dialog | `handleDeleteMessage` | `deleteMessage`、itemized prompt cleanup、mesid 更新 | Phase 1 已原生化（同上） |
+| `message.hide/unhide` | action sheet | `handleHideMessage` / `handleUnhideMessage` | `scripts/chats.js` hide/unhide semantics | Phase 1 已原生化（同上） |
+| `message.swipePrevious/Next` | message swipe controls | `handleSwipe` | `swipe()`、swipe button refresh、save | Phase 1 已原生化（同上；环绕语义差异见契约矩阵 ops.swipe.wrap-around） |
+| `authorsNote.set` | 作者注 dialog | `handleSetAuthorsNote` | `chat_metadata` + `saveChat` | Phase 1 已原生化（写上游字段 `note_prompt`，修正了 adapter 自造 `authors_note` 的错位） |
+| `cfg.set` | CFG dialog | `handleSetCfg` | `chat_metadata` + `saveChat` | Phase 1 已原生化（`cfg_guidance_scale` 等上游字段） |
 | `quickReply.list/execute` | quick reply strip | `handleListQuickReplies` / `handleExecuteQuickReply` | `globalThis.quickReplyApi` | 未迁移 |
 | `itemizedPrompt.get` | prompt analysis sheet | `handleGetItemizedPrompt` | `script.js.itemizedPrompts` / `scripts/itemized-prompts.js` | 未迁移 |
 | `dataBank.list` | Data Bank sheet | `handleListDataBank` | attachments extension / vectors Data Bank | 未迁移 |
-| `chat.createCheckpoint` | checkpoint dialog | `handleCreateCheckpoint` | `scripts/bookmarks.js.createNewBookmark` | 未迁移 |
-| `chat.createBranch` | action sheet | `handleCreateBranch` | `scripts/bookmarks.js.branchChat` | 未迁移 |
-| `chat.openCheckpoint` | branch/checkpoint sheet | `handleOpenCheckpoint` | ST open chat functions | 未迁移 |
+| `chat.createCheckpoint` | checkpoint dialog | `handleCreateCheckpoint` | `scripts/bookmarks.js.createNewBookmark` | 已有原生实现（不计入 Phase 1 验收；bridge 兜底保留） |
+| `chat.createBranch` | action sheet | `handleCreateBranch` | `scripts/bookmarks.js.branchChat` | 已有原生实现（同上） |
+| `chat.openCheckpoint` | branch/checkpoint sheet | `handleOpenCheckpoint` | ST open chat functions | 已有原生实现（`NativeChatRuntime.openChat`；同上） |
 | `runtime.getSnapshot` | initial sync / refresh | `buildSnapshot` | ST frontend globals | 仍是 WebView snapshot 来源 |
-| `chat.reload` | header reload + native generation success sync | `handleReload` | ST frontend reload current chat | 仍承担原生落盘后的同步职责 |
+| `chat.reload` | header reload + native generation success sync | `handleReload` | ST frontend reload current chat | 职责已收窄：仅用于 bridge 写操作前的强制对齐与手动重新同步；原生成功路径不再依赖 |
 
 ## 4. `public` 侧高风险语义
 

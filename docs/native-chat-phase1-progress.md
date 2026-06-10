@@ -5,7 +5,15 @@
 
 ## 1. 当前状态
 
-Phase 1 本轮完成到 v0.6.1 验收口径：单聊打开、编辑、删除、隐藏/取消隐藏、swipe 和原生生成成功路径都可以由原生侧完成，不要求隐藏 WebView runtime 作为事实源；仍走 Bridge 的 regenerate / continue / fallback send / fallback message ops 会在写操作前强制 reload 对齐，adapter 会等待 reload 完成后再执行后续写命令。单聊和群聊生成启动后都会释放命令队列，`generation.stop` 不会被长生成阻塞。checkpoint / branch 已有原生实现，但 v0.6.1 仍明确不计入 Phase 1 验收。
+**Phase 1 已完成（v0.7.1 口径，2026-06-10）。** 单聊下当前 chat 的读写、消息操作、保存与生成成功路径全部由原生侧完成，不要求隐藏 WebView runtime 作为事实源：
+
+- 打开、编辑、删除、隐藏/取消隐藏、移动、reasoning、附件/媒体数据操作、swipe 切换/创建/删除：`NativeChatRuntime` + `NativeChatJsonOps`。
+- header 元数据（作者注 / CFG）原生读写：写上游 ST 字段 `note_prompt` / `cfg_guidance_scale` 等；同步修正了 adapter 此前写自造字段 `authors_note` 导致 ST 作者注扩展读不到的错位（见切口 F）。
+- `NativeChatRepository.save` 统一承担写前 integrity 校验、固定前缀退避备份（保留最近 5 份）、同会话写串行化。
+- 仍走 Bridge 的写操作（regenerate / continue / fallback send / fallback ops）在写前强制 reload 对齐，adapter 命令队列等待 reload 完成后才放行；`generation.stop` 不被单聊/群聊长生成阻塞。
+- checkpoint / branch / 打开分支已有原生实现并接线，按 v0.5 约定不计入 Phase 1 验收（历史语义归 Phase 3）。
+
+不在 Phase 1 范围、留待后续阶段：regenerate/continue 原生化（Phase 3）、群聊 runtime 统一（Phase 4）、附件发送（Phase 5）、quick reply / Data Bank / itemized prompt（Phase 6 及调试能力）。
 
 ## 2. TDD 记录
 
@@ -230,6 +238,36 @@ Kotlin: Unresolved reference: filterVisibleCharacterChats
 
 本轮只补两个明确缺口，没有新增跨模块抽象；共享的是已经存在的备份命名规则。
 
+### 切口 F：作者注 / CFG header 元数据原生化（Phase 1 收尾）
+
+新增测试：
+
+```text
+NativeChatHeaderMetadataTest（6 个：JsonOps 写上游字段、snapshot note_prompt 优先与 legacy 回退、runtime 落盘并刷新 store）
+MessageOpsContractTest.authorsNoteWriteUsesUpstreamMetadataKeyLikeSt
+MessageOpsContractTest.cfgWriteUsesUpstreamMetadataKeysLikeSt
+chat_runtime_adapter_contract.test.mjs
+  authors note bridge commands use upstream note_prompt metadata key with legacy fallback
+```
+
+红：
+
+```text
+Kotlin: Unresolved reference: setAuthorsNote / setCfg
+JS: ctx.chatMetadata.note_prompt undefined（adapter 仍写 authors_note）
+```
+
+绿：
+
+1. `NativeChatJsonOps.setAuthorsNote/setCfg`：写 header `chat_metadata` 的上游 ST 字段——作者注用 `note_prompt`（authors-note.js `metadata_keys.prompt`），CFG 用 `cfg_guidance_scale`/`cfg_negative_prompt`/`cfg_positive_prompt`（cfg-scale.js `metadataKeys`）；写入时清理旧 adapter 自造的 `authors_note`。
+2. `NativeChatRuntime.setAuthorsNote/setCfg`：读-改-存并刷新 `ChatStore`（authorsNote/cfg 字段经 snapshot 回流）。
+3. snapshot 元数据映射与 adapter（`buildSnapshot`/`handleGetAuthorsNote`/`handleSetAuthorsNote`）改为 `note_prompt` 优先、`authors_note` 兼容回退；adapter 写入也迁移到 `note_prompt`。
+4. `NativeChatScreen` 作者注 / CFG 对话框走 `launchNativeAction`：原生 runtime 优先，bridge 兜底且写前对齐。
+
+> 背景：此前 adapter 读写的 `authors_note` 不是 ST 作者注扩展的真实字段（上游为 `note_prompt`），意味着用户在 App 里设置的作者注从未被 ST 生成管线读取。本切口让原生与 WebView 两侧都对齐上游字段，旧聊天中的 `authors_note` 仍可读取。
+
+重构：`no op`。
+
 ## 3. Phase 1 交付对照
 
 | Phase 1 交付 | 当前实现 | 证据 |
@@ -242,6 +280,7 @@ Kotlin: Unresolved reference: filterVisibleCharacterChats
 | SwipeManager | `NativeChatJsonOps` swipe previous/next/create/delete | `NativeChatJsonOpsTest` |
 | UI 优先原生 runtime | `NativeChatScreen.nativeChatRuntime` 单聊优先，Bridge 仅兜底 | `NativeChatUiRoutingTest`, `NativeChatRuntimeTest` |
 | 原生生成不 reload WebView | 成功保存后不调用 `bridge.reloadChat()`；保存前走 Repository 安全护栏 | `NativeChatEnginePhase1ContractTest` |
+| header 元数据（作者注/CFG） | `NativeChatJsonOps.setAuthorsNote/setCfg` + `NativeChatRuntime`，上游字段名，UI 原生优先 | `NativeChatHeaderMetadataTest`, `MessageOpsContractTest` |
 | checkpoint / branch | 已实现原生 JSONL 分支/存档点；v0.5 不计入 Phase 1 验收 | `NativeChatJsonOpsTest`, `NativeChatRuntimeTest` |
 
 ## 4. 验证命令
@@ -255,4 +294,4 @@ Kotlin: Unresolved reference: filterVisibleCharacterChats
 
 1. Phase 1 目标测试：`BUILD SUCCESSFUL`。
 2. 完整 Kotlin 单元测试：`./gradlew testDebugUnitTest`，`BUILD SUCCESSFUL`。
-3. JS adapter 合同测试：14/14 通过。
+3. JS adapter 合同测试：15/15 通过。

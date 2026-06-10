@@ -1,6 +1,6 @@
 # Chat 全面原生化与隐藏 WebView 退出计划
 
-版本：0.7
+版本：0.7.1
 日期：2026-06-10
 方向：从“原生 UI + 隐藏 WebView runtime 兜底”逐步迁移到“原生 Chat runtime 为主，WebView 仅作为临时兼容壳，最终默认关闭并移除”。
 
@@ -8,6 +8,7 @@
 > v0.6 变更：补上 v0.5 护栏的时序缺口：adapter 命令队列会等待 `chat.reload` 完成后再执行后续写命令，且不会阻塞 `generation.stop`；`NativeChatScreen` 的 Bridge fallback 写操作统一 reload 后再执行；原生备份改用固定前缀、聊天列表过滤备份，并默认保留最近 5 份。同步标出 Phase 0 未完成交付。
 > v0.6.1 变更：补上群聊 regenerate 的 stop 回归，群聊生成启动后也会释放命令队列；过往聊天页面复用备份名过滤，备份副本不再显示在用户列表里。
 > v0.7 变更：Phase 0 欠账清零——落地 `chat-contract-fixtures` 样本集、native vs ST 的 payload/stop strings/世界书激活对照测试、消息操作契约测试，以及机器裁决的 known-diff 矩阵（双向强制：未登记的差异失败、已收敛的登记项也失败）。§8 切口 4 完成。详见 `docs/native-chat-phase0-audit.md` §5.1/§5.2。
+> v0.7.1 变更：**Phase 1 完成**——补上最后一块 header 元数据：作者注 / CFG 原生读写（`NativeChatJsonOps.setAuthorsNote/setCfg` + `NativeChatRuntime`），UI 对话框原生优先、bridge 兜底对齐；并修正作者注字段错位（adapter 此前写自造 `authors_note`，上游 ST 实为 `note_prompt`，导致 ST 生成读不到作者注），原生与 adapter 两侧均改为 `note_prompt` 优先、legacy 兼容读取。
 
 ## 1. 目标
 
@@ -57,7 +58,7 @@
 1. 单聊附件发送、复杂 Handlebars / instruct disabled / story prefix-suffix 等未覆盖模板。
 2. 不受支持的 `main_api` / `api_type`，例如 NovelAI、Horde 等尚未接入的生成入口。
 3. `regenerate()`、`continueGeneration()` 当前仍主动走 Bridge，因为 native swipe/历史语义未补齐。
-4. 编辑、删除、隐藏、移动、checkpoint、branch、quick reply、swipe picker 等消息操作仍主要走 `ChatRuntimeBridge`。
+4. ~~编辑、删除、隐藏、移动、checkpoint、branch 等消息操作仍主要走 `ChatRuntimeBridge`~~（Phase 1 已原生化，含作者注/CFG；quick reply、swipe picker、itemized prompt、Data Bank 等扩展/调试能力仍走 Bridge）。
 5. reasoning/tool calls/logprobs、Regex、extension prompt injection、完整世界书、Data Bank、媒体、TTS、翻译、生图等语义尚未完整迁移。
 6. `NativeChatEngine` 原生生成成功落盘后已不再自动调用 `bridge.reloadChat()`；但所有仍走 Bridge 的写操作必须先显式对齐隐藏 runtime，说明 WebView 仍是过渡期兼容写者之一。
 
@@ -150,7 +151,7 @@ Optional WebView Compatibility Host
 
 目标：单聊下，当前 chat 的读写和消息操作不再依赖 WebView runtime。
 
-状态：Phase 1 本轮已按 v0.6.1 口径补齐，进度记录在 `docs/native-chat-phase1-progress.md`。单聊原生 runtime 已覆盖打开、编辑、删除、隐藏/取消隐藏、移动、reasoning、附件/媒体数据操作和 swipe；`NativeChatRepository.save` 负责写前 integrity 校验、固定前缀退避备份、备份列表过滤、最近 5 份修剪和同会话写串行化；过往聊天页面也会过滤这些备份。原生生成成功保存 JSONL 后不自动调用 `bridge.reloadChat()`。仍走 Bridge 的写操作会先 reload 对齐，adapter 会等待 reload 完成后再执行下一条写命令；单聊和群聊生成启动后都会释放队列，避免 `generation.stop` 被长生成阻塞。checkpoint/branch 已有原生实现，但不计入本阶段验收。群聊、完整 prompt 语义和扩展能力属于后续 Phase。
+状态：**Phase 1 已完成（v0.7.1，2026-06-10）**，进度与验收对照记录在 `docs/native-chat-phase1-progress.md`。作者注 / CFG 等 header 元数据已原生读写（上游字段 `note_prompt` / `cfg_*`）。单聊原生 runtime 已覆盖打开、编辑、删除、隐藏/取消隐藏、移动、reasoning、附件/媒体数据操作和 swipe；`NativeChatRepository.save` 负责写前 integrity 校验、固定前缀退避备份、备份列表过滤、最近 5 份修剪和同会话写串行化；过往聊天页面也会过滤这些备份。原生生成成功保存 JSONL 后不自动调用 `bridge.reloadChat()`。仍走 Bridge 的写操作会先 reload 对齐，adapter 会等待 reload 完成后再执行下一条写命令；单聊和群聊生成启动后都会释放队列，避免 `generation.stop` 被长生成阻塞。checkpoint/branch 已有原生实现，但不计入本阶段验收。群聊、完整 prompt 语义和扩展能力属于后续 Phase。
 
 > **重要前置（v0.5 新增）：第一刀引入了 split-brain 风险，必须先补护栏再继续扩面。**
 > 现状：`NativeChatEngine.send()` 成功后已不再 `reloadChat()`，但 `regenerate()` / `continueGeneration()` / 编辑 / 删除 / swipe 仍走 Bridge＝WebView 写盘。也就是说当前写者分裂为“原生（send）+ WebView（其余）”。去掉同步 reload 后，隐藏 WebView 的内存快照可能是旧的；此时执行一次 bridge 操作（如 regenerate）就可能用旧快照覆盖磁盘，**让原生刚发送的消息丢失**。`send()` 自身也是无锁 read-modify-write（`getChatJsonl` → append → `saveChatJsonl`），read 与 save 之间若 WebView 写入会被静默覆盖。

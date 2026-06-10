@@ -193,7 +193,7 @@
       messages: chat.map(function (msg, i) { return serializeMessage(msg, i); }).filter(Boolean),
       metadata: {
         integrity: chatMetadata.integrity || '',
-        authorsNote: chatMetadata.authors_note || '',
+        authorsNote: chatMetadata.note_prompt || chatMetadata.authors_note || '',
         cfgScale: Number(chatMetadata.cfg_guidance_scale) || 1.0,
         cfgNegativePrompt: chatMetadata.cfg_negative_prompt || '',
         cfgPositivePrompt: chatMetadata.cfg_positive_prompt || '',
@@ -1036,7 +1036,7 @@
     if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
     var metadata = ctx.chatMetadata || {};
     postResult(cmdId, {
-      text: metadata.authors_note || '',
+      text: metadata.note_prompt || metadata.authors_note || '',
       position: metadata.authors_note_position || 'after',
       depth: Number(metadata.authors_note_depth) || 4
     });
@@ -1047,7 +1047,9 @@
       var ctx = getContext();
       if (!ctx) { postError(cmdId, 'Runtime not ready'); return; }
       if (!ctx.chatMetadata) ctx.chatMetadata = {};
-      ctx.chatMetadata.authors_note = payload.text || '';
+      // ST 作者注扩展读 chat_metadata.note_prompt（authors-note.js metadata_keys.prompt)。
+      ctx.chatMetadata.note_prompt = payload.text || '';
+      delete ctx.chatMetadata.authors_note;
       await safeSave();
       postSnapshot();
       postResult(cmdId, {});

@@ -540,9 +540,11 @@ fun NativeChatScreen(
             currentText = store.authorsNote,
             onDismiss = { showAuthorsNoteDialog = false },
             onSave = { text ->
-                bridge.setAuthorsNote(text)
+                launchNativeAction(
+                    fallback = { bridge.setAuthorsNote(text) },
+                    successMessage = "作者注已保存",
+                ) { setAuthorsNote(text) }
                 showAuthorsNoteDialog = false
-                onShowMessage("作者注已保存")
             }
         )
     }
@@ -554,9 +556,11 @@ fun NativeChatScreen(
             positivePrompt = store.cfgPositivePrompt,
             onDismiss = { showCfgDialog = false },
             onSave = { scale, negativePrompt, positivePrompt ->
-                bridge.setCfg(scale, negativePrompt, positivePrompt)
+                launchNativeAction(
+                    fallback = { bridge.setCfg(scale, negativePrompt, positivePrompt) },
+                    successMessage = "CFG 引导已保存",
+                ) { setCfg(scale.toDouble(), negativePrompt, positivePrompt) }
                 showCfgDialog = false
-                onShowMessage("CFG 引导已保存")
             }
         )
     }

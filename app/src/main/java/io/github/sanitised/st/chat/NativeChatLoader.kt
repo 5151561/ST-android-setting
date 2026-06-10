@@ -66,7 +66,13 @@ private fun Map<*, *>?.toSnapshotMetadata(): JSONObject {
     val metadata = this ?: emptyMap<Any?, Any?>()
     return JSONObject()
         .put("integrity", metadata["integrity"].asString())
-        .put("authorsNote", metadata["authors_note"].asString(metadata["authorsNote"].asString()))
+        .put(
+            "authorsNote",
+            // 上游 ST 字段 note_prompt 优先；authors_note 为旧 adapter 自造字段，保留兼容读取。
+            metadata["note_prompt"].asString(
+                metadata["authors_note"].asString(metadata["authorsNote"].asString())
+            )
+        )
         .put("cfgScale", metadata["cfg_guidance_scale"].asDouble(metadata["cfgScale"].asDouble(1.0)))
         .put("cfgNegativePrompt", metadata["cfg_negative_prompt"].asString(metadata["cfgNegativePrompt"].asString()))
         .put("cfgPositivePrompt", metadata["cfg_positive_prompt"].asString(metadata["cfgPositivePrompt"].asString()))

@@ -113,6 +113,21 @@ object NativeChatJsonOps {
         return true
     }
 
+    /** 写 ST 上游作者注字段（authors-note.js metadata_keys.prompt），并清理旧 adapter 自造字段。 */
+    fun setAuthorsNote(chat: MutableList<Any?>, text: String) {
+        val metadata = mutableHeaderMetadata(chat)
+        metadata["note_prompt"] = text
+        metadata.remove("authors_note")
+    }
+
+    /** 写 ST 上游 CFG 字段（cfg-scale.js metadataKeys）。 */
+    fun setCfg(chat: MutableList<Any?>, scale: Double, negativePrompt: String, positivePrompt: String) {
+        val metadata = mutableHeaderMetadata(chat)
+        metadata["cfg_guidance_scale"] = scale
+        metadata["cfg_negative_prompt"] = negativePrompt
+        metadata["cfg_positive_prompt"] = positivePrompt
+    }
+
     fun createCheckpoint(
         chat: MutableList<Any?>,
         currentChatName: String,
@@ -176,6 +191,17 @@ object NativeChatJsonOps {
 
     private fun Map<String, Any?>.isChatHeader(): Boolean =
         containsKey("chat_metadata") || containsKey("user_name") || containsKey("character_name") || containsKey("create_date")
+
+    private fun mutableHeaderMetadata(chat: MutableList<Any?>): MutableMap<String, Any?> {
+        if (headerOffset(chat) == 0) {
+            chat.add(0, linkedMapOf<String, Any?>("chat_metadata" to linkedMapOf<String, Any?>()))
+        }
+        val header = chat.first().asStringKeyMap().toMutableLinkedMap()
+        chat[0] = header
+        val metadata = header["chat_metadata"].asStringKeyMap().toMutableLinkedMap()
+        header["chat_metadata"] = metadata
+        return metadata
+    }
 
     private fun mutableExtra(row: MutableMap<String, Any?>): MutableMap<String, Any?> {
         val extra = row["extra"].asStringKeyMap().toMutableLinkedMap()

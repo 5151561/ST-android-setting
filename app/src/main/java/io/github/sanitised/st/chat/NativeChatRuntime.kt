@@ -198,6 +198,12 @@ class NativeChatRuntime(
     suspend fun setMediaDisplay(messageId: Int, display: NativeMediaDisplay) =
         mutateCurrent { NativeChatJsonOps.setMediaDisplay(it, messageId, display) }
 
+    suspend fun setAuthorsNote(text: String) =
+        mutateCurrent { NativeChatJsonOps.setAuthorsNote(it, text) }
+
+    suspend fun setCfg(scale: Double, negativePrompt: String, positivePrompt: String) =
+        mutateCurrent { NativeChatJsonOps.setCfg(it, scale, negativePrompt, positivePrompt) }
+
     suspend fun swipePrevious(messageId: Int): Boolean =
         mutateCurrent { NativeChatJsonOps.switchSwipe(it, messageId, delta = -1) }
 

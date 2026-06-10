@@ -292,3 +292,54 @@ test('group regenerate stop is not blocked behind a long running queued group ge
 
   assert.deepEqual(events, ['group:regenerate', 'stop']);
 });
+
+test('authors note bridge commands use upstream note_prompt metadata key with legacy fallback', async () => {
+  const results = [];
+  const ctx = {
+    onlineStatus: 'connected',
+    mainApi: 'openai',
+    chat: [],
+    characters: [],
+    groups: [],
+    chatMetadata: { authors_note: 'legacy text' },
+    eventSource: { on: () => {} },
+    eventTypes: { APP_READY: 'APP_READY' },
+    saveChat: async () => {},
+  };
+  const sandbox = {
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    crypto: { randomUUID: () => 'test-id' },
+    document: {
+      readyState: 'loading',
+      body: { dataset: { generating: 'false' } },
+      addEventListener: () => {},
+    },
+    SillyTavern: { getContext: () => ctx },
+    STAndroid: { postChatEvent: (json) => results.push(JSON.parse(json)) },
+  };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(adapter, sandbox);
+
+  // 读：仅有 legacy authors_note 时回退读取。
+  sandbox.STAndroidChatRuntime.dispatch({ id: 'an-get-legacy', name: 'authorsNote.get' });
+  await new Promise((resolve) => setImmediate(resolve));
+  const legacyResult = results.find((r) => r.id === 'an-get-legacy' && r.kind === 'result');
+  assert.equal(legacyResult.payload.text, 'legacy text');
+
+  // 写：必须写 ST 上游字段 note_prompt（authors-note.js metadata_keys.prompt），并清掉自造的 legacy 字段。
+  sandbox.STAndroidChatRuntime.dispatch({ id: 'an-set', name: 'authorsNote.set', payload: { text: 'fresh note' } });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(ctx.chatMetadata.note_prompt, 'fresh note');
+  assert.equal(Object.prototype.hasOwnProperty.call(ctx.chatMetadata, 'authors_note'), false);
+
+  // 读：note_prompt 优先。
+  sandbox.STAndroidChatRuntime.dispatch({ id: 'an-get', name: 'authorsNote.get' });
+  await new Promise((resolve) => setImmediate(resolve));
+  const upstreamResult = results.find((r) => r.id === 'an-get' && r.kind === 'result');
+  assert.equal(upstreamResult.payload.text, 'fresh note');
+});
