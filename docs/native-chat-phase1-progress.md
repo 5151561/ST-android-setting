@@ -1,11 +1,11 @@
 # Chat 原生化 Phase 1 进度
 
-日期：2026-06-03
+日期：2026-06-10
 分支：`codex/native-chat-phase1`
 
 ## 1. 当前状态
 
-Phase 1 本轮完成到 v0.5 验收口径：单聊打开、编辑、删除、隐藏/取消隐藏、swipe 和原生生成成功路径都可以由原生侧完成，不要求隐藏 WebView runtime 作为事实源；仍走 Bridge 的 regenerate / continue / fallback send 会在写操作前强制 reload 对齐。checkpoint / branch 已有原生实现，但 v0.5 明确不计入 Phase 1 验收。
+Phase 1 本轮完成到 v0.6.1 验收口径：单聊打开、编辑、删除、隐藏/取消隐藏、swipe 和原生生成成功路径都可以由原生侧完成，不要求隐藏 WebView runtime 作为事实源；仍走 Bridge 的 regenerate / continue / fallback send / fallback message ops 会在写操作前强制 reload 对齐，adapter 会等待 reload 完成后再执行后续写命令。单聊和群聊生成启动后都会释放命令队列，`generation.stop` 不会被长生成阻塞。checkpoint / branch 已有原生实现，但 v0.6.1 仍明确不计入 Phase 1 验收。
 
 ## 2. TDD 记录
 
@@ -169,14 +169,75 @@ Unresolved reference: NativeChatUiRouting
 
 旧的源码子串断言测试已删除，改为纯逻辑行为测试。
 
+### 切口 E：审计反馈修复 - 对齐完成顺序、fallback 对齐、备份修剪
+
+新增测试：
+
+```text
+chat_runtime_adapter_contract.test.mjs
+  queued bridge writes wait for chat reload to finish before dispatching the next command
+  generation stop is not blocked behind a long running queued generation
+NativeBridgeAlignmentTest.bridgeFallbackWriteReloadsRuntimeBeforeWriting
+NativeChatRepositorySafetyTest.listChatNamesSkipsNativeBackupFiles
+NativeChatRepositorySafetyTest.savePrunesOldNativeBackupsForTheSameChat
+NativeChatRepositorySafetyTest.backupPruningUsesTimestampAcrossLegacyAndPrefixedBackupNames
+```
+
+红：
+
+```text
+JS: expected ['reload:start'] but was ['reload:start', 'generate:regenerate']
+JS: expected ['generate:regenerate', 'stop'] but was ['generate:regenerate']
+Kotlin: Unresolved reference: runAlignedBridgeWrite
+Kotlin: listChatNamesSkipsNativeBackupFiles / savePrunesOldNativeBackupsForTheSameChat assertion failed
+```
+
+绿：
+
+1. `chat_runtime_adapter.js` 增加命令队列；`chat.reload`、message ops、swipe、send 等 handler 返回真实异步完成点，确保 reload 完成后才执行后续写命令。
+2. `generation.regenerate` / `generation.continue` 只占用队列到生成启动完成，避免长生成阻塞 `generation.stop`。
+3. `NativeChatScreen.launchNativeAction` 的 Bridge fallback 统一通过 `runAlignedBridgeWrite`，在群聊、target 不匹配或实验开关关闭时也会先 `reloadChat()`。
+4. `NativeChatRepository` 备份改为 `__native-backup__<chat>__<timestamp>` 前缀；`listChatNames` 过滤新旧备份名；保存后按时间戳排序新旧备份格式，默认保留最近 5 份同聊天备份并 best-effort 删除更早备份。
+
+重构：`no op`。
+
+本切口是护栏补洞和数据安全收口，没有发现值得单独抽象的新复杂度。
+
+### 切口 F：复核反馈修复 - 群聊 stop 队列与过往聊天备份过滤
+
+新增测试：
+
+```text
+chat_runtime_adapter_contract.test.mjs
+  group regenerate stop is not blocked behind a long running queued group generation
+PrototypePastChatsScreenTest.filtersNativeBackupsFromVisiblePastChats
+```
+
+红：
+
+```text
+JS: expected ['group:regenerate', 'stop'] but was ['group:regenerate']
+Kotlin: Unresolved reference: filterVisibleCharacterChats
+```
+
+绿：
+
+1. `handleRegenerate` 的群聊分支改为和单聊分支一致：`regenerateGroup()` 启动后用 Promise 回调上报结果，不再 `await` 整轮群聊生成，因此不会占住命令队列。
+2. `NativeChatRuntime` 的备份名判断从 private 放宽为 module-internal，供 UI 复用。
+3. `PrototypePastChatsScreen.refreshList` 通过 `filterVisibleCharacterChats` 过滤新旧原生备份名，避免备份副本出现在用户可见的历史对话列表。
+
+重构：`no op`。
+
+本轮只补两个明确缺口，没有新增跨模块抽象；共享的是已经存在的备份命名规则。
+
 ## 3. Phase 1 交付对照
 
 | Phase 1 交付 | 当前实现 | 证据 |
 |---|---|---|
 | 原生 ChatSession / Repository 边界 | `NativeChatRuntime` + `NativeChatRepository` + `NativeChatDataSource` | `NativeChatRuntimeTest` |
 | `/api/chats` 读写封装 | `TavernNativeChatDataSource` 包装 `TavernCoreApi` get/save/rename/delete/import/export | `NativeChatRuntime.kt` |
-| 单一写者护栏 | 仍走 Bridge 的写操作前 `reloadChat()` 对齐 | `NativeChatEnginePhase1ContractTest` |
-| 写前 integrity + 退避备份 + 串行化 | `NativeChatRepository.save` 统一负责；生成路径也复用 Repository | `NativeChatRepositorySafetyTest`, `NativeChatEnginePhase1ContractTest` |
+| 单一写者护栏 | 仍走 Bridge 的写操作前 `reloadChat()` 对齐；adapter 等 reload 完成后再处理后续写命令；fallback message ops 也对齐；单聊/群聊 stop 不被长生成阻塞 | `NativeChatEnginePhase1ContractTest`, `NativeBridgeAlignmentTest`, `chat_runtime_adapter_contract.test.mjs` |
+| 写前 integrity + 退避备份 + 串行化 | `NativeChatRepository.save` 统一负责；生成路径也复用 Repository；备份固定前缀、Repository 命名和过往聊天 UI 过滤、默认保留最近 5 份 | `NativeChatRepositorySafetyTest`, `NativeChatEnginePhase1ContractTest`, `PrototypePastChatsScreenTest` |
 | MessageOps | `NativeChatJsonOps` 编辑、删除、隐藏、移动、reasoning、附件/媒体 | `NativeChatJsonOpsTest` |
 | SwipeManager | `NativeChatJsonOps` swipe previous/next/create/delete | `NativeChatJsonOpsTest` |
 | UI 优先原生 runtime | `NativeChatScreen.nativeChatRuntime` 单聊优先，Bridge 仅兜底 | `NativeChatUiRoutingTest`, `NativeChatRuntimeTest` |
@@ -186,12 +247,12 @@ Unresolved reference: NativeChatUiRouting
 ## 4. 验证命令
 
 ```bash
-./gradlew testDebugUnitTest --tests "io.github.sanitised.st.chat.NativeChatJsonOpsTest" --tests "io.github.sanitised.st.chat.NativeChatRuntimeTest" --tests "io.github.sanitised.st.chat.NativeChatRepositorySafetyTest" --tests "io.github.sanitised.st.chat.NativeChatUiRoutingTest" --tests "io.github.sanitised.st.chat.engine.NativeChatEnginePhase1ContractTest"
-node --test app/src/test/js/chat_runtime_adapter_contract.test.mjs
+./gradlew testDebugUnitTest --tests "io.github.sanitised.st.chat.NativeChatJsonOpsTest" --tests "io.github.sanitised.st.chat.NativeChatRuntimeTest" --tests "io.github.sanitised.st.chat.NativeChatRepositorySafetyTest" --tests "io.github.sanitised.st.chat.NativeChatUiRoutingTest" --tests "io.github.sanitised.st.chat.engine.NativeChatEnginePhase1ContractTest" --tests "io.github.sanitised.st.ui.prototype.PrototypePastChatsScreenTest"
+/Users/changlepan/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test app/src/test/js/chat_runtime_adapter_contract.test.mjs
 ```
 
 结果：
 
 1. Phase 1 目标测试：`BUILD SUCCESSFUL`。
 2. 完整 Kotlin 单元测试：`./gradlew testDebugUnitTest`，`BUILD SUCCESSFUL`。
-3. JS adapter 合同测试：11/11 通过。
+3. JS adapter 合同测试：14/14 通过。

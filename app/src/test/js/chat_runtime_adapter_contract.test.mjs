@@ -1,10 +1,24 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
 
 const adapter = readFileSync('app/src/main/assets/chat_runtime_adapter.js', 'utf8');
 const bridge = readFileSync('app/src/main/java/io/github/sanitised/st/chat/ChatRuntimeBridge.kt', 'utf8');
 const migrationDoc = readFileSync('docs/chat-interface-migration.md', 'utf8');
+
+function adapterWithModuleStub() {
+  return adapter.replace(
+    /function importModule\(path\) \{\n[\s\S]*?\n  \}/,
+    `function importModule(path) {
+    var stubs = window.__moduleStubs || {};
+    if (stubs[path]) return Promise.resolve(stubs[path]);
+    var origin = (window.location && window.location.origin) || '';
+    var clean = String(path).replace(/^\\.?\\/+/,'');
+    return import(origin + '/' + clean);
+  }`
+  );
+}
 
 function extractBlock(source, startPattern) {
   const start = source.search(startPattern);
@@ -25,7 +39,7 @@ test('ST MESSAGE_DELETED listener does not forward chat length as deleted id', (
 test('save retry dispatches a runtime save command instead of reloading chat', () => {
   const retrySave = bridge.match(/fun retrySave\(\) \{[\s\S]*?\n    \}/)?.[0] ?? '';
 
-  assert.match(adapter, /case 'runtime\.save':\s*\n\s*handleSave\(cmdId\);/);
+  assert.match(adapter, /case 'runtime\.save':\s*\n\s*(?:return\s+)?handleSave\(cmdId\);/);
   assert.match(adapter, /async function handleSave\(cmdId\)/);
   assert.match(retrySave, /name = "runtime\.save"|BridgeMessage\(kind = "command", name = "runtime\.save"/);
   assert.doesNotMatch(retrySave, /chat\.reload/);
@@ -49,9 +63,9 @@ test('chat send contract carries pending attachments into the adapter', () => {
 });
 
 test('adapter exposes cfg and world info bridge commands', () => {
-  assert.match(adapter, /case 'cfg\.get':\s*\n\s*handleGetCfg\(cmdId\);/);
-  assert.match(adapter, /case 'cfg\.set':\s*\n\s*handleSetCfg\(payload, cmdId\);/);
-  assert.match(adapter, /case 'worldInfo\.get':\s*\n\s*handleGetWorldInfo\(cmdId\);/);
+  assert.match(adapter, /case 'cfg\.get':\s*\n\s*(?:return\s+)?handleGetCfg\(cmdId\);/);
+  assert.match(adapter, /case 'cfg\.set':\s*\n\s*(?:return\s+)?handleSetCfg\(payload, cmdId\);/);
+  assert.match(adapter, /case 'worldInfo\.get':\s*\n\s*(?:return\s+)?handleGetWorldInfo\(cmdId\);/);
   assert.match(adapter, /cfg_guidance_scale/);
   assert.match(adapter, /cfg_negative_prompt/);
   assert.match(adapter, /cfg_positive_prompt/);
@@ -119,4 +133,162 @@ test('checkpoint command passes blank forceName to use ST auto naming without hi
   assert.match(handler, /var name = payload\.name != null \? String\(payload\.name\) : '';/);
   assert.doesNotMatch(handler, /payload\.name \? String\(payload\.name\) : null/);
   assert.match(handler, /createNewBookmark\(messageId, \{ forceName: name \}\)/);
+});
+
+test('queued bridge writes wait for chat reload to finish before dispatching the next command', async () => {
+  const events = [];
+  let finishReload;
+  const ctx = {
+    onlineStatus: 'connected',
+    mainApi: 'openai',
+    chat: [],
+    characters: [],
+    groups: [],
+    chatMetadata: {},
+    eventSource: { on: () => {} },
+    eventTypes: { APP_READY: 'APP_READY' },
+    reloadCurrentChat: () => {
+      events.push('reload:start');
+      return new Promise((resolve) => {
+        finishReload = () => {
+          events.push('reload:finish');
+          resolve();
+        };
+      });
+    },
+    generate: (mode) => {
+      events.push(`generate:${mode}`);
+      sandbox.document.body.dataset.generating = 'false';
+      return Promise.resolve();
+    },
+  };
+  const sandbox = {
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    crypto: { randomUUID: () => 'test-id' },
+    document: {
+      readyState: 'loading',
+      body: { dataset: { generating: 'true' } },
+      addEventListener: () => {},
+    },
+    SillyTavern: { getContext: () => ctx },
+    STAndroid: { postChatEvent: () => {} },
+  };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(adapter, sandbox);
+
+  sandbox.STAndroidChatRuntime.dispatch({ id: 'reload', name: 'chat.reload' });
+  sandbox.STAndroidChatRuntime.dispatch({ id: 'regen', name: 'generation.regenerate' });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(events, ['reload:start']);
+  finishReload();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(events, ['reload:start', 'reload:finish', 'generate:regenerate']);
+});
+
+test('generation stop is not blocked behind a long running queued generation', async () => {
+  const events = [];
+  const ctx = {
+    onlineStatus: 'connected',
+    mainApi: 'openai',
+    chat: [],
+    characters: [],
+    groups: [],
+    chatMetadata: {},
+    eventSource: { on: () => {} },
+    eventTypes: { APP_READY: 'APP_READY' },
+    generate: (mode) => {
+      events.push(`generate:${mode}`);
+      return new Promise(() => {});
+    },
+    stopGeneration: () => {
+      events.push('stop');
+      return true;
+    },
+  };
+  const sandbox = {
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    crypto: { randomUUID: () => 'test-id' },
+    document: {
+      readyState: 'loading',
+      body: { dataset: { generating: 'true' } },
+      addEventListener: () => {},
+    },
+    SillyTavern: { getContext: () => ctx },
+    STAndroid: { postChatEvent: () => {} },
+  };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(adapter, sandbox);
+
+  sandbox.STAndroidChatRuntime.dispatch({ id: 'regen', name: 'generation.regenerate' });
+  await new Promise((resolve) => setImmediate(resolve));
+  sandbox.document.body.dataset.generating = 'false';
+  sandbox.STAndroidChatRuntime.dispatch({ id: 'stop', name: 'generation.stop' });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(events, ['generate:regenerate', 'stop']);
+});
+
+test('group regenerate stop is not blocked behind a long running queued group generation', async () => {
+  const events = [];
+  const ctx = {
+    onlineStatus: 'connected',
+    mainApi: 'openai',
+    groupId: 'group-1',
+    chat: [],
+    characters: [],
+    groups: [],
+    chatMetadata: {},
+    eventSource: { on: () => {} },
+    eventTypes: { APP_READY: 'APP_READY' },
+    stopGeneration: () => {
+      events.push('stop');
+      return true;
+    },
+  };
+  const sandbox = {
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    crypto: { randomUUID: () => 'test-id' },
+    document: {
+      readyState: 'loading',
+      body: { dataset: { generating: 'true' } },
+      addEventListener: () => {},
+    },
+    SillyTavern: { getContext: () => ctx },
+    STAndroid: { postChatEvent: () => {} },
+    __moduleStubs: {
+      'scripts/group-chats.js': {
+        regenerateGroup: () => {
+          events.push('group:regenerate');
+          return new Promise(() => {});
+        },
+      },
+    },
+  };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(adapterWithModuleStub(), sandbox);
+
+  sandbox.STAndroidChatRuntime.dispatch({ id: 'regen', name: 'generation.regenerate' });
+  await new Promise((resolve) => setImmediate(resolve));
+  sandbox.document.body.dataset.generating = 'false';
+  sandbox.STAndroidChatRuntime.dispatch({ id: 'stop', name: 'generation.stop' });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(events, ['group:regenerate', 'stop']);
 });

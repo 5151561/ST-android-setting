@@ -36,7 +36,7 @@ class NativeChatEnginePhase1ContractTest {
 
         assertEquals(emptyList<String>(), bridge.events)
         assertEquals("main.jsonl", api.savedChatFiles().last())
-        assertTrue(api.savedChatFiles().first().startsWith("main.native-backup-"))
+        assertTrue(api.savedChatFiles().first().startsWith("__native-backup__main__"))
         assertEquals(listOf("hello", "native reply"), api.savedMessages())
         assertEquals(listOf("hello", "native reply"), store.messages.map { it.mes })
     }

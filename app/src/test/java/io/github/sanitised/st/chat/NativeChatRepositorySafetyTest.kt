@@ -76,11 +76,68 @@ class NativeChatRepositorySafetyTest {
         assertEquals(1, source.maxConcurrentSaves)
     }
 
+    @Test
+    fun listChatNamesSkipsNativeBackupFiles() = runBlocking {
+        val source = SafetyDataSource()
+        source.addChat("main.native-backup-20260610-100000-000")
+        source.addChat("__native-backup__main__20260610-100001-000")
+        val repository = NativeChatRepository(dataSourceProvider = { source })
+
+        assertEquals(setOf("main"), repository.listChatNames("Alice.png"))
+    }
+
+    @Test
+    fun savePrunesOldNativeBackupsForTheSameChat() = runBlocking {
+        val source = SafetyDataSource()
+        listOf(
+            "main.native-backup-20260610-100000-000",
+            "main.native-backup-20260610-100001-000",
+            "main.native-backup-20260610-100002-000",
+            "main.native-backup-20260610-100003-000",
+            "main.native-backup-20260610-100004-000",
+        ).forEach(source::addChat)
+        val repository = NativeChatRepository(
+            dataSourceProvider = { source },
+            backupNameProvider = { _, _ -> "main.native-backup-20260610-100005-000" },
+        )
+        val chat = source.getChatJsonl("Alice.png", "main.jsonl").apply {
+            add(message("Alex", "hello", isUser = true))
+        }
+
+        repository.save("Alice.png", "main.jsonl", chat)
+
+        assertEquals(listOf("main.native-backup-20260610-100000-000.jsonl"), source.deletedChats)
+    }
+
+    @Test
+    fun backupPruningUsesTimestampAcrossLegacyAndPrefixedBackupNames() = runBlocking {
+        val source = SafetyDataSource()
+        listOf(
+            "main.native-backup-20260610-100000-000",
+            "main.native-backup-20260610-100001-000",
+            "main.native-backup-20260610-100002-000",
+            "main.native-backup-20260610-100003-000",
+            "main.native-backup-20260610-100004-000",
+        ).forEach(source::addChat)
+        val repository = NativeChatRepository(
+            dataSourceProvider = { source },
+            backupNameProvider = { _, _ -> "__native-backup__main__20260610-100005-000" },
+        )
+        val chat = source.getChatJsonl("Alice.png", "main.jsonl").apply {
+            add(message("Alex", "hello", isUser = true))
+        }
+
+        repository.save("Alice.png", "main.jsonl", chat)
+
+        assertEquals(listOf("main.native-backup-20260610-100000-000.jsonl"), source.deletedChats)
+    }
+
     private class SafetyDataSource(
         private val saveDelayMs: Long = 0,
     ) : NativeChatDataSource {
         private val chats = linkedMapOf("main" to initialChat())
         val saveCalls = mutableListOf<SaveCall>()
+        val deletedChats = mutableListOf<String>()
         private var activeSaves = 0
         var maxConcurrentSaves = 0
             private set
@@ -106,8 +163,17 @@ class NativeChatRepositorySafetyTest {
         override suspend fun listCharacterChats(avatar: String): List<CharacterChatSummary> =
             chats.keys.map { CharacterChatSummary(id = it, fileName = "$it.jsonl") }
 
+        override suspend fun deleteCharacterChat(avatar: String, chatFile: String) {
+            deletedChats += chatFile
+            chats.remove(chatFile.removeSuffix(".jsonl"))
+        }
+
         fun saved(chatFile: String): MutableList<Any?> =
             chats[chatFile.removeSuffix(".jsonl")] ?: error("No saved chat $chatFile")
+
+        fun addChat(chatFile: String) {
+            chats[chatFile.removeSuffix(".jsonl")] = initialChat()
+        }
 
         fun replaceDiskIntegrity(integrity: String) {
             chats["main"] = chats["main"]!!.deepCopyChat().apply {

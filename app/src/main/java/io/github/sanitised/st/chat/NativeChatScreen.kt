@@ -270,7 +270,7 @@ fun NativeChatScreen(
     ) {
         val runtime = nativeSingleChatRuntime
         if (runtime == null) {
-            fallback()
+            runAlignedBridgeWrite(reload = bridge::reloadChat, write = fallback)
             if (successMessage.isNotBlank()) onShowMessage(successMessage)
             return
         }

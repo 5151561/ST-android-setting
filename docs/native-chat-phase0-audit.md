@@ -3,6 +3,8 @@
 日期：2026-06-03
 范围：只做 Phase 0 检查和基线冻结；不做 Phase 1 迁移，不改生成/消息操作实现。
 
+> 2026-06-10 复核：本文件完成的是 Phase 0 交付 1、2、6。交付 3（`chat-contract-fixtures` 样本集）、交付 4（native vs ST payload 对照测试）、交付 5（消息操作 vs ST 契约测试）尚未落地，仍是进入 Phase 2 前的欠账。
+
 ## 1. 检查目标
 
 Phase 0 的目标是先回答三个问题：
@@ -26,7 +28,7 @@ Phase 0 的目标是先回答三个问题：
 | NativeChatScreen 群聊发送 | Bridge fallback | `NativeChatEngine.send()` 对 `store.mode == "group"` 走 Bridge | 该入口仍依赖 WebView |
 | 独立群聊页面 AI 回复 | `NativeGroupGenerator` | `GroupChatScreen` 直接创建 generator | 群聊 REST + 原生生成 MVP 已存在，但尚未统一到单聊 runtime |
 
-重要发现：单聊原生生成成功后仍调用 `bridge.reloadChat()`，让隐藏 WebView runtime 从磁盘重新对齐。这说明当前原生生成已经能写事实数据，但 WebView 仍承担“历史运行时同步器”的职责。
+历史重要发现：Phase 0 时单聊原生生成成功后仍调用 `bridge.reloadChat()`，让隐藏 WebView runtime 从磁盘重新对齐。这说明当时原生生成已经能写事实数据，但 WebView 仍承担“历史运行时同步器”的职责。该点已在 Phase 1 中改为“原生成功路径不自动 reload；仍走 Bridge 的写操作执行前显式 reload 并等待完成”。
 
 ## 3. WebView / Bridge 依赖地图
 
@@ -92,13 +94,21 @@ node --test app/src/test/js/chat_runtime_adapter_contract.test.mjs
 验证结果：
 
 1. Gradle 目标测试：`BUILD SUCCESSFUL`。
-2. JS adapter 合同测试：11 个测试全部通过。
+2. JS adapter 合同测试：Phase 0 记录时为 11 个测试全部通过；2026-06-10 复核后为 13 个测试全部通过。
+
+## 5.1 Phase 0 未完成交付
+
+| 欠账 | 当前状态 | 影响 |
+|---|---|---|
+| `chat-contract-fixtures` 样本集 | `app/src/test/resources` 尚未建立角色卡、persona、世界书、设置、聊天 JSONL、群聊、附件、扩展设置组合夹具 | Phase 2 无法直接做逐项 diff |
+| native vs ST payload 对照测试 | 尚未有同一输入下比较 final generate payload、stop strings、世界书激活和保存结果的测试 | PromptAssembly 迁移缺少验收基础 |
+| 消息操作 vs ST 契约测试 | 尚未对编辑、删除、隐藏、swipe、checkpoint、branch、reasoning、附件建立 ST 对照产物 | 后续迁移只能靠原生内部测试，不能证明和 ST 一致 |
 
 ## 6. Phase 0 结论
 
 1. “原生生成（实验）”已有真实可用基线：单聊 Chat Completion、首批 Text Completion、JSONL 读写、流式解析、保守世界书扫描和群聊生成 MVP。
 2. 隐藏 WebView 仍未退出运行时角色：消息操作、regenerate/continue、附件、扩展、itemized prompt、Data Bank、checkpoint/branch、完整 prompt 语义都还依赖 Bridge。
-3. 第一条必须在 Phase 1 处理的迁移点很明确：单聊原生生成成功后不应再调用 `bridge.reloadChat()` 才能保持 UI/JSONL 一致。
+3. 第一条必须在 Phase 1 处理的迁移点很明确：单聊原生生成成功后不应再调用 `bridge.reloadChat()` 才能保持 UI/JSONL 一致；仍走 Bridge 的写命令必须在执行前完成显式对齐。
 4. Phase 1 开始前，不应改 UI 行为；先补“原生 session 成为事实源”的失败测试，再迁移。
 
 ## 7. 下一步边界

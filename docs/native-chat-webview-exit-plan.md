@@ -1,10 +1,12 @@
 # Chat 全面原生化与隐藏 WebView 退出计划
 
-版本：0.5
-日期：2026-06-03
+版本：0.6.1
+日期：2026-06-10
 方向：从“原生 UI + 隐藏 WebView runtime 兜底”逐步迁移到“原生 Chat runtime 为主，WebView 仅作为临时兼容壳，最终默认关闭并移除”。
 
 > v0.5 变更：补上 Phase 1 的“单一写者”安全护栏与并发/integrity 保护，修正 Phase 1 验收范围与阶段优先级矛盾，明确群聊双入口写者归属，纠正测试基础设施与契约测试方法（见各阶段及 §5、§9）。
+> v0.6 变更：补上 v0.5 护栏的时序缺口：adapter 命令队列会等待 `chat.reload` 完成后再执行后续写命令，且不会阻塞 `generation.stop`；`NativeChatScreen` 的 Bridge fallback 写操作统一 reload 后再执行；原生备份改用固定前缀、聊天列表过滤备份，并默认保留最近 5 份。同步标出 Phase 0 未完成交付。
+> v0.6.1 变更：补上群聊 regenerate 的 stop 回归，群聊生成启动后也会释放命令队列；过往聊天页面复用备份名过滤，备份副本不再显示在用户列表里。
 
 ## 1. 目标
 
@@ -56,7 +58,7 @@
 3. `regenerate()`、`continueGeneration()` 当前仍主动走 Bridge，因为 native swipe/历史语义未补齐。
 4. 编辑、删除、隐藏、移动、checkpoint、branch、quick reply、swipe picker 等消息操作仍主要走 `ChatRuntimeBridge`。
 5. reasoning/tool calls/logprobs、Regex、extension prompt injection、完整世界书、Data Bank、媒体、TTS、翻译、生图等语义尚未完整迁移。
-6. `NativeChatEngine` 落盘后仍调用 `bridge.reloadChat()` 让隐藏 runtime 对齐；这说明 WebView 还在承担“历史运行时同步器”的角色。
+6. `NativeChatEngine` 原生生成成功落盘后已不再自动调用 `bridge.reloadChat()`；但所有仍走 Bridge 的写操作必须先显式对齐隐藏 runtime，说明 WebView 仍是过渡期兼容写者之一。
 
 ## 2. 总体架构
 
@@ -126,7 +128,7 @@ Optional WebView Compatibility Host
 
 目标：先把当前已经能原生跑的路径固定成测试、能力矩阵和回退原因，避免后续扩展时把已打通的实验路径弄回 WebView。
 
-状态：Phase 0 基线检查已记录在 `docs/native-chat-phase0-audit.md`。本阶段只做检查和冻结，不做 Phase 1 迁移。
+状态：Phase 0 基线检查已记录在 `docs/native-chat-phase0-audit.md`。已完成交付 1、2、6；交付 3、4、5 仍是 Phase 2 前置欠账，尚未建立 fixture 样本集、native vs ST payload 对照测试和消息操作契约对照测试。本阶段只做检查和冻结，不做 Phase 1 迁移。
 
 交付：
 
@@ -147,7 +149,7 @@ Optional WebView Compatibility Host
 
 目标：单聊下，当前 chat 的读写和消息操作不再依赖 WebView runtime。
 
-状态：Phase 1 本轮已按 v0.5 口径补齐，进度记录在 `docs/native-chat-phase1-progress.md`。单聊原生 runtime 已覆盖打开、编辑、删除、隐藏/取消隐藏、移动、reasoning、附件/媒体数据操作和 swipe；`NativeChatRepository.save` 负责写前 integrity 校验、退避备份和同会话写串行化；原生生成成功保存 JSONL 后不自动调用 `bridge.reloadChat()`，但仍走 Bridge 的写操作会先 reload 对齐。checkpoint/branch 已有原生实现，但不计入本阶段验收。群聊、完整 prompt 语义和扩展能力属于后续 Phase。
+状态：Phase 1 本轮已按 v0.6.1 口径补齐，进度记录在 `docs/native-chat-phase1-progress.md`。单聊原生 runtime 已覆盖打开、编辑、删除、隐藏/取消隐藏、移动、reasoning、附件/媒体数据操作和 swipe；`NativeChatRepository.save` 负责写前 integrity 校验、固定前缀退避备份、备份列表过滤、最近 5 份修剪和同会话写串行化；过往聊天页面也会过滤这些备份。原生生成成功保存 JSONL 后不自动调用 `bridge.reloadChat()`。仍走 Bridge 的写操作会先 reload 对齐，adapter 会等待 reload 完成后再执行下一条写命令；单聊和群聊生成启动后都会释放队列，避免 `generation.stop` 被长生成阻塞。checkpoint/branch 已有原生实现，但不计入本阶段验收。群聊、完整 prompt 语义和扩展能力属于后续 Phase。
 
 > **重要前置（v0.5 新增）：第一刀引入了 split-brain 风险，必须先补护栏再继续扩面。**
 > 现状：`NativeChatEngine.send()` 成功后已不再 `reloadChat()`，但 `regenerate()` / `continueGeneration()` / 编辑 / 删除 / swipe 仍走 Bridge＝WebView 写盘。也就是说当前写者分裂为“原生（send）+ WebView（其余）”。去掉同步 reload 后，隐藏 WebView 的内存快照可能是旧的；此时执行一次 bridge 操作（如 regenerate）就可能用旧快照覆盖磁盘，**让原生刚发送的消息丢失**。`send()` 自身也是无锁 read-modify-write（`getChatJsonl` → append → `saveChatJsonl`），read 与 save 之间若 WebView 写入会被静默覆盖。
@@ -155,13 +157,13 @@ Optional WebView Compatibility Host
 
 交付：
 
-0. **单一写者护栏（最高优先，先做）**：在 native 尚未接管全部写操作前，任何仍走 Bridge 的写操作（regenerate / continue / 编辑 / 删除 / swipe）执行前，必须先把隐藏 WebView 的 runtime 与磁盘对齐——即“bridge 写操作前强制 reload native session 到 WebView”，或保留这些路径上的 `reloadChat()`，直到对应操作完成原生化为止。明确记录：**只有当某操作的写盘已完全由原生承担后，才允许移除该操作前后的对齐。**
+0. **单一写者护栏（最高优先，先做）**：在 native 尚未接管全部写操作前，任何仍走 Bridge 的写操作（regenerate / continue / 编辑 / 删除 / swipe）执行前，必须先把隐藏 WebView 的 runtime 与磁盘对齐——即“bridge 写操作前强制 reload native session 到 WebView”，或保留这些路径上的 `reloadChat()`，直到对应操作完成原生化为止。adapter 必须等待 `reloadCurrentChat()` 完成后才处理后续写命令，同时单聊和群聊的 `generation.stop` 都不得被长生成队列阻塞。明确记录：**只有当某操作的写盘已完全由原生承担后，才允许移除该操作前后的对齐。**
 1. 在现有 `NativeChatLoader`、`ChatStore`、`TavernCoreApi.getChatJsonl/saveChatJsonl` 基础上抽出或补齐 `ChatSessionStore`，保存当前角色、chat file、header metadata、messages、dirty state、generation state。
 2. 把现有无损 JSONL 读写收敛成 `ChatRepository`：封装 `/api/chats/get/save/rename/delete/export/import`，保持未知字段无损。**并承担并发写保护与数据安全：保存前对原 JSONL 做退避备份；用 header 的 `chat_metadata.integrity` 做写前一致性校验，检测到磁盘被第三方（WebView/ST API）改动时拒绝盲写并重新读取；同一会话写操作串行化。**
 3. 新建 `MessageOps`：实现编辑、删除、隐藏、上移/下移、reasoning 编辑/删除、附件删除、媒体显示切换。每迁完一项，按交付0 的规则解除该项的 bridge 对齐。
 4. 新建 `SwipeManager`：实现 swipe 切换、创建、删除、同步 `mes/swipes/swipe_id/swipe_info`。
 5. 让 `NativeChatScreen` 的消息操作优先调用原生 runtime；只有未迁移操作才进入兼容模式（且遵守交付0 的对齐规则）。
-6. 单聊原生生成落盘后不再依赖 `bridge.reloadChat()` 对齐；隐藏 WebView 如果打开，只能观察或显式 reload 原生 session。
+6. 单聊原生生成落盘后不再依赖 `bridge.reloadChat()` 对齐；隐藏 WebView 如果打开，过渡期仍可能通过兼容命令写盘，因此必须靠 reload 对齐、adapter 串行等待和 integrity 冲突检查被动防御，不能声称它已被强制只读。后续 Phase 7 才能把兼容壳显式锁到只读或按需启动。
 
 > 说明：checkpoint / branch 依赖 `scripts/bookmarks.js` 的 native 化，不在本阶段交付，放到 Phase 3 的历史/分支语义一并处理；本阶段验收不含 checkpoint/branch。
 
@@ -171,7 +173,7 @@ Optional WebView Compatibility Host
 2. 保存后用 ST API 重新读取 JSONL，字段和预期一致；并验证“写前 integrity 校验 + 退避备份”在并发改动场景下不丢数据。
 3. 隐藏 WebView 关闭时，单聊消息操作不降级。
 4. “原生生成（实验）”在单聊成功生成后不需要 `ChatRuntimeBridge.reloadChat()` 才能保持 UI 和磁盘一致。
-5. **仍走 Bridge 的写操作（regenerate/continue 等）在执行前会先对齐 WebView 与磁盘，send 后立刻 regenerate 不会丢失刚发送的消息。**（用 behavioral 测试覆盖，见下）
+5. **仍走 Bridge 的写操作（regenerate/continue/fallback message ops 等）在执行前会先对齐 WebView 与磁盘，且 adapter 会等 reload 完成后才 dispatch 后续写命令；send 后立刻 regenerate 不会丢失刚发送的消息。**（用 behavioral 测试覆盖，见下）
 
 > **测试方法纠正（v0.5）**：Phase 1 第一刀曾出现过“读取 `.kt` 源码文本、grep `reloadChat(` 是否出现”的字符串断言，只验证源码排版、不验证运行行为，且对函数抽取等重构脆弱。当前已替换为 behavioral 契约测试：用 fake `ChatRuntimeBridgeActions` 记录调用，断言成功生成路径不触发 `reloadChat()`、而 bridge 写操作前会触发对齐。后续阶段的契约测试一律以行为/产物为断言对象，不得以源码子串为断言对象。
 
@@ -209,11 +211,11 @@ Optional WebView Compatibility Host
    - Kobold/KoboldCpp（Phase 2 后）
    - Horde（Phase 2 后）
 3. 实现统一 `StreamingProcessor`：token delta、reasoning delta、tool call delta、logprobs、结束保存、失败回滚。
-8. checkpoint、branch、打开分支的原生历史语义（替代 `scripts/bookmarks.js`）。
-4. 强化原生 stop：能取消 OkHttp call，并保存或丢弃部分回复的策略可配置。
-5. 实现原生 continue、regenerate、impersonate，并补齐对应 swipe / 历史保存语义。
-6. 实现 tool calling 递归生成和 tool result 系统消息写入。
-7. 实现 logprobs 采集、保存和原生展示。**注意真正的阻塞点是 backend 是否在流式响应里返回 logprobs（见 CLAUDE.md“上游阻塞”），原生自存只解决“不依赖 ST `logprobs.js` 私有 state”，不解决 provider 不返回的问题；对不返回的 provider 必须在 UI 标注不可用，而不是假装已支持。**
+4. checkpoint、branch、打开分支的原生历史语义（替代 `scripts/bookmarks.js`）。
+5. 强化原生 stop：能取消 OkHttp call，并保存或丢弃部分回复的策略可配置。
+6. 实现原生 continue、regenerate、impersonate，并补齐对应 swipe / 历史保存语义。
+7. 实现 tool calling 递归生成和 tool result 系统消息写入。
+8. 实现 logprobs 采集、保存和原生展示。**注意真正的阻塞点是 backend 是否在流式响应里返回 logprobs（见 CLAUDE.md“上游阻塞”），原生自存只解决“不依赖 ST `logprobs.js` 私有 state”，不解决 provider 不返回的问题；对不返回的 provider 必须在 UI 标注不可用，而不是假装已支持。**
 
 验收：
 
@@ -374,7 +376,7 @@ Optional WebView Compatibility Host
 建议第一轮只做四个小切口：
 
 1. **原生生成基线冻结**：把单聊 Chat Completion、首批 Text Completion、群聊 `NativeGroupGenerator` 的已支持/未支持能力整理成 route matrix，并补测试保护。
-2. **已完成：去掉单聊生成后的 WebView 对齐依赖 + 补单一写者护栏**：当前用 fake `ChatRuntimeBridgeActions` 写 behavioral 测试（不是源码 grep），证明：(a) 生成成功落盘后不触发 `reloadChat()`；(b) 仍走 Bridge 的写操作前会先对齐磁盘。同时已把源码字符串断言的 `NativeChatEnginePhase1ContractTest` 替换掉。
+2. **已完成：去掉单聊生成后的 WebView 对齐依赖 + 补单一写者护栏**：当前用 fake `ChatRuntimeBridgeActions` 和 adapter VM 行为测试证明：(a) 生成成功落盘后不触发 `reloadChat()`；(b) 仍走 Bridge 的写操作前会先对齐磁盘；(c) adapter 等 `chat.reload` 完成后才执行后续写命令；(d) 单聊和群聊的 `generation.stop` 不被长生成队列阻塞。同时已把源码字符串断言的 `NativeChatEnginePhase1ContractTest` 替换掉。
 3. **MessageOps 原生化**：先从编辑、删除、隐藏、reasoning 编辑开始，因为它们不需要 provider；每迁完一项再按交付0 解除该项的 bridge 对齐。
 4. **PromptAssembly 契约夹具**：选 3 个角色 + 2 个世界书 + 2 套模板，逐项 diff native 产物与 ST 产物（payload 字段 / stop strings / WI 激活条目与顺序 / 保存结果），known-diff 入矩阵。
 
@@ -384,7 +386,7 @@ Optional WebView Compatibility Host
 
 原生侧已经成为 `send` 的实际写者，一旦原生写盘有 bug 会直接损坏用户聊天文件，因此前进式迁移必须配套退路：
 
-1. **写前退避备份**：`ChatRepository` 每次写 JSONL 前，先把原文件备份到可恢复位置（如 `*.bak` 或带时间戳副本），保留最近 N 份，便于一键回滚。
+1. **写前退避备份**：`ChatRepository` 每次写 JSONL 前，先把原文件备份到固定前缀 `__native-backup__<chat>__<timestamp>` 的副本；Repository 命名逻辑和过往聊天页面都会过滤这些备份；默认保留最近 5 份并 best-effort 删除更早备份，便于一键回滚且不污染过往聊天列表。
 2. **写前 integrity 校验**：用 header `chat_metadata.integrity` 检测磁盘是否被第三方（WebView / ST API）改动；不一致时拒绝盲写、重新读取后再合并，避免静默覆盖。
 3. **同会话写串行化**：同一聊天的并发写操作排队，杜绝 read-modify-write 竞态。
 4. **按阶段灰度**：沿用“原生生成（实验）”开关思路，每个 Phase 的原生写路径都能独立开关；线上发现乱写时可一键退回 WebView 兜底，不必回滚整版本。

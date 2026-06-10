@@ -82,6 +82,7 @@ class TavernNativeChatDataSource(
 class NativeChatRepository(
     private val dataSourceProvider: () -> NativeChatDataSource,
     private val backupNameProvider: (avatar: String, chatFile: String) -> String = ::defaultNativeChatBackupName,
+    private val backupRetentionCount: Int = DEFAULT_NATIVE_BACKUP_RETENTION_COUNT,
 ) {
     suspend fun load(avatar: String, chatFile: String): Pair<CharacterDetail, MutableList<Any?>> {
         val source = dataSourceProvider()
@@ -109,6 +110,7 @@ class NativeChatRepository(
             val next = chat.nativeChatDeepCopy()
             next.refreshNativeChatIntegrity()
             source.saveChatJsonl(avatar, chatFile, next)
+            pruneNativeBackups(source, avatar, chatFile)
         }
     }
 
@@ -117,6 +119,7 @@ class NativeChatRepository(
             .flatMap { summary -> listOf(summary.id, summary.fileName) }
             .map { it.removeSuffix(".jsonl") }
             .filter { it.isNotBlank() }
+            .filterNot(::isNativeChatBackupName)
             .toSet()
 
     suspend fun rename(avatar: String, originalFile: String, renamedFile: String): String =
@@ -137,6 +140,25 @@ class NativeChatRepository(
 
         fun writeLockKey(avatar: String, chatFile: String): String =
             "$avatar/${chatFile.removeSuffix(".jsonl")}"
+    }
+
+    private suspend fun pruneNativeBackups(source: NativeChatDataSource, avatar: String, chatFile: String) {
+        if (backupRetentionCount < 0) return
+        val base = chatFile.removeSuffix(".jsonl")
+        val summaries = runCatching { source.listCharacterChats(avatar) }.getOrElse { return }
+        val backups = summaries
+            .flatMap { summary -> listOf(summary.id, summary.fileName) }
+            .map { it.removeSuffix(".jsonl") }
+            .distinct()
+            .filter { nativeChatBackupBaseName(it) == base }
+            .sortedWith(
+                compareByDescending<String> { nativeChatBackupTimestamp(it) ?: it }
+                    .thenByDescending { it }
+            )
+
+        backups.drop(backupRetentionCount).forEach { backup ->
+            runCatching { source.deleteCharacterChat(avatar, "$backup.jsonl") }
+        }
     }
 }
 
@@ -289,9 +311,47 @@ class NativeChatRuntime(
     )
 }
 
+private const val DEFAULT_NATIVE_BACKUP_RETENTION_COUNT = 5
+internal const val NATIVE_BACKUP_PREFIX = "__native-backup__"
+private const val LEGACY_NATIVE_BACKUP_MARKER = ".native-backup-"
+
 private fun defaultNativeChatBackupName(@Suppress("UNUSED_PARAMETER") avatar: String, chatFile: String): String {
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
-    return "${chatFile.removeSuffix(".jsonl")}.native-backup-$stamp"
+    return "$NATIVE_BACKUP_PREFIX${chatFile.removeSuffix(".jsonl")}__$stamp"
+}
+
+internal fun isNativeChatBackupName(name: String): Boolean =
+    nativeChatBackupBaseName(name) != null
+
+internal fun nativeChatBackupBaseName(name: String): String? {
+    val normalized = name.removeSuffix(".jsonl")
+    if (normalized.startsWith(NATIVE_BACKUP_PREFIX)) {
+        val rest = normalized.removePrefix(NATIVE_BACKUP_PREFIX)
+        val split = rest.lastIndexOf("__")
+        if (split > 0) return rest.take(split).takeIf { it.isNotBlank() }
+        return null
+    }
+    val legacyMarkerIndex = normalized.indexOf(LEGACY_NATIVE_BACKUP_MARKER)
+    if (legacyMarkerIndex > 0) {
+        return normalized.take(legacyMarkerIndex)
+    }
+    return null
+}
+
+internal fun nativeChatBackupTimestamp(name: String): String? {
+    val normalized = name.removeSuffix(".jsonl")
+    if (normalized.startsWith(NATIVE_BACKUP_PREFIX)) {
+        val rest = normalized.removePrefix(NATIVE_BACKUP_PREFIX)
+        val split = rest.lastIndexOf("__")
+        if (split > 0 && split + 2 < rest.length) return rest.substring(split + 2)
+        return null
+    }
+    val legacyMarkerIndex = normalized.indexOf(LEGACY_NATIVE_BACKUP_MARKER)
+    if (legacyMarkerIndex > 0) {
+        return normalized.substring(legacyMarkerIndex + LEGACY_NATIVE_BACKUP_MARKER.length)
+            .takeIf { it.isNotBlank() }
+    }
+    return null
 }
 
 private fun List<Any?>.nativeChatIntegrity(): String {
