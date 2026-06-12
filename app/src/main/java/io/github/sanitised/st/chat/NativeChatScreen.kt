@@ -9,6 +9,7 @@ import android.provider.OpenableColumns
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -22,9 +23,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -34,6 +38,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,6 +60,8 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -67,12 +74,16 @@ import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SentimentSatisfied
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -85,6 +96,7 @@ import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -121,9 +133,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
@@ -1190,15 +1205,15 @@ private fun ReasoningSection(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth().animateContentSize()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
                 .clickable { expanded = !expanded }
-                .padding(vertical = 4.dp),
+                .heightIn(min = 36.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(
                 Icons.Filled.Psychology,
@@ -1223,13 +1238,13 @@ private fun ReasoningSection(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp),
+                    .padding(top = 6.dp),
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHighest
             ) {
                 Text(
                     text = reasoning,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = MaterialTheme.typography.bodySmall.fontSize * 1.55f),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(12.dp)
                 )
@@ -1248,7 +1263,7 @@ private fun BubbleMeta(
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (hasBookmark) {
             Icon(
@@ -1260,23 +1275,19 @@ private fun BubbleMeta(
         }
         if (branchCount > 0) {
             Surface(
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(50),
                 color = MaterialTheme.colorScheme.tertiaryContainer,
                 contentColor = MaterialTheme.colorScheme.onTertiaryContainer
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                Box(
+                    modifier = Modifier
+                        .sizeIn(minWidth = 18.dp, minHeight = 18.dp)
+                        .padding(horizontal = 5.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Filled.AccountTree,
-                        contentDescription = "分支",
-                        modifier = Modifier.size(12.dp)
-                    )
                     Text(
                         text = branchCount.toString(),
-                        style = MaterialTheme.typography.labelSmall
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
                     )
                 }
             }
@@ -1329,7 +1340,17 @@ private fun ToolCallCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 if (running) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+                        Text(
+                            text = "执行中",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 } else {
                     Icon(
                         if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
@@ -1343,30 +1364,50 @@ private fun ToolCallCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "参数",
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.6.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text(
-                    text = tool.parameters,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp)
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest
+                ) {
+                    Text(
+                        text = tool.parameters,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                    )
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(top = 10.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "结果",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = if (running) "执行中…" else tool.result,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (running) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(top = 2.dp)
-            )
+            if (running) {
+                Text(
+                    text = "执行中…",
+                    style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    text = "结果",
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.6.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = tool.result,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
     }
 }
@@ -1399,28 +1440,54 @@ private fun AssistantMessageControls(
     onContinue: () -> Unit,
     onMore: () -> Unit
 ) {
-    Row(modifier = Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { onSwipePrevious(messageId) }, modifier = Modifier.size(28.dp)) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+    Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { onSwipePrevious(messageId) }, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Filled.ChevronLeft,
+                contentDescription = "上一个回复",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         Text(
-            text = "${swipeIndex + 1} / $swipeCount",
+            text = "${swipeIndex + 1}/$swipeCount",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 6.dp)
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.widthIn(min = 30.dp)
         )
-        IconButton(onClick = { onSwipeNext(messageId) }, modifier = Modifier.size(28.dp)) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+        IconButton(onClick = { onSwipeNext(messageId) }, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Filled.ChevronRight,
+                contentDescription = "下一个回复",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         Spacer(modifier = Modifier.weight(1f))
         IconButton(onClick = onRegenerate, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Filled.Refresh, contentDescription = "重写", modifier = Modifier.size(18.dp))
+            Icon(
+                Icons.Filled.Refresh,
+                contentDescription = "重写",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         IconButton(onClick = onContinue, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "继续", modifier = Modifier.size(18.dp))
+            Icon(
+                Icons.Filled.PlayArrow,
+                contentDescription = "继续",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         IconButton(onClick = onMore, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Filled.MoreVert, contentDescription = "更多消息操作", modifier = Modifier.size(18.dp))
+            Icon(
+                Icons.Filled.MoreHoriz,
+                contentDescription = "更多消息操作",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -1576,23 +1643,12 @@ private fun MessageActionSheet(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 0.dp)) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    Icons.Filled.MoreVert,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    "消息操作",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
+            Text(
+                "消息操作",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -1644,7 +1700,7 @@ private fun MessageActionSheet(
                     },
                     leadingContent = {
                         Icon(
-                            if (message.isSystem) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                            if (message.isSystem) Icons.Filled.Visibility else Icons.Filled.PushPin,
                             contentDescription = null,
                             modifier = Modifier.size(22.dp)
                         )
@@ -1708,15 +1764,21 @@ private fun MessageActionSheet(
                         },
                         trailingContent = {
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(50),
                                 color = MaterialTheme.colorScheme.tertiaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                             ) {
-                                Text(
-                                    text = branchCount.toString(),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .sizeIn(minWidth = 20.dp, minHeight = 20.dp)
+                                        .padding(horizontal = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = branchCount.toString(),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+                                    )
+                                }
                             }
                         }
                     )
@@ -1744,6 +1806,8 @@ private fun MessageActionSheet(
                 }
             }
 
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
             Surface(
                 onClick = onDelete,
                 color = MaterialTheme.colorScheme.surfaceContainerLow
@@ -1751,7 +1815,7 @@ private fun MessageActionSheet(
                 ListItem(
                     headlineContent = {
                         Text(
-                            "删除此消息",
+                            "删除消息",
                             color = MaterialTheme.colorScheme.error
                         )
                     },
@@ -1783,13 +1847,13 @@ private fun ActionGridItem(
     ) {
         Surface(
             onClick = onClick,
-            modifier = Modifier.size(56.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.primary
+            modifier = Modifier.size(48.dp),
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = label, modifier = Modifier.size(24.dp))
+                Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp))
             }
         }
         Text(
@@ -1895,8 +1959,8 @@ private fun RuntimeToastHost(
             icon = Icons.Filled.Warning
         }
         "success" -> {
-            container = MaterialTheme.colorScheme.secondaryContainer
-            content = MaterialTheme.colorScheme.onSecondaryContainer
+            container = MaterialTheme.colorScheme.tertiaryContainer
+            content = MaterialTheme.colorScheme.onTertiaryContainer
             icon = Icons.Filled.CheckCircle
         }
         else -> {
@@ -1916,11 +1980,11 @@ private fun RuntimeToastHost(
         shadowElevation = 6.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
             Column(modifier = Modifier.weight(1f)) {
                 if (toast.title.isNotBlank()) {
                     Text(
@@ -1991,20 +2055,30 @@ private fun QuickReplyStrip(
     onExecute: (QuickReplyItem) -> Unit
 ) {
     if (items.isEmpty()) return
-    Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (enabled) 1f else 0.45f),
+        color = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
         Column {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items.forEach { item ->
                     AssistChip(
                         onClick = { if (enabled) onExecute(item) },
                         enabled = enabled,
+                        leadingIcon = if (item.icon.isNotBlank()) {
+                            { Text(text = item.icon, style = MaterialTheme.typography.bodySmall) }
+                        } else {
+                            null
+                        },
                         label = {
                             Text(
                                 text = item.label.ifBlank { item.message.take(12) },
@@ -2013,7 +2087,9 @@ private fun QuickReplyStrip(
                                 modifier = Modifier.widthIn(max = 120.dp)
                             )
                         },
-                        colors = AssistChipDefaults.assistChipColors()
+                        colors = AssistChipDefaults.assistChipColors(
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     )
                 }
             }
@@ -2067,22 +2143,20 @@ private fun ChatInputBar(
                     placeholder = {
                         Text(
                             text = if (runtimeReady) "发条消息，或 /? 查看指令" else "正在等待运行时…",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    },
-                    trailingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.SentimentSatisfied,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
                     enabled = runtimeReady && !isGenerating,
                     maxLines = 5,
-                    shape = MaterialTheme.shapes.extraLarge,
+                    shape = RoundedCornerShape(22.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                        focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                        disabledBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
@@ -2138,15 +2212,20 @@ private fun ChatSendButton(
             Icon(Icons.Filled.Close, contentDescription = "停止生成")
         }
 
-        text.isBlank() && !hasPendingAttachments -> IconButton(
+        text.isBlank() && !hasPendingAttachments -> FilledIconButton(
             onClick = onVoiceInput,
             enabled = runtimeReady,
-            modifier = Modifier.size(48.dp)
+            modifier = Modifier.size(48.dp),
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         ) {
             Icon(
                 imageVector = Icons.Filled.Mic,
-                contentDescription = "语音输入",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                contentDescription = "语音输入"
             )
         }
 
@@ -2779,28 +2858,34 @@ private fun CheckpointDialog(
     var name by rememberSaveable { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Filled.BookmarkAdd, contentDescription = null) },
+        icon = {
+            Icon(
+                Icons.Filled.BookmarkAdd,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
         title = { Text("创建存档点") },
         text = {
             Column {
                 Text(
                     text = "为当前消息创建一个聊天存档快照，之后可随时回到这里。",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    modifier = Modifier.padding(bottom = 16.dp)
                 )
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("存档点名称（留空自动命名）") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = { Text("存档点名称") },
+                    placeholder = { Text("留空自动命名") },
+                    singleLine = true
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name.trim()) }) {
+            Button(onClick = { onConfirm(name.trim()) }) {
                 Text("创建")
             }
         },
@@ -2827,28 +2912,17 @@ private fun BranchListSheet(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    Icons.Filled.AccountTree,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    text = "分支列表",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
             Text(
-                text = "点击任意分支或存档点以打开对应聊天线",
-                style = MaterialTheme.typography.bodySmall,
+                text = "分支列表",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+            Text(
+                text = "点击任意分支以打开对应的聊天线",
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                modifier = Modifier.padding(horizontal = 12.dp)
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -2857,6 +2931,13 @@ private fun BranchListSheet(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
+                items(branches, key = { "branch:$it" }) { branch ->
+                    BranchRow(
+                        name = branch,
+                        isBookmark = false,
+                        onClick = { onOpen(branch) }
+                    )
+                }
                 if (bookmarkLink != null) {
                     item(key = "checkpoint:$bookmarkLink") {
                         BranchRow(
@@ -2865,13 +2946,6 @@ private fun BranchListSheet(
                             onClick = { onOpen(bookmarkLink) }
                         )
                     }
-                }
-                items(branches, key = { "branch:$it" }) { branch ->
-                    BranchRow(
-                        name = branch,
-                        isBookmark = false,
-                        onClick = { onOpen(branch) }
-                    )
                 }
             }
         }
@@ -2890,7 +2964,7 @@ private fun BranchRow(
                 Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
             },
             supportingContent = if (isBookmark) {
-                { Text("存档点", style = MaterialTheme.typography.bodySmall) }
+                { Text("Checkpoint", style = MaterialTheme.typography.bodySmall) }
             } else {
                 { Text("分支", style = MaterialTheme.typography.bodySmall) }
             },
@@ -2900,15 +2974,15 @@ private fun BranchRow(
                     contentDescription = null,
                     tint = if (isBookmark) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             },
             trailingContent = {
                 Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
+                    Icons.Filled.ChevronRight,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         )
@@ -2930,29 +3004,19 @@ private fun ItemizedPromptSheet(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    Icons.Filled.Analytics,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
+            Text(
+                text = "提示词分析",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+            if (prompt != null) {
                 Text(
-                    text = "提示词分析",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = "消息 #${prompt.mesId}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp)
                 )
-                if (prompt != null) {
-                    Text(
-                        text = "· 消息 #${prompt.mesId}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -2969,6 +3033,15 @@ private fun ItemizedPromptSheet(
                 )
                 prompt != null -> {
                     val maxTokens = prompt.components.maxOfOrNull { it.tokens }?.coerceAtLeast(1) ?: 1
+                    val totalTokens = prompt.components.sumOf { it.tokens }.coerceAtLeast(1)
+                    val barColors = listOf(
+                        MaterialTheme.colorScheme.primary,
+                        MaterialTheme.colorScheme.secondary,
+                        MaterialTheme.colorScheme.tertiary
+                    )
+                    val outlineColor = MaterialTheme.colorScheme.outline
+                    fun componentColor(index: Int, name: String) =
+                        if (name == "其他") outlineColor else barColors[index % barColors.size]
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(bottom = 24.dp)
@@ -2978,24 +3051,44 @@ private fun ItemizedPromptSheet(
                                 Row(verticalAlignment = Alignment.Bottom) {
                                     Text(
                                         text = prompt.total.toString(),
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        color = MaterialTheme.colorScheme.primary
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "总 token 数",
-                                        style = MaterialTheme.typography.bodySmall,
+                                        style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(bottom = 4.dp)
                                     )
                                 }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp)
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                ) {
+                                    prompt.components.forEachIndexed { index, comp ->
+                                        if (comp.tokens > 0) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(comp.tokens.toFloat() / totalTokens)
+                                                    .fillMaxHeight()
+                                                    .background(componentColor(index, comp.name))
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
-                        items(prompt.components, key = { it.name }) { comp ->
+                        itemsIndexed(prompt.components, key = { _, comp -> comp.name }) { index, comp ->
                             ItemizedComponentRow(
                                 name = comp.name,
                                 tokens = comp.tokens,
-                                fraction = comp.tokens.toFloat() / maxTokens
+                                fraction = comp.tokens.toFloat() / maxTokens,
+                                color = componentColor(index, comp.name)
                             )
                         }
                         item(key = "meta") {
@@ -3028,20 +3121,21 @@ private fun ItemizedPromptSheet(
 private fun ItemizedComponentRow(
     name: String,
     tokens: Int,
-    fraction: Float
+    fraction: Float,
+    color: androidx.compose.ui.graphics.Color
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
             text = name,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.width(72.dp),
+            modifier = Modifier.width(92.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -3057,14 +3151,16 @@ private fun ItemizedComponentRow(
                     .fillMaxWidth(fraction.coerceIn(0f, 1f))
                     .height(8.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(MaterialTheme.colorScheme.primary)
+                    .background(color)
             )
         }
         Text(
             text = tokens.toString(),
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+            ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(48.dp),
+            modifier = Modifier.width(56.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.End
         )
     }
@@ -3094,67 +3190,86 @@ private fun DataBankSheet(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    Icons.Filled.Inventory2,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    text = "数据银行",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
+            Text(
+                text = "数据银行",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                val tabIcons = listOf(Icons.Filled.Public, Icons.Filled.Person, Icons.Filled.Forum)
                 tabs.forEachIndexed { index, label ->
                     val count = when (index) {
                         0 -> attachments?.global?.size ?: 0
                         1 -> attachments?.character?.size ?: 0
                         else -> attachments?.chat?.size ?: 0
                     }
-                    AssistChip(
+                    val selected = tab == index
+                    Surface(
                         onClick = { tab = index },
-                        label = { Text(if (count > 0) "$label ($count)" else label) },
-                        colors = if (tab == index) {
-                            AssistChipDefaults.assistChipColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        shape = RoundedCornerShape(50),
+                        color = if (selected) MaterialTheme.colorScheme.secondaryContainer
+                            else androidx.compose.ui.graphics.Color.Transparent,
+                        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        border = if (selected) null
+                            else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .height(36.dp)
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(tabIcons[index], contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text(
+                                text = if (count > 0) "$label ($count)" else label,
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1
                             )
-                        } else {
-                            AssistChipDefaults.assistChipColors()
                         }
-                    )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             when {
                 loading -> Box(
                     modifier = Modifier.fillMaxWidth().padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) { CircularProgressIndicator() }
-                current.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxWidth().padding(32.dp),
-                    contentAlignment = Alignment.Center
+                current.isEmpty() -> Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp, vertical = 48.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    Icon(
+                        Icons.Filled.FolderOpen,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(48.dp)
+                    )
                     Text(
-                        text = "这个范围还没有文件",
+                        text = "还没有文件",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "为这个范围添加可检索的文档或图片。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
                 else -> LazyColumn(
@@ -3162,43 +3277,76 @@ private fun DataBankSheet(
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
                     items(current, key = { it.url }) { file ->
-                        Surface(
+                        DataBankFileRow(
+                            file = file,
                             onClick = {
                                 runCatching {
                                     context.startActivity(
                                         Intent(Intent.ACTION_VIEW, Uri.parse(attachmentDisplayUrl(port, file.url)))
                                     )
                                 }
-                            },
-                            color = MaterialTheme.colorScheme.surfaceContainerLow
-                        ) {
-                            ListItem(
-                                headlineContent = {
-                                    Text(
-                                        file.name.ifBlank { file.url.substringAfterLast('/') },
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                },
-                                supportingContent = {
-                                    Text(
-                                        attachmentSizeLabel(file.size),
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                },
-                                leadingContent = {
-                                    Icon(
-                                        Icons.Filled.Description,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            )
-                        }
+                            }
+                        )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DataBankFileRow(
+    file: DataBankAttachment,
+    onClick: () -> Unit
+) {
+    val name = file.name.ifBlank { file.url.substringAfterLast('/') }
+    val isImage = name.substringAfterLast('.', "").lowercase() in
+        setOf("png", "jpg", "jpeg", "gif", "webp", "bmp")
+    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = if (isImage) MaterialTheme.colorScheme.tertiary
+                    else MaterialTheme.colorScheme.primary
+            ) {
+                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                    Icon(
+                        if (isImage) Icons.Filled.Image else Icons.Filled.Description,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (file.created > 0) {
+                    Text(
+                        text = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                            .format(java.util.Date(file.created)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+            Text(
+                text = attachmentSizeLabel(file.size),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
