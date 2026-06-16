@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EmojiPeople
 import androidx.compose.material.icons.filled.ExpandLess
@@ -307,6 +308,7 @@ fun PrototypeCharacterProfileScreen(
     onBack: () -> Unit,
     onOpenChat: (String?) -> Unit,
     onOpenPastChats: () -> Unit = {},
+    onOpenFullEdit: () -> Unit = {},
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -371,6 +373,11 @@ fun PrototypeCharacterProfileScreen(
                     onClick = onBack
                 )
                 Spacer(modifier = Modifier.weight(1f))
+                PrototypeIconButton(
+                    icon = Icons.Filled.Edit,
+                    contentDescription = "编辑角色",
+                    onClick = onOpenFullEdit
+                )
                 PrototypeIconButton(
                     icon = Icons.Filled.PlayArrow,
                     contentDescription = "开始对话",
@@ -859,10 +866,111 @@ private fun CharacterDetailSections(
             }
         }
     }
-    PrototypeEditSection(title = "场景 (Scenario)", icon = Icons.Filled.Theaters) {}
-    PrototypeEditSection(title = "对话示例", icon = Icons.Filled.Forum, count = if (detail?.messageExample.isNullOrBlank()) null else "已设置") {}
-    PrototypeEditSection(title = "高级 — Persona / Post-history Instructions", icon = Icons.Filled.Tune) {}
-    PrototypeEditSection(title = "绑定世界书", icon = Icons.Filled.AutoStories, count = detail?.world?.takeIf { it.isNotBlank() }) {}
+    PrototypeEditSection(
+        title = "场景 (Scenario)",
+        icon = Icons.Filled.Theaters,
+        count = detail?.scenario?.length?.takeIf { it > 0 }
+    ) {
+        DetailBodyText(detail?.scenario, empty = "未填写场景")
+    }
+    PrototypeEditSection(
+        title = "对话示例",
+        icon = Icons.Filled.Forum,
+        count = if (detail?.messageExample.isNullOrBlank()) null else "已设置"
+    ) {
+        DetailBodyText(detail?.messageExample, empty = "未填写对话示例", mono = true)
+        if (!detail?.messageExample.isNullOrBlank()) {
+            Text(
+                text = "每段示例以 <START> 开头",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+            )
+        }
+    }
+    PrototypeEditSection(
+        title = "高级定义",
+        icon = Icons.Filled.Tune,
+        count = "Prompt 覆盖 · 角色备注 · 健谈度"
+    ) {
+        DetailSubHeader("提示词覆盖")
+        DetailLabeledBody("主提示词覆盖", detail?.systemPrompt, empty = "留空使用全局主提示词")
+        DetailLabeledBody("历史后指令 (Post-History)", detail?.postHistoryInstructions, empty = "未设置")
+        DetailSubHeader("角色备注 (Character Note)")
+        DetailLabeledBody("备注内容", detail?.depthPrompt, empty = "未设置")
+        if (!detail?.depthPrompt.isNullOrBlank()) {
+            val role = when (detail?.depthPromptRole) {
+                "user" -> "用户"
+                "assistant" -> "AI"
+                else -> "系统"
+            }
+            PrototypeFieldRow("插入深度 / 角色", "@深度 ${detail?.depthPromptDepth ?: 4} · $role")
+        }
+        DetailSubHeader("群聊行为")
+        PrototypeFieldRow("健谈度", "${((detail?.talkativeness ?: 0.5) * 100).toInt()}% · 群聊中主动发言倾向")
+    }
+    PrototypeEditSection(
+        title = "绑定世界书",
+        icon = Icons.Filled.AutoStories,
+        count = detail?.world?.takeIf { it.isNotBlank() }
+    ) {
+        PrototypeListItem(
+            headline = detail?.world?.takeIf { it.isNotBlank() } ?: "未绑定世界书",
+            supporting = if (detail?.world.isNullOrBlank()) "新建或导入后可在角色卡中绑定" else "随角色一同加载的设定条目",
+            leading = {
+                PrototypeTileIcon(
+                    icon = Icons.Filled.AutoStories,
+                    tint = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        )
+    }
+    PrototypeEditSection(title = "元数据", icon = Icons.Filled.Badge) {
+        PrototypeFieldRow("创建日期", detail?.createDate?.ifBlank { "未知" } ?: "未知")
+        PrototypeFieldRow("规范格式", "Character Card V2 (chara_card_v2)")
+        if (!detail?.sourceUrl.isNullOrBlank()) {
+            PrototypeFieldRow("角色源", detail?.sourceUrl ?: "")
+        }
+    }
+}
+
+/** 多行正文（场景 / 对话示例 / 备注等），不截断。 */
+@Composable
+private fun DetailBodyText(text: String?, empty: String, mono: Boolean = false) {
+    Text(
+        text = text?.takeIf { it.isNotBlank() } ?: empty,
+        style = if (mono) MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+        else MaterialTheme.typography.bodyMedium,
+        color = if (text.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+    )
+}
+
+/** 高级定义里的小节标题。 */
+@Composable
+private fun DetailSubHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 2.dp)
+    )
+}
+
+/** 带 label 的多行正文（高级定义字段）。 */
+@Composable
+private fun DetailLabeledBody(label: String, text: String?, empty: String) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = text?.takeIf { it.isNotBlank() } ?: empty,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (text.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+    }
 }
 
 @Composable

@@ -27,6 +27,23 @@ object STRoutes {
     const val LICENSE = "settings/legal/{assetPath}"
     const val MANAGE_ST = "st-core"
 
+    const val LOGIN = "login"
+    const val ONBOARDING = "onboarding"
+    const val ACCOUNT = "settings/account"
+
+    const val WORLD_INFO_MANAGE = "world-info/manage"
+    const val WORLD_INFO_BOOK = "world-info/book/{name}"
+    const val WORLD_INFO_ENTRY = "world-info/entry?uid={uid}&book={book}"
+    const val WORLD_INFO_GLOBAL = "world-info/global"
+
+    const val CHAR_FORM = "characters/form/{avatar}"
+    const val CHAR_GREETINGS = "characters/greetings/{avatar}"
+    const val CHAR_ADVANCED = "characters/advanced/{avatar}"
+
+    const val BACKGROUNDS = "settings/backgrounds"
+    const val THEME = "settings/theme"
+    const val CHAT_BEHAVIOR = "settings/chat-behavior"
+
     const val SECRETS = "settings/secrets"
     const val EXTENSIONS = "settings/extensions"
     const val AUTHOR_NOTE = "settings/author-note"
@@ -37,6 +54,12 @@ object STRoutes {
 
     fun characterDetail(avatar: String): String = "characters/detail/${Uri.encode(avatar)}"
     fun characterEdit(avatar: String): String = "characters/edit/${Uri.encode(avatar)}"
+    fun characterForm(avatar: String): String = "characters/form/${Uri.encode(avatar)}"
+    fun characterGreetings(avatar: String): String = "characters/greetings/${Uri.encode(avatar)}"
+    fun characterAdvanced(avatar: String): String = "characters/advanced/${Uri.encode(avatar)}"
+    fun worldInfoBook(name: String): String = "world-info/book/${Uri.encode(name)}"
+    fun worldInfoEntry(uid: Int, book: String): String =
+        "world-info/entry?uid=$uid&book=${Uri.encode(book)}"
     fun providerDetail(providerId: String): String = "api-connections/detail/${Uri.encode(providerId)}"
     fun pastChats(avatar: String): String = "characters/chats/${Uri.encode(avatar)}"
     fun groupChatDetail(groupId: String, chatId: String?): String =

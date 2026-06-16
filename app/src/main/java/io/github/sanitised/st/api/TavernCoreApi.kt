@@ -176,6 +176,22 @@ data class WorldInfoEntry(
     val raw: Map<String, Any?> = emptyMap()
 )
 
+data class StUserView(
+    val handle: String,
+    val name: String,
+    val avatar: String? = null,
+    val hasPassword: Boolean = false,
+    val created: Long = 0L,
+)
+
+data class StCurrentUser(
+    val handle: String,
+    val name: String,
+    val admin: Boolean = false,
+    val created: Long = 0L,
+    val avatar: String? = null,
+)
+
 data class WorldInfoBook(
     val name: String,
     val entries: List<WorldInfoEntry> = emptyList(),
@@ -315,6 +331,15 @@ interface TavernCoreApi {
     suspend fun deleteWorldInfo(name: String)
     suspend fun uploadFile(name: String, base64Data: String): String
     suspend fun deleteFile(path: String)
+    suspend fun listBackgrounds(): List<String>
+    suspend fun deleteBackground(bg: String)
+    suspend fun renameBackground(oldBg: String, newBg: String)
+    suspend fun listUsers(): List<StUserView>
+    suspend fun loginUser(handle: String, password: String): String
+    suspend fun recoverPasswordStep1(handle: String)
+    suspend fun recoverPasswordStep2(handle: String, code: String, newPassword: String)
+    suspend fun getCurrentUser(): StCurrentUser
+    suspend fun changeUserPassword(handle: String, oldPassword: String, newPassword: String)
     suspend fun listPersonas(): List<PersonaProfile>
     suspend fun savePersona(request: PersonaSaveRequest)
     suspend fun uploadPersonaAvatar(fileName: String, bytes: ByteArray, overwriteName: String? = null): String
@@ -635,6 +660,93 @@ class TavernCoreClient(
                 path = "api/files/delete",
                 json = jsonObject("path" to path)
             )
+        }
+    }
+
+    override suspend fun listBackgrounds(): List<String> {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/backgrounds/all", "{}")
+            val loaded = yaml.load<Any?>(body)
+            val images = when (loaded) {
+                is Map<*, *> -> loaded["images"] as? List<*>
+                is List<*> -> loaded
+                else -> null
+            } ?: emptyList<Any?>()
+            images.mapNotNull { item ->
+                when (item) {
+                    is String -> item.takeIf { it.isNotBlank() }
+                    is Map<*, *> -> item.stringValue("filename").takeIf { it.isNotBlank() }
+                    else -> null
+                }
+            }
+        }
+    }
+
+    override suspend fun deleteBackground(bg: String) {
+        withContext(Dispatchers.IO) {
+            postJson(path = "api/backgrounds/delete", json = jsonObject("bg" to bg))
+        }
+    }
+
+    override suspend fun renameBackground(oldBg: String, newBg: String) {
+        withContext(Dispatchers.IO) {
+            postJson(path = "api/backgrounds/rename", json = jsonObject("old_bg" to oldBg, "new_bg" to newBg))
+        }
+    }
+
+    override suspend fun listUsers(): List<StUserView> {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/users/list", "{}")
+            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            items.mapNotNull { item ->
+                val m = item as? Map<*, *> ?: return@mapNotNull null
+                StUserView(
+                    handle = m.stringValue("handle"),
+                    name = m.stringValue("name").ifBlank { m.stringValue("handle") },
+                    avatar = m.stringValue("avatar").takeIf { it.isNotBlank() },
+                    hasPassword = (m["password"] as? Boolean) ?: false,
+                    created = (m["created"] as? Number)?.toLong() ?: 0L
+                )
+            }
+        }
+    }
+
+    override suspend fun loginUser(handle: String, password: String): String {
+        return withContext(Dispatchers.IO) {
+            val body = postJson("api/users/login", jsonObject("handle" to handle, "password" to password))
+            (yaml.load<Any?>(body) as? Map<*, *>)?.stringValue("handle")?.ifBlank { handle } ?: handle
+        }
+    }
+
+    override suspend fun recoverPasswordStep1(handle: String) {
+        withContext(Dispatchers.IO) {
+            postJson("api/users/recover-step1", jsonObject("handle" to handle))
+        }
+    }
+
+    override suspend fun recoverPasswordStep2(handle: String, code: String, newPassword: String) {
+        withContext(Dispatchers.IO) {
+            postJson("api/users/recover-step2", jsonObject("handle" to handle, "code" to code, "newPassword" to newPassword))
+        }
+    }
+
+    override suspend fun getCurrentUser(): StCurrentUser {
+        return withContext(Dispatchers.IO) {
+            val body = getJson("api/users/me")
+            val m = (yaml.load<Any?>(body) as? Map<*, *>) ?: emptyMap<Any?, Any?>()
+            StCurrentUser(
+                handle = m.stringValue("handle"),
+                name = m.stringValue("name").ifBlank { m.stringValue("handle") },
+                admin = (m["admin"] as? Boolean) ?: false,
+                created = (m["created"] as? Number)?.toLong() ?: 0L,
+                avatar = m.stringValue("avatar").takeIf { it.isNotBlank() }
+            )
+        }
+    }
+
+    override suspend fun changeUserPassword(handle: String, oldPassword: String, newPassword: String) {
+        withContext(Dispatchers.IO) {
+            postJson("api/users/change-password", jsonObject("handle" to handle, "oldPassword" to oldPassword, "newPassword" to newPassword))
         }
     }
 
@@ -1597,6 +1709,22 @@ class TavernCoreClient(
         }
         val request = builder.build()
         httpClient.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("SillyTavern API ${response.code}: $body")
+            }
+            return body
+        }
+    }
+
+    private fun getJson(path: String): String {
+        val builder = Request.Builder()
+            .url(normalizedBaseUrl + path.removePrefix("/"))
+            .get()
+        csrfToken().takeIf { it.isNotBlank() }?.let { token ->
+            builder.header("x-csrf-token", token)
+        }
+        httpClient.newCall(builder.build()).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException("SillyTavern API ${response.code}: $body")
