@@ -2071,10 +2071,14 @@ private fun QuickReplyStrip(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items.forEach { item ->
+                    // 上游 Quick Reply 的 icon 是 Font Awesome 类名（如 fa-pencil），不是可展示文本。
+                    // 仅当包含非 ASCII 字符（emoji / 可显示符号）时才渲染，避免显示 "fa-pencil" 这类内部标识。
+                    // TODO: 长期做 FontAwesome 类名 → Compose icon 的映射。
+                    val showIcon = item.icon.isNotBlank() && item.icon.any { it.code > 0x7F }
                     AssistChip(
                         onClick = { if (enabled) onExecute(item) },
                         enabled = enabled,
-                        leadingIcon = if (item.icon.isNotBlank()) {
+                        leadingIcon = if (showIcon) {
                             { Text(text = item.icon, style = MaterialTheme.typography.bodySmall) }
                         } else {
                             null
@@ -2964,7 +2968,7 @@ private fun BranchRow(
                 Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
             },
             supportingContent = if (isBookmark) {
-                { Text("Checkpoint", style = MaterialTheme.typography.bodySmall) }
+                { Text("存档点", style = MaterialTheme.typography.bodySmall) }
             } else {
                 { Text("分支", style = MaterialTheme.typography.bodySmall) }
             },

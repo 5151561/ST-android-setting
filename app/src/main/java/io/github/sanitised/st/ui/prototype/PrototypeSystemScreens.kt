@@ -41,6 +41,8 @@ import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Help
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
@@ -145,6 +147,9 @@ fun PrototypeWorldInfoScreen(
     baseUrl: String,
     onStartService: () -> Unit,
     onShowMessage: (String) -> Unit,
+    onOpenManage: () -> Unit = {},
+    onOpenBook: (String) -> Unit = {},
+    onOpenGlobalSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val openDrawer = LocalSTOpenDrawer.current
@@ -173,8 +178,8 @@ fun PrototypeWorldInfoScreen(
                 PrototypeIconButton(Icons.Filled.Menu, "打开抽屉", openDrawer)
             },
             actions = {
-                PrototypeIconButton(Icons.Filled.FileDownload, "导入", { onShowMessage("世界书导入功能开发中") })
-                PrototypeIconButton(Icons.Filled.Add, "新增", { onShowMessage("新增世界书条目功能开发中") })
+                PrototypeIconButton(Icons.Filled.Tune, "管理", onOpenManage)
+                PrototypeIconButton(Icons.Filled.Settings, "全局设置", onOpenGlobalSettings)
             }
         )
         if (!running) {
@@ -206,7 +211,7 @@ fun PrototypeWorldInfoScreen(
                         },
                         trailing = { Switch(checked = true, onCheckedChange = null) },
                         divider = index != books.lastIndex,
-                        onClick = { onShowMessage("世界书详情功能开发中") }
+                        onClick = { onOpenBook(book.id) }
                     )
                 }
             }
@@ -218,7 +223,8 @@ fun PrototypeWorldInfoScreen(
                         keys = entry.keys.joinToString(", ").ifBlank { entry.comment.ifBlank { "未命名条目" } },
                         content = entry.content,
                         constant = entry.constant,
-                        selective = entry.selective
+                        selective = entry.selective,
+                        order = entry.order
                     )
                 }
             } else {
@@ -799,6 +805,10 @@ fun PrototypeMeScreen(
     onOpenSecrets: () -> Unit,
     onOpenExtensions: () -> Unit,
     onOpenAppearance: () -> Unit,
+    onOpenAccount: () -> Unit = {},
+    onOpenBackgrounds: () -> Unit = {},
+    onOpenTheme: () -> Unit = {},
+    onOpenChatBehavior: () -> Unit = {},
     appVersion: String = "",
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -815,7 +825,7 @@ fun PrototypeMeScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onShowMessage("用户资料功能开发中") }
+                .clickable { onOpenAccount() }
                 .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -847,6 +857,13 @@ fun PrototypeMeScreen(
                 onClick = onOpenAppearance
             )
             PrototypeListItem(
+                headline = "界面主题与颜色",
+                supporting = "已安装主题、颜色细调、自定义 CSS",
+                leading = { PrototypeTileIcon(Icons.Filled.ColorLens) },
+                divider = true,
+                onClick = onOpenTheme
+            )
+            PrototypeListItem(
                 headline = "字号",
                 supporting = "点击调整",
                 leading = { PrototypeTileIcon(Icons.Filled.TextFields) },
@@ -855,16 +872,23 @@ fun PrototypeMeScreen(
             )
             PrototypeListItem(
                 headline = "聊天背景",
-                supporting = "点击设置",
+                supporting = "背景网格、锁定、上传",
                 leading = { PrototypeTileIcon(Icons.Filled.Image) },
                 divider = true,
-                onClick = onOpenAppearance
+                onClick = onOpenBackgrounds
             )
             PrototypeSwitchRow("消息冒泡风格", "关闭则使用全宽文档样式", bubbleStyle, onBubbleStyleChanged)
         }
         // ── 行为 ──
         PrototypeSectionHeader("行为")
         PrototypeSettingsGroup {
+            PrototypeListItem(
+                headline = "聊天与消息",
+                supporting = "平滑流式、自动继续、消息显示、示例消息行为",
+                leading = { PrototypeTileIcon(Icons.AutoMirrored.Filled.Chat) },
+                divider = true,
+                onClick = onOpenChatBehavior
+            )
             PrototypeSwitchRow("流式生成时震动反馈", "逐字到达时轻微震动", vibrationFeedback, onVibrationFeedbackChanged)
             PrototypeSwitchRow("敏感操作二次确认", "删除消息、清空对话等", secondConfirmation, onSecondConfirmationChanged)
             PrototypeSwitchRow("启动时自动连接 API", null, autoOpenBrowserEnabled, onAutoOpenBrowserChanged)
