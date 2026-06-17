@@ -130,6 +130,7 @@ import io.github.sanitised.st.chat.engine.BridgeChatEngine
 import io.github.sanitised.st.chat.engine.DefaultChatRuntimeBridgeActions
 import io.github.sanitised.st.chat.engine.NativeChatEngine
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.GroupCreateRequest
 import io.github.sanitised.st.ui.webview.ChatWebViewScreen
@@ -649,20 +650,37 @@ class MainActivity : ComponentActivity() {
             // to reload settings.json + reconnect (otherwise the wrong model is used).
             var runtimeSettingsDirty by rememberSaveable { mutableStateOf(false) }
             val navigateMainTab: (String) -> Unit = { route ->
-                if (route == STRoutes.CHAT) {
-                    // Keep the already-loaded chat state so returning to the tab is
-                    // instant; only set the target to the current chat snapshot.
-                    if (NativeChatUiRouting.shouldActivateHiddenWebViewForChatEntry(nativeGenerationEnabled)) {
-                        chatRuntimeActivated = true
+                if (route == STRoutes.LOGIN) {
+                    // 抽屉「退出登录」走通用导航：先向后端注销并清本地会话 cookie，再进登录页，
+                    // 否则旧会话 cookie 仍在共享 jar 里，后续私有接口会沿用上一个账户。
+                    scope.launch {
+                        if (statusState.value.state == NodeState.RUNNING) {
+                            runCatching {
+                                TavernCoreClient(SillyTavernUrl.localWebUrl(statusState.value.port)).logoutUser()
+                            }
+                        }
+                        navController.navigate(STRoutes.LOGIN) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
-                    pendingWebViewTarget = WebViewTarget.CHAT
-                }
-                navController.navigate(route) {
-                    popUpTo(navController.graph.findStartDestination().id) {
-                        saveState = true
+                } else {
+                    if (route == STRoutes.CHAT) {
+                        // Keep the already-loaded chat state so returning to the tab is
+                        // instant; only set the target to the current chat snapshot.
+                        if (NativeChatUiRouting.shouldActivateHiddenWebViewForChatEntry(nativeGenerationEnabled)) {
+                            chatRuntimeActivated = true
+                        }
+                        pendingWebViewTarget = WebViewTarget.CHAT
                     }
-                    launchSingleTop = true
-                    restoreState = true
+                    navController.navigate(route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
             }
             val openCharacterChatFromCharacterManagement: (String, String?) -> Unit = { avatar, chatFile ->

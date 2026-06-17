@@ -473,6 +473,10 @@ fun PrototypeWorldEntryEditScreen(
             draft.clear()
             if (entry != null) {
                 draft.putAll(entry.raw)
+                // 归一化旧的 disabled 标志：用解析器算好的启用态写回 disable，并清掉残留的
+                // legacy disabled，否则保存时 disable=false 会被 OR 回 disabled=true，无法重新启用。
+                draft["disable"] = entry.disabled
+                draft.remove("disabled")
                 draftUid = entry.uid
             } else {
                 // 新条目
@@ -516,7 +520,7 @@ fun PrototypeWorldEntryEditScreen(
                     position = i("position", 1),
                     constant = b("constant"),
                     selective = b("selective"),
-                    disabled = b("disable") || b("disabled"),
+                    disabled = b("disable"),
                     raw = draft.toMap()
                 )
                 val exists = bk.entries.any { it.uid == draftUid }
@@ -553,7 +557,7 @@ fun PrototypeWorldEntryEditScreen(
             Spacer(Modifier.width(12.dp))
             Text("启用", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(8.dp))
-            Switch(checked = !(b("disable") || b("disabled")), onCheckedChange = { draft["disable"] = !it })
+            Switch(checked = !b("disable"), onCheckedChange = { draft["disable"] = !it })
         }
         TabRow(selectedTabIndex = tab, containerColor = Color.Transparent) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("内容") })
