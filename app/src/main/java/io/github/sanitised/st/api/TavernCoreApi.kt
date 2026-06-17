@@ -195,7 +195,10 @@ data class StCurrentUser(
 data class WorldInfoBook(
     val name: String,
     val entries: List<WorldInfoEntry> = emptyList(),
-    val rawData: Map<String, Any?> = emptyMap()
+    val rawData: Map<String, Any?> = emptyMap(),
+    // 文件标识（无扩展名的文件名 = /api/worldinfo/list 的 file_id）。后端 get/edit/delete
+    // 都按这个值定位文件；name 仅是 JSON 内的显示名，二者可能不同。
+    val fileId: String = ""
 )
 
 data class PersonaProfile(
@@ -340,6 +343,7 @@ interface TavernCoreApi {
     suspend fun recoverPasswordStep2(handle: String, code: String, newPassword: String)
     suspend fun getCurrentUser(): StCurrentUser
     suspend fun changeUserPassword(handle: String, oldPassword: String, newPassword: String)
+    suspend fun logoutUser()
     suspend fun listPersonas(): List<PersonaProfile>
     suspend fun savePersona(request: PersonaSaveRequest)
     suspend fun uploadPersonaAvatar(fileName: String, bytes: ByteArray, overwriteName: String? = null): String
@@ -616,7 +620,8 @@ class TavernCoreClient(
             val map = (yaml.load<Any?>(body) as? Map<*, *>)
                 ?.toStringKeyMap()
                 ?: emptyMap()
-            map.toWorldInfoBook(fallbackName = name)
+            // 传入的 name 即 file_id（文件名）；记到 fileId 上，保存/删除时按它定位文件。
+            map.toWorldInfoBook(fallbackName = name).copy(fileId = name)
         }
     }
 
@@ -625,7 +630,7 @@ class TavernCoreClient(
             postJson(
                 path = "api/worldinfo/edit",
                 json = jsonObject(
-                    "name" to book.name,
+                    "name" to book.fileId.ifBlank { book.name },
                     "data" to book.toApiData()
                 )
             )
@@ -747,6 +752,15 @@ class TavernCoreClient(
     override suspend fun changeUserPassword(handle: String, oldPassword: String, newPassword: String) {
         withContext(Dispatchers.IO) {
             postJson("api/users/change-password", jsonObject("handle" to handle, "oldPassword" to oldPassword, "newPassword" to newPassword))
+        }
+    }
+
+    override suspend fun logoutUser() {
+        withContext(Dispatchers.IO) {
+            runCatching { postJson("api/users/logout", "{}") }
+            // 无论后端是否成功，都清掉本地会话 cookie 与缓存的 CSRF，避免沿用旧账户身份。
+            clearSessionCookies()
+            csrfToken = null
         }
     }
 
@@ -1686,13 +1700,18 @@ class TavernCoreClient(
             "api_key_generic" to "Generic"
         )
 
+        private val sharedCookieJar = InMemoryCookieJar()
+
         val defaultHttpClient: OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(750, TimeUnit.MILLISECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
             .callTimeout(15, TimeUnit.SECONDS)
-            .cookieJar(InMemoryCookieJar())
+            .cookieJar(sharedCookieJar)
             .followRedirects(true)
             .build()
+
+        /** 清空共享会话 cookie（退出登录后调用，避免沿用旧账户会话）。 */
+        fun clearSessionCookies() = sharedCookieJar.clear()
 
         fun normalizeBaseUrl(baseUrl: String): String {
             val trimmed = baseUrl.trim()
@@ -2251,5 +2270,9 @@ private class InMemoryCookieJar : CookieJar {
             cookies.retainAll(validCookies.toSet())
             return validCookies.filter { it.matches(url) }
         }
+    }
+
+    fun clear() {
+        synchronized(cookies) { cookies.clear() }
     }
 }

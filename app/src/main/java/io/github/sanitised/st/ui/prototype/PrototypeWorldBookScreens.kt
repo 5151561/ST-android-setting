@@ -205,14 +205,15 @@ fun PrototypeWorldBookManageScreen(
             Text("（暂无全局激活的世界书）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         } else {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                globalSelect.forEach { name ->
+                globalSelect.forEach { id ->
+                    val display = books.firstOrNull { it.id == id }?.name ?: id
                     Row(
-                        modifier = Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.secondaryContainer).clickable { toggleGlobal(name, false) }.padding(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.secondaryContainer).clickable { toggleGlobal(id, false) }.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Filled.Public, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
                         Spacer(Modifier.width(5.dp))
-                        Text(name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1)
+                        Text(display, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1)
                     }
                 }
             }
@@ -225,7 +226,7 @@ fun PrototypeWorldBookManageScreen(
             Text("尚未创建任何世界书。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
         }
         books.forEachIndexed { i, b ->
-            val active = globalSelect.contains(b.name)
+            val active = globalSelect.contains(b.id)
             PrototypeListItem(
                 headline = b.name,
                 supporting = if (active) "全局激活中" else "点击查看条目",
@@ -248,7 +249,7 @@ fun PrototypeWorldBookManageScreen(
                     }
                 },
                 divider = i < books.lastIndex,
-                onClick = { onOpenBook(b.name) }
+                onClick = { onOpenBook(b.id) }
             )
         }
 
@@ -261,7 +262,7 @@ fun PrototypeWorldBookManageScreen(
                     scope.launch {
                         runCatching {
                             val name = "新世界书 ${System.currentTimeMillis() % 100000}"
-                            TavernCoreClient(baseUrl).saveWorldInfo(WorldInfoBook(name = name, entries = emptyList(), rawData = mapOf("entries" to emptyMap<String, Any?>())))
+                            TavernCoreClient(baseUrl).saveWorldInfo(WorldInfoBook(name = name, entries = emptyList(), rawData = mapOf("entries" to emptyMap<String, Any?>()), fileId = name))
                             name
                         }.onSuccess { onShowMessage("已创建「$it」"); reloadKey++ }.onFailure { onShowMessage(it.message ?: "新建失败") }
                     }
@@ -285,7 +286,7 @@ fun PrototypeWorldBookManageScreen(
 
     val book = actionsForBook
     if (book != null) {
-        val active = globalSelect.contains(book.name)
+        val active = globalSelect.contains(book.id)
         ModalBottomSheet(
             onDismissRequest = { actionsForBook = null },
             sheetState = sheetState,
@@ -300,12 +301,12 @@ fun PrototypeWorldBookManageScreen(
                 Text(book.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-            P0SheetItem(Icons.AutoMirrored.Filled.OpenInNew, "打开条目列表") { actionsForBook = null; onOpenBook(book.name) }
-            P0SheetItem(Icons.Filled.Public, if (active) "取消全局激活" else "全局激活") { actionsForBook = null; toggleGlobal(book.name, !active) }
+            P0SheetItem(Icons.AutoMirrored.Filled.OpenInNew, "打开条目列表") { actionsForBook = null; onOpenBook(book.id) }
+            P0SheetItem(Icons.Filled.Public, if (active) "取消全局激活" else "全局激活") { actionsForBook = null; toggleGlobal(book.id, !active) }
             P0SheetItem(Icons.Filled.Delete, "删除世界书", danger = true) {
                 actionsForBook = null
                 scope.launch {
-                    runCatching { TavernCoreClient(baseUrl).deleteWorldInfo(book.name) }
+                    runCatching { TavernCoreClient(baseUrl).deleteWorldInfo(book.id) }
                         .onSuccess { onShowMessage("已删除「${book.name}」"); reloadKey++ }
                         .onFailure { onShowMessage(it.message ?: "删除失败") }
                 }
@@ -354,7 +355,7 @@ fun PrototypeLorebookDetailScreen(
 
     Box(Modifier.fillMaxSize()) {
         P0Scaffold(
-            title = bookName,
+            title = book?.name?.ifBlank { bookName } ?: bookName,
             subtitle = book?.let { "${it.entries.size} 条" } ?: "",
             onBack = onBack,
             actions = {
@@ -527,7 +528,7 @@ fun PrototypeWorldEntryEditScreen(
 
     P0Scaffold(
         title = if (entryUid < 0) "新条目" else "编辑条目",
-        subtitle = bookName,
+        subtitle = book?.name?.ifBlank { bookName } ?: bookName,
         onBack = onClose,
         closeIcon = true,
         actions = {

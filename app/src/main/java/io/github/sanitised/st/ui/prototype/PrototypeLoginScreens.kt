@@ -242,6 +242,8 @@ fun PrototypeLoginScreen(
     var loading by remember { mutableStateOf(true) }
     var multiUser by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var handleInput by remember { mutableStateOf("") }
+    var manualPwd by remember { mutableStateOf("") }
 
     LaunchedEffect(running, baseUrl) {
         if (!running) { loading = false; multiUser = false; return@LaunchedEffect }
@@ -289,18 +291,37 @@ fun PrototypeLoginScreen(
                         Spacer(Modifier.height(20.dp))
                     }
                     else -> {
-                        // 单用户模式 / 服务未启动：样例 + 直接进入
-                        P0Banner(
-                            if (running) "服务未启用多用户模式：当前为单用户，无需登录。" else "本地服务未启动。",
-                            icon = Icons.Filled.LockOpen, tone = P0BannerTone.Tertiary,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
+                        // 用户列表为空：可能是单用户（无需登录），也可能是 discreet-login
+                        // （服务器要求认证但故意隐藏用户列表）。两种都要支持：保留 Handle 登录表单，
+                        // 再给一个单用户直接进入的兜底，避免 discreet-login 下无法建立会话。
                         if (running) {
-                            Button(onClick = onLoggedIn, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) {
+                            P0Banner(
+                                "未检测到用户列表。多用户 / discreet 模式请用 Handle 登录；单用户可直接进入。",
+                                icon = Icons.Filled.Keyboard, tone = P0BannerTone.Neutral,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                            P0TextField(label = "Handle", value = handleInput, onValueChange = { handleInput = it }, placeholder = "用户 handle")
+                            Spacer(Modifier.height(12.dp))
+                            P0TextField(label = "密码", value = manualPwd, onValueChange = { manualPwd = it }, password = true)
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = { if (handleInput.isNotBlank()) loginWith(handleInput.trim(), manualPwd) },
+                                enabled = !busy && handleInput.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)
+                            ) {
                                 Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("进入应用")
+                                Text(if (busy) "登录中…" else "使用 Handle 登录")
                             }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                                TextButton(onClick = onLoggedIn) { Text("以单用户身份直接进入") }
+                            }
+                        } else {
+                            P0Banner(
+                                "本地服务未启动。",
+                                icon = Icons.Filled.LockOpen, tone = P0BannerTone.Tertiary,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
                         }
                     }
                 }
@@ -568,7 +589,13 @@ fun PrototypeAccountScreen(
             Row(modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                 Text("账户", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f).padding(start = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                PrototypeIconButton(Icons.AutoMirrored.Filled.Logout, "退出登录", onLogout)
+                PrototypeIconButton(Icons.AutoMirrored.Filled.Logout, "退出登录", {
+                    // 先向后端注销并清本地会话 cookie，再回登录页（避免沿用旧账户会话）。
+                    scope.launch {
+                        if (running) runCatching { TavernCoreClient(baseUrl).logoutUser() }
+                        onLogout()
+                    }
+                })
             }
             Row(modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box {

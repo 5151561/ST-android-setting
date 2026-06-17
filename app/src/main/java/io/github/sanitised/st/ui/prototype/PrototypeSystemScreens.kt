@@ -211,7 +211,7 @@ fun PrototypeWorldInfoScreen(
                         },
                         trailing = { Switch(checked = true, onCheckedChange = null) },
                         divider = index != books.lastIndex,
-                        onClick = { onOpenBook(book.name) }
+                        onClick = { onOpenBook(book.id) }
                     )
                 }
             }
