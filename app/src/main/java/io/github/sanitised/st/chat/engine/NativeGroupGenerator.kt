@@ -24,7 +24,7 @@ data class GroupReply(
 /**
  * Native group-chat reply generation.
  *
- * Mirrors [NativeChatEngine] but is decoupled from `ChatStore`/`ChatRuntimeBridge`
+ * Mirrors [NativeChatEngine] but is decoupled from `ChatStore`
  * so the demo [io.github.sanitised.st.chat.GroupChatScreen] can drive it directly:
  * for a chosen speaker it loads that member's character card, assembles the prompt
  * from the **group** history via [PromptBuilder] / [TextPromptBuilder], streams the
@@ -60,7 +60,7 @@ class NativeGroupGenerator(
         val client = clientProvider()
         val settings = client.getSettings()
         val mode = engineMode(settings, authorsNote)
-        if (mode == NativeEngineMode.FALLBACK) {
+        if (mode == NativeEngineMode.UNSUPPORTED) {
             throw IllegalStateException("当前 API 暂不支持原生群聊生成（请使用 Chat Completion 或受支持的 Text Completion 后端）")
         }
         val character = client.getCharacter(speakerAvatar)
@@ -90,7 +90,7 @@ class NativeGroupGenerator(
                 is TextPromptBuildResult.Ready -> result.payload
                 is TextPromptBuildResult.Unsupported -> throw IllegalStateException(result.reason)
             }
-            NativeEngineMode.FALLBACK -> error("fallback handled above")
+            NativeEngineMode.UNSUPPORTED -> error("unsupported mode handled above")
         }
 
         val model = payload["model"] as? String ?: ""

@@ -792,8 +792,6 @@ fun PrototypeMeScreen(
     onSwipeDrawerChanged: (Boolean) -> Unit,
     developerMode: Boolean,
     onDeveloperModeChanged: (Boolean) -> Unit,
-    nativeGeneration: Boolean,
-    onNativeGenerationChanged: (Boolean) -> Unit,
     onOpenWorldInfo: () -> Unit,
     onOpenPersona: () -> Unit,
     onOpenPresets: () -> Unit,
@@ -947,7 +945,6 @@ fun PrototypeMeScreen(
         PrototypeSectionHeader("实验性")
         PrototypeSettingsGroup {
             PrototypeSwitchRow("开发者模式", "显示 token 计数与请求 JSON", developerMode, onDeveloperModeChanged)
-            PrototypeSwitchRow("原生生成（实验）", "直接由原生组装提示词并调用后端生成，不经 WebView", nativeGeneration, onNativeGenerationChanged)
         }
         // ── 关于 ──
         PrototypeSectionHeader("关于")

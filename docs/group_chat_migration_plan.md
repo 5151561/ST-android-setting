@@ -1,5 +1,7 @@
 # SillyTavern 移动端群聊原生 API 迁移与对接方案
 
+> 2026-06-24 当前口径：1v1 聊天也已和群聊一样退出隐藏 WebView runtime；旧 Bridge 方案只保留为历史记录。当前实现见 `docs/native-chat-runtime-exit-status.md`。
+
 本文件为 Android 客户端原生 Jetpack Compose 群聊功能（`GroupChatScreen`、`GroupMembersScreen`、`GroupSettingsScreen`、`NewGroupScreen`）接入 SillyTavern 后端 Node.js 服务端提供 API 对接、数据流与分阶段落地指导。
 
 > [!IMPORTANT]
@@ -7,7 +9,7 @@
 > 群聊**保留现有 demo 高保真 Compose UI**（`GroupChatScreen` 一套），**废弃** NativeChatScreen + JS Bridge 那条“真实链路群聊”。
 > 群聊数据走**本地 REST API 直连**（`TavernCoreClient`），AI 回复走 **`NativeChatEngine` 原生生成**（与 1v1 同一套 prompt/stream 管线），**不经隐藏 WebView 运行时**。
 >
-> 这与 1v1 当前的“隐藏 WebView 运行时 + Bridge 兜底”混合架构不同：群聊**不使用 Bridge 兜底**，全部原生。本文 §1 仅作历史记录保留旧 Bridge 方案，实际实现以 §1.1 之后为准。
+> 2026-06-24 更新：1v1 已与群聊统一到纯原生聊天链路。本文 §1 仅作历史记录保留旧 Bridge 方案，实际实现以 §1.1 之后以及 `docs/native-chat-runtime-exit-status.md` 为准。
 
 ---
 

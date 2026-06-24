@@ -1,8 +1,10 @@
 # Chat 全面原生化与隐藏 WebView 退出计划
 
+> 2026-06-24 当前状态：本计划的“删除隐藏 WebView runtime”阶段已执行。App 内聊天不再维护 Bridge fallback 或隐藏 WebView host；当前实现口径见 `docs/native-chat-runtime-exit-status.md`。下文保留为阶段历史和设计背景。
+
 版本：0.8.1
 日期：2026-06-10
-方向：从“原生 UI + 隐藏 WebView runtime 兜底”逐步迁移到“原生 Chat runtime 为主，WebView 仅作为临时兼容壳，最终默认关闭并移除”。
+状态：**已完成并归档**。2026-06-24 已执行隐藏 WebView runtime 删除；本文下方阶段描述保留为历史设计和差异追踪。
 
 > v0.5 变更：补上 Phase 1 的“单一写者”安全护栏与并发/integrity 保护，修正 Phase 1 验收范围与阶段优先级矛盾，明确群聊双入口写者归属，纠正测试基础设施与契约测试方法（见各阶段及 §5、§9）。
 > v0.6 变更：补上 v0.5 护栏的时序缺口：adapter 命令队列会等待 `chat.reload` 完成后再执行后续写命令，且不会阻塞 `generation.stop`；`NativeChatScreen` 的 Bridge fallback 写操作统一 reload 后再执行；原生备份改用固定前缀、聊天列表过滤备份，并默认保留最近 5 份。同步标出 Phase 0 未完成交付。

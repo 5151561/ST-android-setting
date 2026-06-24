@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "name": "Greetings",
+  "disableSend": false,
+  "placeBeforeInput": false,
+  "injectInput": false,
+  "qrList": [
+    {
+      "id": 1,
+      "label": "Wave",
+      "icon": "fa-hand",
+      "message": "waves hello",
+      "isHidden": false
+    },
+    {
+      "id": 2,
+      "label": "Draft",
+      "message": "draft only",
+      "disableSend": true,
+      "isHidden": false
+    },
+    {
+      "id": 3,
+      "label": "Hidden",
+      "message": "do not show",
+      "isHidden": true
+    }
+  ]
+}

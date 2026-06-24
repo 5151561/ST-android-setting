@@ -29,7 +29,10 @@ data class QuickReplyItem(
     val setName: String,
     val label: String,
     val icon: String,
-    val message: String
+    val message: String,
+    val disableSend: Boolean = false,
+    val injectInput: Boolean = false,
+    val placeBeforeInput: Boolean = false,
 )
 
 class ChatStore {

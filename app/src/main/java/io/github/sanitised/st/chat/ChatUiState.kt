@@ -1,7 +1,5 @@
 package io.github.sanitised.st.chat
 
-import io.github.sanitised.st.ui.webview.WebViewTarget
-
 internal fun visibleChatMessages(messages: List<ChatMessage>): List<ChatMessage> =
     messages
 
@@ -22,9 +20,9 @@ internal fun chatListScrollTargetIndex(
 
 internal fun chatMessageItemKey(message: ChatMessage): String = "message-${message.id}"
 
-internal fun readyTargetCommandKey(target: WebViewTarget): String =
+internal fun readyTargetCommandKey(target: ChatTarget): String =
     when (target) {
-        WebViewTarget.CHAT -> "snapshot"
-        is WebViewTarget.CharacterChat -> "character:${target.avatar}:${target.chatFile.orEmpty()}"
-        is WebViewTarget.GroupChat -> "group:${target.groupId}:${target.chatId.orEmpty()}"
+        ChatTarget.Current -> "snapshot"
+        is ChatTarget.CharacterChat -> "character:${target.avatar}:${target.chatFile.orEmpty()}"
+        is ChatTarget.GroupChat -> "group:${target.groupId}:${target.chatId.orEmpty()}"
     }

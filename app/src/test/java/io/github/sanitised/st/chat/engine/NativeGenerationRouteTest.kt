@@ -6,14 +6,6 @@ import org.junit.Test
 class NativeGenerationRouteTest {
 
     @Test
-    fun bridgeFallbackRouteStopsThroughBridgeEvenInCharacterChat() {
-        assertEquals(
-            GenerationStopTarget.BRIDGE,
-            stopTargetForGeneration(mode = "character", route = ActiveGenerationRoute.BRIDGE)
-        )
-    }
-
-    @Test
     fun nativeRouteStopsLocallyForCharacterChat() {
         assertEquals(
             GenerationStopTarget.NATIVE,
@@ -22,9 +14,9 @@ class NativeGenerationRouteTest {
     }
 
     @Test
-    fun groupChatsAlwaysStopThroughBridge() {
+    fun groupChatsDoNotRouteStopToRemovedBridgeRuntime() {
         assertEquals(
-            GenerationStopTarget.BRIDGE,
+            GenerationStopTarget.NATIVE,
             stopTargetForGeneration(mode = "group", route = ActiveGenerationRoute.NATIVE)
         )
     }

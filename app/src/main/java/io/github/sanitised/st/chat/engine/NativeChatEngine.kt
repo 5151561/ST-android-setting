@@ -4,9 +4,12 @@ import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.api.TavernCoreApi
 import io.github.sanitised.st.api.WorldInfoEntry
 import io.github.sanitised.st.chat.ChatMessage
+import io.github.sanitised.st.chat.ItemizedPromptStore
 import io.github.sanitised.st.chat.NativeChatRepository
+import io.github.sanitised.st.chat.NativeChatJsonOps
 import io.github.sanitised.st.chat.TavernNativeChatDataSource
 import io.github.sanitised.st.chat.ChatStore
+import io.github.sanitised.st.chat.buildNativeCharacterChatSnapshot
 import io.github.sanitised.st.chat.prompt.PromptBuilder
 import io.github.sanitised.st.chat.prompt.TextPromptBuildResult
 import io.github.sanitised.st.chat.prompt.TextPromptBuilder
@@ -17,6 +20,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -26,52 +30,38 @@ import java.util.UUID
 enum class NativeEngineMode {
     CHAT_COMPLETION,
     TEXT_COMPLETION,
-    FALLBACK,
+    UNSUPPORTED,
 }
 
 enum class ActiveGenerationRoute {
     NONE,
     NATIVE,
-    BRIDGE,
 }
 
 enum class GenerationStopTarget {
     NATIVE,
-    BRIDGE,
 }
 
 fun stopTargetForGeneration(mode: String, route: ActiveGenerationRoute): GenerationStopTarget =
-    if (mode == "group" || route == ActiveGenerationRoute.BRIDGE) {
-        GenerationStopTarget.BRIDGE
-    } else {
-        GenerationStopTarget.NATIVE
-    }
+    GenerationStopTarget.NATIVE
 
 fun engineMode(settings: Map<String, Any?>, authorsNote: String = ""): NativeEngineMode =
-    when (settings["main_api"] as? String) {
-        "openai" -> NativeEngineMode.CHAT_COMPLETION
-        "textgenerationwebui" -> if (TextPromptBuilder.supports(settings, authorsNote)) {
-            NativeEngineMode.TEXT_COMPLETION
-        } else {
-            NativeEngineMode.FALLBACK
-        }
-        else -> NativeEngineMode.FALLBACK
-    }
+    NativeGenerationRouter.route(settings, authorsNote).mode
 
 /**
  * Native generation engine: assembles the prompt on-device ([PromptBuilder] / [TextPromptBuilder]),
  * calls the backend generate endpoint directly, mirrors the reply into [ChatStore]
  * for immediate UI, and persists the canonical JSONL via [TavernCoreApi].
  *
- * MVP: 1v1 character chats for Chat Completion and first-batch Text Completion.
- * Groups, attachments, complex templates, and unsupported APIs fall back to [BridgeChatEngine].
+ * App chat generation now has a single native route. Unsupported providers fail
+ * explicitly here instead of falling back to the removed WebView runtime.
  */
 class NativeChatEngine(
     private val scope: CoroutineScope,
     private val store: ChatStore,
-    private val bridge: ChatRuntimeBridgeActions,
     private val clientProvider: () -> TavernCoreApi,
     private val logger: NativeChatLogger = NativeChatLogger.Android,
+    private val itemizedPromptStore: ItemizedPromptStore = ItemizedPromptStore.Global,
 ) : ChatEngine {
 
     private var job: Job? = null
@@ -84,13 +74,10 @@ class NativeChatEngine(
 
     override fun send(text: String) {
         val message = text.trim()
-        if (message.isEmpty() || store.isGenerating) return
-        // The native engine only handles 1v1 Chat Completion text. Everything else
-        // (group chats, attachments) stays on the WebView bridge, which writes +
-        // clears the pending attachments and reuses the full ST semantics.
-        if (store.mode == "group" || store.pendingAttachments.isNotEmpty()) {
-            activeGenerationRoute = ActiveGenerationRoute.BRIDGE
-            runBridgeWrite { sendMessage(message) }
+        val pendingAttachments = store.pendingAttachments.toList()
+        if ((message.isEmpty() && pendingAttachments.isEmpty()) || store.isGenerating) return
+        if (store.mode == "group") {
+            store.recordCommandError("群聊请使用原生群聊详情页生成")
             return
         }
         val avatar = store.avatarUrl
@@ -102,11 +89,12 @@ class NativeChatEngine(
         launchGeneration {
             val client = clientProvider()
             val settings = client.getSettings()
-            val mode = engineMode(settings, authorsNote = store.authorsNote)
-            if (mode == NativeEngineMode.FALLBACK) {
-                activeGenerationRoute = ActiveGenerationRoute.BRIDGE
+            val route = NativeGenerationRouter.route(settings, authorsNote = store.authorsNote)
+            val mode = route.mode
+            if (mode == NativeEngineMode.UNSUPPORTED) {
                 store.isGenerating = false
-                runBridgeWrite { sendMessage(message) }
+                store.recordCommandError("当前 provider 尚未接入原生生成")
+                store.pushToast("error", "原生生成不可用", "当前 provider 尚未接入原生生成")
                 return@launchGeneration
             }
             activeGenerationRoute = ActiveGenerationRoute.NATIVE
@@ -122,35 +110,37 @@ class NativeChatEngine(
                 // this native store plus JSONL is the current session source of truth.
                 val userId = store.messages.size
                 optimisticUserId = userId
-                store.addMessage(message(userId, userName, message, isUser = true))
+                store.addMessage(message(userId, userName, message, isUser = true, attachments = pendingAttachments))
+                if (pendingAttachments.isNotEmpty()) store.clearPendingAttachments()
                 val history = store.messages.filter { !it.isSystem }
                 val payload = when (mode) {
-                    NativeEngineMode.CHAT_COMPLETION -> buildPayload(client, character, userName, history, settings)
-                    NativeEngineMode.TEXT_COMPLETION -> buildTextPayload(client, character, userName, history, settings)
-                    NativeEngineMode.FALLBACK -> error("fallback mode should have returned before optimistic append")
+                    NativeEngineMode.CHAT_COMPLETION -> buildPayload(client, character, userName, history, route.settings)
+                    NativeEngineMode.TEXT_COMPLETION -> buildTextPayload(client, character, userName, history, route.settings)
+                    NativeEngineMode.UNSUPPORTED -> error("unsupported mode should have returned before optimistic append")
                 }
                 val model = payload["model"] as? String ?: ""
                 val aiId = store.messages.size
                 optimisticAssistantId = aiId
                 store.addMessage(message(aiId, character.name, "", isUser = false))
+                itemizedPromptStore.record(aiId, payload, route)
 
                 val reply = when (mode) {
                     NativeEngineMode.CHAT_COMPLETION -> streamReply(client, payload, aiId)
                     NativeEngineMode.TEXT_COMPLETION -> streamTextReply(client, payload, aiId)
-                    NativeEngineMode.FALLBACK -> ""
+                    NativeEngineMode.UNSUPPORTED -> ""
                 }
 
                 val chat = client.getChatJsonl(avatar, chatFile)
                 ensureHeader(chat, userName, character.name, date)
-                chat += userMessageMap(userName, message, date)
+                chat += userMessageMap(userName, message, date, pendingAttachments)
                 if (reply.isNotBlank()) {
                     chat += aiMessageMap(
                         name = character.name,
                         text = reply,
                         date = date,
                         model = model,
-                        api = if (mode == NativeEngineMode.TEXT_COMPLETION) "textgenerationwebui" else "openai",
-                        type = payload["api_type"] as? String,
+                        api = route.api,
+                        type = route.source,
                     )
                 }
                 NativeChatRepository(dataSourceProvider = { TavernNativeChatDataSource(client) })
@@ -162,7 +152,6 @@ class NativeChatEngine(
             } catch (e: Exception) {
                 if (!persisted) {
                     rollbackOptimisticMessages(store, optimisticUserId, optimisticAssistantId)
-                    runCatching { bridge.reloadChat() }
                 }
                 throw e
             }
@@ -170,20 +159,26 @@ class NativeChatEngine(
     }
 
     override fun regenerate() {
-        // Native regenerate would drop the existing swipe history (swipes/swipe_id),
-        // which is real data loss. Until native swipe semantics are aligned, regenerate
-        // stays on the WebView runtime which preserves swipes correctly.
-        runBridgeWrite { regenerate() }
+        mutateLastAssistantWithGeneration(
+            includeCurrentAssistantInPrompt = false,
+            prefix = "",
+        ) { chat, messageId, generated, _ ->
+            NativeChatJsonOps.createSwipe(chat, messageId, generated)
+        }
     }
 
     override fun continueGeneration() {
-        // MVP: continue is not yet implemented natively; fall back to the runtime.
-        runBridgeWrite { continueGeneration() }
+        val current = store.messages.lastOrNull { !it.isUser && !it.isSystem }?.mes.orEmpty()
+        mutateLastAssistantWithGeneration(
+            includeCurrentAssistantInPrompt = true,
+            prefix = current,
+        ) { chat, messageId, generated, original ->
+            NativeChatJsonOps.editMessage(chat, messageId, original + generated)
+        }
     }
 
     override fun stop() {
         when (stopTargetForGeneration(store.mode, activeGenerationRoute)) {
-            GenerationStopTarget.BRIDGE -> bridge.stopGeneration()
             GenerationStopTarget.NATIVE -> {
                 // Ends the stream at the next token; the in-flight job then persists the partial.
                 stopRequested = true
@@ -261,6 +256,74 @@ class NativeChatEngine(
         )
     }
 
+    private fun mutateLastAssistantWithGeneration(
+        includeCurrentAssistantInPrompt: Boolean,
+        prefix: String,
+        applyGenerated: (MutableList<Any?>, messageId: Int, generated: String, original: String) -> Unit,
+    ) {
+        if (store.isGenerating) return
+        if (store.mode == "group") {
+            store.recordCommandError("群聊请使用原生群聊详情页生成")
+            return
+        }
+        val avatar = store.avatarUrl
+        val chatFile = store.chatFile
+        if (avatar.isBlank() || chatFile.isBlank()) {
+            store.recordCommandError("当前聊天未就绪，无法生成")
+            return
+        }
+        val target = store.messages.lastOrNull { !it.isUser && !it.isSystem }
+        if (target == null) {
+            store.recordCommandError("没有可重写的 AI 消息")
+            return
+        }
+
+        launchGeneration {
+            val client = clientProvider()
+            val settings = client.getSettings()
+            val route = NativeGenerationRouter.route(settings, authorsNote = store.authorsNote)
+            val mode = route.mode
+            if (mode == NativeEngineMode.UNSUPPORTED) {
+                store.isGenerating = false
+                store.recordCommandError("当前 provider 尚未接入原生生成")
+                store.pushToast("error", "原生生成不可用", "当前 provider 尚未接入原生生成")
+                return@launchGeneration
+            }
+            activeGenerationRoute = ActiveGenerationRoute.NATIVE
+            val character = client.getCharacter(avatar)
+            val userName = (settings["username"] as? String)?.takeIf { it.isNotBlank() } ?: "User"
+            val history = store.messages
+                .filter { !it.isSystem }
+                .filter { includeCurrentAssistantInPrompt || it.id != target.id }
+            val payload = when (mode) {
+                NativeEngineMode.CHAT_COMPLETION -> buildPayload(client, character, userName, history, route.settings)
+                NativeEngineMode.TEXT_COMPLETION -> buildTextPayload(client, character, userName, history, route.settings)
+                NativeEngineMode.UNSUPPORTED -> error("unsupported mode should have returned before generation")
+            }
+            itemizedPromptStore.record(target.id, payload, route)
+            val generated = when (mode) {
+                NativeEngineMode.CHAT_COMPLETION -> streamReply(client, payload, target.id, prefix)
+                NativeEngineMode.TEXT_COMPLETION -> streamTextReply(client, payload, target.id, prefix)
+                NativeEngineMode.UNSUPPORTED -> ""
+            }
+            if (generated.isBlank()) return@launchGeneration
+
+            val chat = client.getChatJsonl(avatar, chatFile)
+            applyGenerated(chat, target.id, generated, target.mes)
+            NativeChatRepository(dataSourceProvider = { TavernNativeChatDataSource(client) })
+                .save(avatar, chatFile, chat)
+            store.applySnapshot(
+                buildNativeCharacterChatSnapshot(
+                    avatar = avatar,
+                    character = character,
+                    chatFile = chatFile,
+                    rawChat = chat,
+                ),
+                markRuntimeReady = false,
+            )
+        }
+    }
+
     /** Lorebooks to scan: the character's embedded world + the chat-bound world. */
     private suspend fun collectWorldInfo(client: TavernCoreApi, character: CharacterDetail): List<WorldInfoEntry> {
         val names = LinkedHashSet<String>()
@@ -285,25 +348,37 @@ class NativeChatEngine(
      * Falls back to a non-streaming call if the stream yields nothing (e.g. an SSE
      * shape we don't parse), so unknown providers still work.
      */
-    private suspend fun streamReply(client: TavernCoreApi, payload: Map<String, Any?>, aiId: Int): String {
+    private suspend fun streamReply(
+        client: TavernCoreApi,
+        payload: Map<String, Any?>,
+        aiId: Int,
+        prefix: String = "",
+    ): String {
         val source = payload["chat_completion_source"] as? String ?: ""
         val model = payload["model"] as? String ?: ""
         return streamGeneratedReply(
             aiId = aiId,
             source = source,
             model = model,
+            prefix = prefix,
             stream = { client.generateChatCompletionStream(payload) },
             generate = { client.generateChatCompletion(payload) },
         )
     }
 
-    private suspend fun streamTextReply(client: TavernCoreApi, payload: Map<String, Any?>, aiId: Int): String {
+    private suspend fun streamTextReply(
+        client: TavernCoreApi,
+        payload: Map<String, Any?>,
+        aiId: Int,
+        prefix: String = "",
+    ): String {
         val source = payload["api_type"] as? String ?: ""
         val model = payload["model"] as? String ?: ""
         return streamGeneratedReply(
             aiId = aiId,
             source = source,
             model = model,
+            prefix = prefix,
             stream = { client.generateTextCompletionStream(payload) },
             generate = { client.generateTextCompletion(payload) },
         )
@@ -313,6 +388,7 @@ class NativeChatEngine(
         aiId: Int,
         source: String,
         model: String,
+        prefix: String = "",
         stream: () -> Flow<String>,
         generate: suspend () -> String,
     ): String {
@@ -320,7 +396,7 @@ class NativeChatEngine(
         val acc = StringBuilder()
         fun apply() {
             val idx = store.messages.indexOfFirst { it.id == aiId }
-            if (idx >= 0) store.messages[idx] = store.messages[idx].copy(mes = acc.toString())
+            if (idx >= 0) store.messages[idx] = store.messages[idx].copy(mes = prefix + acc.toString())
         }
         try {
             var lastApply = 0L
@@ -386,7 +462,13 @@ class NativeChatEngine(
         }
     }
 
-    private fun message(id: Int, name: String, text: String, isUser: Boolean): ChatMessage =
+    private fun message(
+        id: Int,
+        name: String,
+        text: String,
+        isUser: Boolean,
+        attachments: List<io.github.sanitised.st.chat.PendingAttachment> = emptyList(),
+    ): ChatMessage =
         ChatMessage(
             id = id,
             name = name,
@@ -396,23 +478,74 @@ class NativeChatEngine(
             sendDate = sendDate(),
             swipeId = 0,
             swipes = if (isUser) emptyList() else listOf(text),
-            extra = JSONObject()
+            extra = attachmentsExtraJson(attachments)
         )
 
-    private fun runBridgeWrite(block: ChatRuntimeBridgeActions.() -> Unit) {
-        bridge.reloadChat()
-        bridge.block()
-    }
-
-    private fun userMessageMap(name: String, text: String, date: String): Map<String, Any?> =
+    private fun userMessageMap(
+        name: String,
+        text: String,
+        date: String,
+        attachments: List<io.github.sanitised.st.chat.PendingAttachment>,
+    ): Map<String, Any?> =
         linkedMapOf(
             "name" to name,
             "is_user" to true,
             "is_system" to false,
             "send_date" to date,
             "mes" to text,
-            "extra" to emptyMap<String, Any?>()
+            "extra" to attachmentsExtraMap(attachments)
         )
+
+    private fun attachmentsExtraJson(
+        attachments: List<io.github.sanitised.st.chat.PendingAttachment>
+    ): JSONObject {
+        val extra = JSONObject()
+        val media = JSONArray()
+        val files = JSONArray()
+        attachments.forEach { attachment ->
+            val item = JSONObject()
+                .put("url", attachment.url)
+                .put("path", attachment.url)
+                .put("name", attachment.name)
+                .put("title", attachment.name)
+                .put("size", attachment.size)
+            if (attachment.isMedia) {
+                media.put(item.put("type", "image"))
+            } else {
+                files.put(item)
+            }
+        }
+        if (media.length() > 0) extra.put("media", media)
+        if (files.length() > 0) extra.put("files", files)
+        return extra
+    }
+
+    private fun attachmentsExtraMap(
+        attachments: List<io.github.sanitised.st.chat.PendingAttachment>
+    ): Map<String, Any?> {
+        if (attachments.isEmpty()) return emptyMap()
+        val media = mutableListOf<Map<String, Any?>>()
+        val files = mutableListOf<Map<String, Any?>>()
+        attachments.forEach { attachment ->
+            val item = linkedMapOf<String, Any?>(
+                "url" to attachment.url,
+                "path" to attachment.url,
+                "name" to attachment.name,
+                "title" to attachment.name,
+                "size" to attachment.size,
+            )
+            if (attachment.isMedia) {
+                item["type"] = "image"
+                media += item
+            } else {
+                files += item
+            }
+        }
+        return linkedMapOf<String, Any?>().apply {
+            if (media.isNotEmpty()) put("media", media)
+            if (files.isNotEmpty()) put("files", files)
+        }
+    }
 
     private fun aiMessageMap(
         name: String,

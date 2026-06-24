@@ -1,6 +1,5 @@
 package io.github.sanitised.st.chat
 
-import io.github.sanitised.st.ui.webview.WebViewTarget
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -55,14 +54,14 @@ class ChatUiStateTest {
 
     @Test
     fun readyTargetCommandKeyIsStableForSameTarget() {
-        assertEquals("snapshot", readyTargetCommandKey(WebViewTarget.CHAT))
+        assertEquals("snapshot", readyTargetCommandKey(ChatTarget.Current))
         assertEquals(
             "character:Aria.png:chat-a",
-            readyTargetCommandKey(WebViewTarget.CharacterChat("Aria.png", "chat-a"))
+            readyTargetCommandKey(ChatTarget.CharacterChat("Aria.png", "chat-a"))
         )
         assertEquals(
             "group:group-1:chat-a",
-            readyTargetCommandKey(WebViewTarget.GroupChat("group-1", "chat-a"))
+            readyTargetCommandKey(ChatTarget.GroupChat("group-1", "chat-a"))
         )
     }
 

@@ -55,7 +55,6 @@ internal class UpdateManager(
         private const val PREF_SECOND_CONFIRMATION = "second_confirmation"
         private const val PREF_SWIPE_DRAWER = "swipe_drawer"
         private const val PREF_DEVELOPER_MODE = "developer_mode"
-        private const val PREF_NATIVE_GENERATION = "native_generation"
         private const val PREF_FONT_SIZE = "font_size"
         private const val PREF_REDUCE_MOTION = "reduce_motion"
         private const val PREF_FIRST_LAUNCH_MS = "first_launch_ms"
@@ -117,9 +116,6 @@ internal class UpdateManager(
     val developerMode = mutableStateOf(
         appPrefs.getBoolean(PREF_DEVELOPER_MODE, false)
     )
-    val nativeGeneration = mutableStateOf(
-        appPrefs.getBoolean(PREF_NATIVE_GENERATION, false)
-    )
     val fontSize = mutableStateOf(
         appPrefs.getFloat(PREF_FONT_SIZE, 14f)
     )
@@ -179,11 +175,6 @@ internal class UpdateManager(
     fun setDeveloperMode(enabled: Boolean) {
         developerMode.value = enabled
         appPrefs.edit().putBoolean(PREF_DEVELOPER_MODE, enabled).apply()
-    }
-
-    fun setNativeGeneration(enabled: Boolean) {
-        nativeGeneration.value = enabled
-        appPrefs.edit().putBoolean(PREF_NATIVE_GENERATION, enabled).apply()
     }
 
     fun setFontSize(size: Float) {

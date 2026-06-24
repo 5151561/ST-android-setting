@@ -1,5 +1,7 @@
 # PRD：ST Android 移动端客户端改造
 
+> 2026-06-24 当前口径：聊天页已完成隐藏 WebView runtime 退出，旧 `ChatWebViewScreen` / `STAndroidBridge` 描述只作为历史 PRD 背景保留。当前实现以 `docs/native-chat-runtime-exit-status.md` 为准。
+
 版本：v0.7
 日期：2026-05-27
 状态：Phase 0 已完成，M0 已验收，M1 已验收，进入 M2 阶段
@@ -13,7 +15,9 @@
 
 ## 1. 一句话定义
 
-将 ST-android 从"启动器 + 外部浏览器"改造为"Chat WebView + App 原生功能页"——App 内运行 SillyTavern 服务，聊天页继续由原版 SillyTavern WebView 承载，角色、设置、管理、预设、世界书等非 Chat 功能逐步由 Compose 原生页面承接。
+当前 ST-android 的定位是"本地 SillyTavern 服务 + Compose 原生功能页"：App 内运行 SillyTavern 服务，聊天页已由 `NativeChatScreen` / `NativeChatEngine` 承接；角色、设置、管理、预设、世界书等功能继续由 Compose 原生页面推进。
+
+历史说明：本文早期版本曾以"Chat WebView + App 原生功能页"作为阶段目标，该口径已在 2026-06-24 runtime exit 后归档。
 
 ---
 

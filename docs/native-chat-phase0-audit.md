@@ -1,5 +1,7 @@
 # Chat 原生化 Phase 0 基线检查
 
+> 2026-06-24 当前口径：Phase 0/Phase 1 的 Bridge fallback 基线已被 runtime exit 取代；当前聊天只走原生链路。本文保留为历史审计记录，最新状态见 `docs/native-chat-runtime-exit-status.md`。
+
 日期：2026-06-03
 范围：只做 Phase 0 检查和基线冻结；不做 Phase 1 迁移，不改生成/消息操作实现。
 

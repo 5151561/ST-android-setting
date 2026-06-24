@@ -1,25 +1,6 @@
 package io.github.sanitised.st.chat.engine
 
 import android.util.Log
-import io.github.sanitised.st.chat.ChatRuntimeBridge
-
-interface ChatRuntimeBridgeActions {
-    fun sendMessage(text: String)
-    fun stopGeneration()
-    fun regenerate()
-    fun continueGeneration()
-    fun reloadChat()
-}
-
-class DefaultChatRuntimeBridgeActions(
-    private val bridge: ChatRuntimeBridge,
-) : ChatRuntimeBridgeActions {
-    override fun sendMessage(text: String) = bridge.sendMessage(text)
-    override fun stopGeneration() = bridge.stopGeneration()
-    override fun regenerate() = bridge.regenerate()
-    override fun continueGeneration() = bridge.continueGeneration()
-    override fun reloadChat() = bridge.reloadChat()
-}
 
 interface NativeChatLogger {
     fun info(tag: String, message: String)

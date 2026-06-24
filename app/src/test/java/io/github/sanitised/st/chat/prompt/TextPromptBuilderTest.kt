@@ -233,16 +233,16 @@ class TextPromptBuilderTest {
     }
 
     @Test
-    fun reportsUnsupportedForTextGenerationTypesOutsideFirstBatch() {
+    fun reportsUnsupportedForUnknownTextGenerationTypes() {
         val result = TextPromptBuilder.build(
             character = character(),
             userName = "Alex",
             history = emptyList(),
-            settings = settings(apiType = "tabby"),
+            settings = settings(apiType = "unknown-textgen"),
         )
 
         assertEquals(
-            TextPromptBuildResult.Unsupported("unsupported api_type: tabby"),
+            TextPromptBuildResult.Unsupported("unsupported api_type: unknown-textgen"),
             result
         )
     }

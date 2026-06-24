@@ -7,7 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ChatBridgeModelsTest {
+class ChatModelsTest {
     @Test
     fun mediaAttachmentsParseFromMessageExtraMediaArray() {
         val message = chatMessage(
@@ -166,17 +166,6 @@ class ChatBridgeModelsTest {
     @Test
     fun branchesEmptyWhenAbsent() {
         assertTrue(chatMessage(extra = JSONObject()).branches.isEmpty())
-    }
-
-    @Test
-    fun parsesRuntimeToastEvent() {
-        val json = """{"name":"runtime.toast","payload":{"type":"error","title":"失败","message":"未知命令"}}"""
-        val event = BridgeEvent.parse(json)
-        assertTrue(event is BridgeEvent.Toast)
-        val toast = event as BridgeEvent.Toast
-        assertEquals("error", toast.type)
-        assertEquals("失败", toast.title)
-        assertEquals("未知命令", toast.message)
     }
 
     @Test
