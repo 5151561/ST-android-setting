@@ -1,81 +1,81 @@
-# 欢迎来到 ST-android-setting Wiki 知识库
+# ST-android-setting Wiki 知识库
 
 > [!NOTE]
-> **ST-android-setting** 是一个第三方的独立 SillyTavern 安卓客户端。它沿用了上游的核心嵌入式 Node.js 运行时能力，致力于通过 Jetpack Compose 与 Material Design 3 打造纯原生的移动端管理体验，并通过 Chat WebView 桥接承载核心聊天生成，实现“原生端管理，WebView 聊天”的渐进式 App 化演进。
+> 本 Wiki 是项目的完整阅读入口。`README.md` 负责快速介绍和安装构建，`wiki/` 负责用户指南、开发者指南、架构概览和里程碑导航，`docs/` 保存更细的研发档案与历史方案。
+
+ST-android-setting 是一个第三方 SillyTavern Android 客户端。它在设备本地运行嵌入式 Node.js + SillyTavern 服务端，并用 Jetpack Compose 与 Material 3 构建原生移动端体验。当前聊天路径已经完成 Native runtime exit：App 内聊天不再依赖隐藏 WebView runtime，当前实现以原生 `NativeChatScreen` 和 `NativeChatEngine` 为主。
 
 ---
 
-## 🎯 项目核心愿景
+## 项目愿景
 
-* **开箱即用，零配置运行**：内置嵌入式 Node.js 编译环境及 SillyTavern 完整源码，用户无需安装 Termux 或进行复杂的端口配置，一键即可在安卓端运行。
-* **原生 Compose + Material 3**：首页工作台、角色库管理、设置面板、诊断日志以及备份恢复全面原生化，摆脱繁重的桌面端 Web 适配限制。
-* **注重隐私，安全无遥测**：数据百分之百存储在本地，不附带任何遥测、分析或三方上报。除更新检查、npm 与自定义内核包下载外，无额外网络流量。
-* **极致性能与保活机制**：前台服务常驻，结合优雅的端口占用探测、崩溃监测以及自动重启机制，为移动端使用提供稳定可靠的守护。
-
----
-
-## 🚀 快速导航
-
-为了帮助您快速了解项目，我们建议您阅读以下专题页面：
-
-```mermaid
-graph TD
-    Start[欢迎阅读 Wiki] --> User[📖 用户指南]
-    Start --> Dev[💻 开发者指南]
-    Start --> Arch[📐 系统架构]
-    Start --> Mile[🏁 里程碑规划]
-
-    User --> U1[安装与启动]
-    User --> U2[多渠道数据迁移]
-    User --> U3[后台常驻保活]
-
-    Dev --> D1[快速编译调试]
-    Dev --> D2[真机 API 契约测试]
-    Dev --> D3[上游固化同步流程]
-
-    Arch --> A1[Node 守护服务]
-    Arch --> A2[双路径数据交互]
-    Arch --> A3[JS Bridge 胶水]
-
-    Mile --> M2[M2 角色管理原生化]
-    Mile --> M3[M3 内核稳定性大版本]
-    Mile --> MC[Chat 原生化技术规划]
-```
-
-### 📖 用户指南
-* **[安装与启动](User-Guide#1-安装与启动)**：如何获取最新安装包并首次启动内核。
-* **[多渠道数据迁移](User-Guide#2-数据迁移)**：支持 PC、Termux 备份一键归档恢复，全面兼容原版 SillyTavern 用户备份。
-* **[自定义版本内核](User-Guide#3-自定义版本与更新)**：教您如何利用 ZIP 归档或自定义 GitHub 仓库/分支在手机上运行特定版本的 SillyTavern。
-* **[后台电池保活](User-Guide#4-电池保活与后台优化)**：在各厂商深度定制系统（ROM）下确保前台 Node 运行时不被强杀的实操方法。
-
-### 💻 开发者指南
-* **[快速开始与编译](Developer-Guide#1-环境与编译)**：搭建 Android SDK + JDK 17 环境，一键构建 Debug 变体。
-* **[真机 API 契约测试](Developer-Guide#2-契约测试与真机调试)**：详解如何使用 adb 端口转发将测试套件安全地与真机上的运行实例连通，避免单测破坏真实数据。
-* **[上游固化同步规范](Developer-Guide#3-上游同步与发布流程)**：拉取 SillyTavern 最新源码提交后，如何运行自动化套件与真机回归，进行 AGPL 合规审查。
-
-### 📐 系统架构
-* **[核心组件设计](Architecture#1-内核运行时与核心组件)**：透视 `NodeService`、`NodePayload` 和 `AppPaths` 的协作逻辑。
-* **[双路径数据设计](Architecture#3-数据交互-双路径设计)**：理解 `TavernCoreClient`（API 优先）与 `LocalTavernLibraryReader`（本地文件只读缓存）的混合读取与保真机制。
-* **[JS Bridge 桥接增强](Architecture#4-js-bridge-原生能力增强)**：了解 `@JavascriptInterface` 的注入机制以及文件选择、图片分享、TTS 桥接等平台能力。
-
-### 🏁 里程碑与演进规划
-* **[M2 角色原生管理](Milestone-M2-Characters)**：详细展示角色列表、高级排序、嵌入标签筛选以及 multipart 表单安全换头像的原生实现细节。
-* **[M3 内核与稳定性](Milestone-M3-Core-Stability)**：了解如何通过设置快照（Snapshot）、导入确认清单、非主动退出捕获以及崩溃日志脱敏等核心功能提高大版本稳定性。
-* **[Chat 原生化规划](Milestone-Chat-Migration)**：展望未来的原生聊天页面。分析单一活动聊天状态源设计、Bridge 双向事件信封，以及如何承接 Tool Calling 和流式生成。
+* **开箱即用**：APK 内置 Node.js 运行时和 SillyTavern 源码，用户无需 Termux 即可在 Android 设备上启动本地服务。
+* **原生移动体验**：首页、聊天、角色、工具、设置等页面逐步由 Compose 原生界面承接。
+* **本地优先和隐私优先**：聊天、角色、设置都保存在本地；项目不内置遥测或分析上报。
+* **可维护迁移**：保留 SillyTavern 后端能力，通过原生 API、契约测试和阶段文档追踪迁移边界。
 
 ---
 
-## 🛠️ 如何同步本 Wiki
-本目录下的所有文件均采用平面化、无子目录的扁平结构进行管理，符合 GitHub Wiki 的原生版本库设计。
-如果您拥有该项目的 Wiki 仓库写权限，可以通过以下步骤一键将本地 `wiki/` 目录的更新推送到线上：
+## 快速入口
 
-1. **克隆项目的 Wiki 版本库**：
+| 想了解什么 | 推荐入口 | 说明 |
+|---|---|---|
+| 安装、启动、迁移数据 | [用户与数据迁移指南](User-Guide) | 面向最终用户，覆盖 APK 安装、备份导入、自定义版本和后台保活 |
+| 编译、测试、发布 | [开发者指南](Developer-Guide) | 面向贡献者，覆盖构建命令、真机契约测试、上游同步和发布检查 |
+| 当前技术架构 | [技术架构与设计规范](Architecture) | Wiki 摘要版；详细实现以 `docs/architecture.md` 为准 |
+| Chat 原生化现状 | [Chat 原生化技术规划](Milestone-Chat-Migration) | Wiki 导航页；当前状态以 `docs/native-chat-runtime-exit-status.md` 为准 |
+| 角色管理迁移 | [M2 原生角色管理](Milestone-M2-Characters) | 角色列表、编辑、头像、聊天文件管理的原生化摘要 |
+| 内核稳定性规划 | [M3 内核与稳定性](Milestone-M3-Core-Stability) | 备份恢复、诊断导出、端口避让和容灾能力摘要 |
+| 研发档案索引 | [docs/README.md](https://github.com/5151561/ST-android-setting/blob/main/docs/README.md) | 详细方案、历史迁移记录和权威来源说明 |
+
+---
+
+## 推荐阅读路径
+
+### 普通用户
+
+1. 阅读 [README](https://github.com/5151561/ST-android-setting/blob/main/README.md) 了解项目定位和安装入口。
+2. 阅读 [用户与数据迁移指南](User-Guide) 完成安装、首次启动和旧数据迁移。
+3. 如需长时间后台聊天，阅读 [后台电池保活](User-Guide#4-电池保活与后台优化)。
+
+### 开发者
+
+1. 阅读 [开发者指南](Developer-Guide) 准备 JDK、Android SDK 和常用构建命令。
+2. 阅读 [技术架构与设计规范](Architecture) 建立整体概念。
+3. 阅读 [docs/architecture.md](https://github.com/5151561/ST-android-setting/blob/main/docs/architecture.md) 获取当前详细架构。
+4. 修改 SillyTavern API 相关代码前，阅读真机契约测试章节和对应迁移文档。
+
+### 维护者
+
+1. 从 [docs/README.md](https://github.com/5151561/ST-android-setting/blob/main/docs/README.md) 确认当前权威文档。
+2. 改动 Chat 路径前先读 [Native Chat Runtime Exit Status](https://github.com/5151561/ST-android-setting/blob/main/docs/native-chat-runtime-exit-status.md)。
+3. 更新历史迁移方案时，在文档开头标注当前口径和历史状态，避免读者误把旧方案当成当前实现。
+
+---
+
+## 文档维护约定
+
+* Wiki 写完整入口和可读摘要，帮助读者快速找到正确材料。
+* `docs/` 写详细研发方案、审计记录、阶段进度和历史方案。
+* 同一主题在 Wiki 和 `docs/` 同时存在时，Wiki 应指向当前权威来源，不重复维护大量细节。
+* 过时方案保留为历史记录，但必须在开头说明当前口径。
+
+---
+
+## 如何同步本 Wiki
+
+本目录采用 GitHub Wiki 兼容的扁平结构。如果拥有项目 Wiki 仓库写权限，可以按以下步骤同步：
+
+1. 克隆项目 Wiki 仓库：
+
    ```bash
    git clone https://github.com/5151561/ST-android-setting.wiki.git
    ```
-2. **复制本地更新**：
-   将本项目代码库中 `wiki/` 目录下的所有文件（包括 `_Sidebar.md` 和各 `.md` 文件）覆盖复制到刚才克隆的 Wiki 根目录下。
-3. **提交并推送**：
+
+2. 将本项目 `wiki/` 目录下的所有文件覆盖复制到刚才克隆的 Wiki 根目录。
+
+3. 提交并推送：
+
    ```bash
    git add .
    git commit -m "docs: sync repo wiki to github"

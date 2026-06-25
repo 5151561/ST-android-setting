@@ -102,6 +102,14 @@ git submodule update --init --recursive
 
 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
+## 文档
+
+- 完整知识库：[wiki/Home.md](wiki/Home.md)
+- 用户指南：[wiki/User-Guide.md](wiki/User-Guide.md)
+- 开发者指南：[wiki/Developer-Guide.md](wiki/Developer-Guide.md)
+- 当前架构详版：[docs/architecture.md](docs/architecture.md)
+- 研发档案索引：[docs/README.md](docs/README.md)
+
 ## 更新日志
 
 见 [CHANGELOG.md](CHANGELOG.md)。

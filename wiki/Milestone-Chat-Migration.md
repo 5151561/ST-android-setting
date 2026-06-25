@@ -1,6 +1,11 @@
 # 里程碑：Chat 原生界面迁移方案与技术规划
 
-为了实现更流畅的移动端交互，项目规划了下一阶段的核心战场：**将 Chat 聊天页面彻底原生化**。本篇作为官方技术指南，系统阐述如何安全拆解 SillyTavern 复杂的聊天生成逻辑。
+> [!IMPORTANT]
+> 当前状态：Chat 原生化已经完成 Native runtime exit。App 内聊天不再依赖隐藏 WebView runtime、`STAndroidBridge` 或 Bridge fallback；当前实现以 `NativeChatScreen` + `NativeChatEngine` 为主。当前权威状态见主仓库的 [docs/native-chat-runtime-exit-status.md](https://github.com/5151561/ST-android-setting/blob/main/docs/native-chat-runtime-exit-status.md)，详细历史计划见 [docs/native-chat-webview-exit-plan.md](https://github.com/5151561/ST-android-setting/blob/main/docs/native-chat-webview-exit-plan.md)。
+
+本页保留为 Chat 原生化过程的 Wiki 摘要和历史规划入口。下文描述的是迁移早期的 Bridge 方案和设计约束，不再代表当前运行时架构。
+
+为了实现更流畅的移动端交互，项目曾规划将 Chat 聊天页面彻底原生化。本篇记录当时如何安全拆解 SillyTavern 复杂聊天生成逻辑的设计背景。
 
 ---
 
