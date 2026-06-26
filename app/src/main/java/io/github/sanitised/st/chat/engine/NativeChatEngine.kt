@@ -15,7 +15,9 @@ import io.github.sanitised.st.chat.prompt.TextPromptBuildResult
 import io.github.sanitised.st.chat.prompt.TextPromptBuilder
 import io.github.sanitised.st.chat.prompt.WorldInfoEngine
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.takeWhile
@@ -180,8 +182,8 @@ class NativeChatEngine(
     override fun stop() {
         when (stopTargetForGeneration(store.mode, activeGenerationRoute)) {
             GenerationStopTarget.NATIVE -> {
-                // Ends the stream at the next token; the in-flight job then persists the partial.
                 stopRequested = true
+                job?.cancel("Native generation stopped")
                 store.isGenerating = false
             }
         }
@@ -441,7 +443,7 @@ class NativeChatEngine(
     }
 
     private fun launchGeneration(block: suspend () -> Unit) {
-        job = scope.launch {
+        val launchedJob = scope.launch(start = CoroutineStart.LAZY) {
             stopRequested = false
             store.isGenerating = true
             try {
@@ -454,12 +456,15 @@ class NativeChatEngine(
                 store.runtimeError = msg
                 store.pushToast("error", "原生生成失败", msg)
             } finally {
-                store.isGenerating = false
-                if (activeGenerationRoute == ActiveGenerationRoute.NATIVE) {
+                if (job == coroutineContext[Job]) {
+                    store.isGenerating = false
                     activeGenerationRoute = ActiveGenerationRoute.NONE
+                    job = null
                 }
             }
         }
+        job = launchedJob
+        launchedJob.start()
     }
 
     private fun message(

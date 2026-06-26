@@ -9,7 +9,10 @@ import io.github.sanitised.st.chat.buildNativeCharacterChatSnapshot
 import io.github.sanitised.st.chat.fileAttachments
 import io.github.sanitised.st.chat.mediaAttachments
 import java.lang.reflect.Proxy
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
@@ -132,6 +135,44 @@ class NativeChatEnginePhase1ContractTest {
         assertEquals("ref.png", api.savedUserMediaNames().single())
     }
 
+    @Test
+    fun stopCancelsInFlightGenerationSoNextSendCannotReviveItsSave() = runBlocking {
+        val firstStreamStarted = CompletableDeferred<Unit>()
+        val releaseFirstStream = CompletableDeferred<Unit>()
+        val api = RecordingTavernCoreApi(
+            settings = openAiSettings(),
+            streamReply = { call ->
+                flow {
+                    if (call == 1) {
+                        firstStreamStarted.complete(Unit)
+                        releaseFirstStream.await()
+                        emit("stale reply")
+                    } else {
+                        emit("fresh reply")
+                    }
+                }
+            },
+        )
+        val store = readyCharacterStore(api.currentChat())
+        val engine = NativeChatEngine(
+            scope = this,
+            store = store,
+            clientProvider = { api.proxy() },
+            logger = NativeChatLogger.None,
+        )
+
+        engine.send("first")
+        firstStreamStarted.await()
+        engine.stop()
+
+        engine.send("second")
+        releaseFirstStream.complete(Unit)
+        joinLaunchedJobs()
+
+        assertEquals(listOf("second", "fresh reply"), api.savedMessages())
+        assertEquals(listOf("second", "fresh reply"), store.messages.map { it.mes })
+    }
+
     private fun readyCharacterStore(chat: MutableList<Any?>): ChatStore =
         ChatStore().apply {
             applySnapshot(
@@ -165,10 +206,12 @@ class NativeChatEnginePhase1ContractTest {
         private val settings: Map<String, Any?>,
         chat: MutableList<Any?> = initialChat(),
         private val reply: String = "native reply",
+        private val streamReply: ((Int) -> Flow<String>)? = null,
     ) {
         private var chat = chat
         private var saved: MutableList<Any?>? = null
         private val saveCalls = mutableListOf<String>()
+        private var streamCalls = 0
 
         fun currentChat(): MutableList<Any?> = chat.deepCopyChat()
 
@@ -226,9 +269,15 @@ class NativeChatEnginePhase1ContractTest {
                         }
                         Unit
                     }
-                    "generateChatCompletionStream" -> flowOf(reply)
+                    "generateChatCompletionStream" -> {
+                        streamCalls += 1
+                        streamReply?.invoke(streamCalls) ?: flowOf(reply)
+                    }
                     "generateChatCompletion" -> reply
-                    "generateTextCompletionStream" -> flowOf(reply)
+                    "generateTextCompletionStream" -> {
+                        streamCalls += 1
+                        streamReply?.invoke(streamCalls) ?: flowOf(reply)
+                    }
                     "generateTextCompletion" -> reply
                     else -> error("Unexpected TavernCoreApi call: ${method.name}")
                 }

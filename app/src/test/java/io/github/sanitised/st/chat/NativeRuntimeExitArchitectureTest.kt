@@ -2,6 +2,7 @@ package io.github.sanitised.st.chat
 
 import java.io.File
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeRuntimeExitArchitectureTest {
@@ -41,5 +42,17 @@ class NativeRuntimeExitArchitectureTest {
         ).forEach { path ->
             assertFalse("$path should not be part of the native runtime", File(path).exists())
         }
+    }
+
+    @Test
+    fun pastChatsNewChatActionIsNativeInsteadOfPlaceholder() {
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val pastChatsRoute = mainActivity
+            .substringAfter("route = STRoutes.PAST_CHATS")
+            .substringBefore("route = STRoutes.CHAR_FORM")
+
+        assertFalse(pastChatsRoute.contains("新建聊天原生端点正在接入"))
+        assertTrue(pastChatsRoute.contains("nativeChatRuntime.createNewChat(avatar)"))
+        assertTrue(pastChatsRoute.contains("openCharacterChatFromCharacterManagement(avatar, newChat)"))
     }
 }

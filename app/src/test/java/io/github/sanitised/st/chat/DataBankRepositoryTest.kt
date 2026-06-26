@@ -51,6 +51,38 @@ class DataBankRepositoryTest {
     }
 
     @Test
+    fun collectsSillyTavernAttachmentSettingsFromRealExtensionLocations() {
+        val bank = DataBankRepository.collect(
+            settings = mapOf(
+                "extension_settings" to mapOf(
+                    "attachments" to listOf(
+                        mapOf("url" to "/global/world.md", "name" to "world.md", "size" to 111L, "created" to 11L)
+                    ),
+                    "character_attachments" to mapOf(
+                        "Alice.png" to listOf(
+                            mapOf("url" to "/char/profile.pdf", "name" to "profile.pdf", "size" to 222L, "created" to 22L)
+                        )
+                    )
+                )
+            ),
+            character = CharacterDetail(id = "Alice.png", name = "Alice"),
+            chat = mutableListOf(
+                mapOf(
+                    "chat_metadata" to mapOf(
+                        "attachments" to listOf(
+                            mapOf("url" to "/chat/map.png", "name" to "map.png", "size" to 333L, "created" to 33L)
+                        )
+                    )
+                )
+            )
+        )
+
+        assertEquals("world.md", bank.global.single().name)
+        assertEquals("profile.pdf", bank.character.single().name)
+        assertEquals("map.png", bank.chat.single().name)
+    }
+
+    @Test
     fun emptySourcesReturnEmptyLists() {
         val bank = DataBankRepository.collect(
             settings = emptyMap(),

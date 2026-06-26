@@ -17,7 +17,7 @@ object QuickReplyRuntime {
         if (!settingsFile.exists()) return emptyList()
         val extensionSettings = runCatching {
             val root = Yaml().load<Any?>(settingsFile.readText(Charsets.UTF_8)) as? Map<*, *>
-            val extensions = root?.get("extensions") as? Map<*, *>
+            val extensions = (root?.get("extension_settings") ?: root?.get("extensions")) as? Map<*, *>
             extensions?.entries?.associate { (k, v) -> k.toString() to v } ?: emptyMap()
         }.getOrElse { emptyMap() }
         val quickReplyDir = File(userDir, "QuickReplies")
@@ -35,16 +35,31 @@ object QuickReplyRuntime {
         extensionSettings: Map<String, Any?>,
         setJsonByName: Map<String, String>,
     ): List<QuickReplyItem> {
-        val quickReplySettings = extensionSettings.mapValue("quickReply")
-        if (quickReplySettings["quickReplyEnabled"] == false) return emptyList()
-        return quickReplySettings.listValue("setList")
+        return quickReplySetRefs(extensionSettings)
             .mapNotNull { it as? Map<*, *> }
             .filter { it["isVisible"] != false }
             .flatMap { setRef ->
-                val name = setRef["name"]?.toString().orEmpty()
+                val name = (setRef["set"] ?: setRef["name"])?.toString().orEmpty()
                 val json = setJsonByName[name] ?: return@flatMap emptyList()
                 parseSet(name, json)
             }
+    }
+
+    private fun quickReplySetRefs(extensionSettings: Map<String, Any?>): List<Any?> {
+        val v2 = extensionSettings.mapValue("quickReplyV2")
+        if (v2.isNotEmpty()) {
+            if (v2["isEnabled"] != true) return emptyList()
+            return v2.mapValue("config").listValue("setList")
+        }
+
+        val legacy = extensionSettings.mapValue("quickReply")
+        if (legacy["quickReplyEnabled"] == false) return emptyList()
+        val setList = legacy.listValue("setList")
+        if (setList.isNotEmpty()) return setList
+        val selected = (legacy["selectedPreset"] ?: legacy["name"])?.toString().orEmpty()
+        return selected.takeIf { it.isNotBlank() }
+            ?.let { listOf(mapOf("name" to it, "isVisible" to true)) }
+            .orEmpty()
     }
 
     fun execute(item: QuickReplyItem): QuickReplyExecution {

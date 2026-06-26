@@ -8,6 +8,7 @@ import io.github.sanitised.st.api.TavernCoreApi
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Mutex
@@ -88,6 +89,9 @@ class NativeChatRepository(
         val source = dataSourceProvider()
         return source.getCharacter(avatar) to source.getChatJsonl(avatar, chatFile)
     }
+
+    suspend fun getCharacter(avatar: String): CharacterDetail =
+        dataSourceProvider().getCharacter(avatar)
 
     suspend fun save(avatar: String, chatFile: String, chat: List<Any?>) {
         val key = writeLockKey(avatar, chatFile)
@@ -216,6 +220,21 @@ class NativeChatRuntime(
     suspend fun deleteSwipe(messageId: Int, swipeId: Int): Boolean =
         mutateCurrent { NativeChatJsonOps.deleteSwipe(it, messageId, swipeId) }
 
+    suspend fun createNewChat(avatarOverride: String? = null): String {
+        val avatar = avatarOverride?.takeIf { it.isNotBlank() }
+            ?: store.avatarUrl.takeIf { it.isNotBlank() }
+            ?: error("No active character chat")
+        val character = repository.getCharacter(avatar)
+        val name = uniqueNewChatName(
+            characterName = character.name.ifBlank { avatar.removeSuffix(".png") },
+            existing = repository.listChatNames(avatar),
+        )
+        val chat = newCharacterChat(character)
+        repository.save(avatar, name, chat)
+        apply(avatar, name, character, chat)
+        return name
+    }
+
     suspend fun createCheckpoint(messageId: Int, requestedName: String? = null): String {
         val session = loadCurrent()
         val name = requestedName?.takeIf { it.isNotBlank() }
@@ -309,6 +328,63 @@ class NativeChatRuntime(
         error("Could not generate unique $token chat name")
     }
 
+    private fun uniqueNewChatName(characterName: String, existing: Set<String>): String {
+        val base = "$characterName - ${nativeHumanizedDateTime()}"
+        if (base !in existing) return base
+        for (i in 2..10_000) {
+            val candidate = "$base #$i"
+            if (candidate !in existing) return candidate
+        }
+        error("Could not generate unique chat name")
+    }
+
+    private fun newCharacterChat(character: CharacterDetail): MutableList<Any?> {
+        val created = nativeHumanizedDateTime()
+        val sent = nativeMessageTimestamp()
+        val chat = mutableListOf<Any?>(
+            linkedMapOf(
+                "user_name" to "User",
+                "character_name" to character.name,
+                "create_date" to created,
+                "chat_metadata" to linkedMapOf<String, Any?>("integrity" to UUID.randomUUID().toString()),
+            )
+        )
+        firstGreetingMessage(character, sent)?.let { chat += it }
+        return chat
+    }
+
+    private fun firstGreetingMessage(character: CharacterDetail, sent: String): Map<String, Any?>? {
+        val swipes = mutableListOf(character.firstMessage).apply {
+            addAll(character.alternateGreetings)
+            if (firstOrNull().isNullOrBlank()) removeFirstOrNull()
+        }
+        val text = swipes.firstOrNull()?.takeIf { it.isNotBlank() } ?: return null
+        return linkedMapOf<String, Any?>(
+            "name" to character.name,
+            "is_user" to false,
+            "is_system" to false,
+            "send_date" to sent,
+            "mes" to text,
+            "extra" to linkedMapOf<String, Any?>(),
+        ).apply {
+            if (swipes.size > 1) {
+                put("swipe_id", 0)
+                put("swipes", swipes)
+                put(
+                    "swipe_info",
+                    swipes.map {
+                        linkedMapOf(
+                            "send_date" to sent,
+                            "gen_started" to null,
+                            "gen_finished" to null,
+                            "extra" to linkedMapOf<String, Any?>(),
+                        )
+                    }
+                )
+            }
+        }
+    }
+
     private data class NativeLoadedChat(
         val avatar: String,
         val chatFile: String,
@@ -325,6 +401,14 @@ private fun defaultNativeChatBackupName(@Suppress("UNUSED_PARAMETER") avatar: St
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
     return "$NATIVE_BACKUP_PREFIX${chatFile.removeSuffix(".jsonl")}__$stamp"
 }
+
+private fun nativeHumanizedDateTime(): String =
+    SimpleDateFormat("yyyy-MM-dd@HH'h'mm'm'ss's'SSS'ms'", Locale.US).format(Date())
+
+private fun nativeMessageTimestamp(): String =
+    SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }.format(Date())
 
 internal fun isNativeChatBackupName(name: String): Boolean =
     nativeChatBackupBaseName(name) != null

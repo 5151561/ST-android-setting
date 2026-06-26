@@ -876,7 +876,16 @@ class MainActivity : ComponentActivity() {
                                             openCharacterChatFromCharacterManagement(avatar, chatFile)
                                         },
                                         onNewChat = {
-                                            viewModel.showTransientMessage("新建聊天原生端点正在接入")
+                                            scope.launch {
+                                                runCatching { nativeChatRuntime.createNewChat(avatar) }
+                                                    .onSuccess { newChat ->
+                                                        openCharacterChatFromCharacterManagement(avatar, newChat)
+                                                        viewModel.showTransientMessage("已创建新对话")
+                                                    }
+                                                    .onFailure { error ->
+                                                        viewModel.showTransientMessage(error.message ?: "创建新对话失败")
+                                                    }
+                                            }
                                         },
                                         onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                     )

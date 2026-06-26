@@ -29,14 +29,36 @@ class DataBankRepository(
             val chatMetadata = chat.firstOrNull()
                 .asMap()
                 .mapValue("chat_metadata")
+            val extensionSettings = settings.mapValue("extension_settings")
             return DataBankAttachments(
-                global = settings.attachments("global"),
+                global = extensionSettings.attachmentList() + settings.attachments("global"),
                 character = characterRoot
                     .mapValue("data")
                     .mapValue("extensions")
-                    .attachments("character") + characterRoot.attachments("character"),
-                chat = chatMetadata.attachments("chat"),
+                    .attachments("character") +
+                    characterRoot.attachments("character") +
+                    extensionSettings.characterAttachments(character.id, character.avatarUrl.orEmpty()),
+                chat = chatMetadata.attachmentList() + chatMetadata.attachments("chat"),
             )
+        }
+
+        private fun Map<String, Any?>.attachmentList(): List<DataBankAttachment> =
+            listValue("attachments").mapNotNull { row ->
+                row.asMap().toAttachment()
+            }
+
+        private fun Map<String, Any?>.characterAttachments(vararg avatarKeys: String): List<DataBankAttachment> {
+            val byAvatar = mapValue("character_attachments")
+            return avatarKeys
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .firstNotNullOfOrNull { avatar ->
+                    byAvatar.listValue(avatar)
+                        .mapNotNull { row -> row.asMap().toAttachment() }
+                        .takeIf { it.isNotEmpty() }
+                }
+                .orEmpty()
         }
 
         private fun Map<String, Any?>.attachments(scope: String): List<DataBankAttachment> {
