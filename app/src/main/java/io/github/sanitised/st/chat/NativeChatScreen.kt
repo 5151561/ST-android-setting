@@ -234,11 +234,17 @@ fun NativeChatScreen(
     }
 
     val targetMatched = targetMatchesStore(target, store)
-    LaunchedEffect(quickReplyDataRoot, status.state, targetMatched, store.chatFile) {
+    LaunchedEffect(quickReplyDataRoot, status.state, targetMatched, store.chatFile, store.avatarUrl, store.chatQuickReplyConfig) {
         val root = quickReplyDataRoot ?: return@LaunchedEffect
         if (status.state != NodeState.RUNNING || !targetMatched) return@LaunchedEffect
         val replies = withContext(Dispatchers.IO) {
-            runCatching { QuickReplyRuntime.visibleReplies(root) }.getOrDefault(emptyList())
+            runCatching {
+                QuickReplyRuntime.visibleReplies(
+                    dataRoot = root,
+                    chatMetadata = store.chatQuickReplyConfig,
+                    characterAvatar = store.avatarUrl,
+                )
+            }.getOrDefault(emptyList())
         }
         store.setQuickReplies(replies)
     }

@@ -48,6 +48,38 @@ class QuickReplyRuntimeTest {
     }
 
     @Test
+    fun mergesGlobalChatAndCharacterQuickReplyV2Sets() {
+        val items = QuickReplyRuntime.visibleReplies(
+            extensionSettings = mapOf(
+                "quickReplyV2" to mapOf(
+                    "isEnabled" to true,
+                    "config" to mapOf(
+                        "setList" to listOf(mapOf("set" to "Global", "isVisible" to true))
+                    ),
+                    "characterConfigs" to mapOf(
+                        "Alice.png" to mapOf(
+                            "setList" to listOf(mapOf("set" to "Character", "isVisible" to true))
+                        )
+                    )
+                )
+            ),
+            setJsonByName = mapOf(
+                "Global" to quickReplySetJson("Global", "Global action"),
+                "Chat" to quickReplySetJson("Chat", "Chat action"),
+                "Character" to quickReplySetJson("Character", "Character action"),
+            ),
+            chatMetadata = mapOf(
+                "quickReply" to mapOf(
+                    "setList" to listOf(mapOf("set" to "Chat", "isVisible" to true))
+                )
+            ),
+            characterAvatar = "Alice.png",
+        )
+
+        assertEquals(listOf("Global action", "Chat action", "Character action"), items.map { it.label })
+    }
+
+    @Test
     fun readsQuickReplySettingsFromSillyTavernExtensionSettingsFile() {
         val userDir = temp.newFolder("default-user")
         File(userDir, "QuickReplies").apply { mkdirs() }
@@ -111,4 +143,15 @@ class QuickReplyRuntimeTest {
             QuickReplyRuntime.execute(item)
         )
     }
+
+    private fun quickReplySetJson(name: String, label: String): String =
+        """
+            {
+              "version": 2,
+              "name": "$name",
+              "qrList": [
+                { "id": 1, "label": "$label", "message": "$label", "isHidden": false }
+              ]
+            }
+        """.trimIndent()
 }

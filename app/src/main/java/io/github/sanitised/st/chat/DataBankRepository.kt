@@ -30,15 +30,19 @@ class DataBankRepository(
                 .asMap()
                 .mapValue("chat_metadata")
             val extensionSettings = settings.mapValue("extension_settings")
+            val disabledUrls = extensionSettings.stringSet("disabled_attachments")
             return DataBankAttachments(
-                global = extensionSettings.attachmentList() + settings.attachments("global"),
-                character = characterRoot
+                global = (extensionSettings.attachmentList() + settings.attachments("global"))
+                    .filterNot { it.url in disabledUrls },
+                character = (characterRoot
                     .mapValue("data")
                     .mapValue("extensions")
                     .attachments("character") +
                     characterRoot.attachments("character") +
-                    extensionSettings.characterAttachments(character.id, character.avatarUrl.orEmpty()),
-                chat = chatMetadata.attachmentList() + chatMetadata.attachments("chat"),
+                    extensionSettings.characterAttachments(character.id, character.avatarUrl.orEmpty()))
+                    .filterNot { it.url in disabledUrls },
+                chat = (chatMetadata.attachmentList() + chatMetadata.attachments("chat"))
+                    .filterNot { it.url in disabledUrls },
             )
         }
 
@@ -92,6 +96,9 @@ class DataBankRepository(
                 is Array<*> -> value.toList()
                 else -> emptyList()
             }
+
+        private fun Map<String, Any?>.stringSet(key: String): Set<String> =
+            listValue(key).mapNotNull { it?.toString() }.toSet()
 
         private fun Map<String, Any?>.stringValue(key: String): String =
             this[key]?.toString().orEmpty()

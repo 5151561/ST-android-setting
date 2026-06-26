@@ -177,6 +177,14 @@ class ChatInterfaceAuditRegressionTest {
     }
 
     @Test
+    fun nativeChatLoadsQuickRepliesWithChatAndCharacterContext() {
+        val nativeChat = File("src/main/java/io/github/sanitised/st/chat/NativeChatScreen.kt").readText()
+
+        assertTrue(nativeChat.contains("chatMetadata = store.chatQuickReplyConfig"))
+        assertTrue(nativeChat.contains("characterAvatar = store.avatarUrl"))
+    }
+
+    @Test
     fun mainActivityDoesNotCreateHiddenChatRuntimeHost() {
         val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
 

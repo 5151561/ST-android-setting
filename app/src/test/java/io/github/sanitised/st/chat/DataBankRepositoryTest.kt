@@ -83,6 +83,42 @@ class DataBankRepositoryTest {
     }
 
     @Test
+    fun filtersDisabledSillyTavernAttachmentsFromAllRealLocations() {
+        val bank = DataBankRepository.collect(
+            settings = mapOf(
+                "extension_settings" to mapOf(
+                    "disabled_attachments" to listOf("/global/disabled.md", "/char/disabled.pdf", "/chat/disabled.png"),
+                    "attachments" to listOf(
+                        mapOf("url" to "/global/enabled.md", "name" to "enabled.md"),
+                        mapOf("url" to "/global/disabled.md", "name" to "disabled.md"),
+                    ),
+                    "character_attachments" to mapOf(
+                        "Alice.png" to listOf(
+                            mapOf("url" to "/char/enabled.pdf", "name" to "enabled.pdf"),
+                            mapOf("url" to "/char/disabled.pdf", "name" to "disabled.pdf"),
+                        )
+                    )
+                )
+            ),
+            character = CharacterDetail(id = "Alice.png", name = "Alice"),
+            chat = mutableListOf(
+                mapOf(
+                    "chat_metadata" to mapOf(
+                        "attachments" to listOf(
+                            mapOf("url" to "/chat/enabled.png", "name" to "enabled.png"),
+                            mapOf("url" to "/chat/disabled.png", "name" to "disabled.png"),
+                        )
+                    )
+                )
+            )
+        )
+
+        assertEquals(listOf("enabled.md"), bank.global.map { it.name })
+        assertEquals(listOf("enabled.pdf"), bank.character.map { it.name })
+        assertEquals(listOf("enabled.png"), bank.chat.map { it.name })
+    }
+
+    @Test
     fun emptySourcesReturnEmptyLists() {
         val bank = DataBankRepository.collect(
             settings = emptyMap(),

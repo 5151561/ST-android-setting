@@ -11,7 +11,11 @@ sealed class QuickReplyExecution {
 }
 
 object QuickReplyRuntime {
-    fun visibleReplies(dataRoot: File): List<QuickReplyItem> {
+    fun visibleReplies(
+        dataRoot: File,
+        chatMetadata: Map<String, Any?> = emptyMap(),
+        characterAvatar: String = "",
+    ): List<QuickReplyItem> {
         val userDir = File(dataRoot, "default-user")
         val settingsFile = File(userDir, "settings.json")
         if (!settingsFile.exists()) return emptyList()
@@ -28,14 +32,16 @@ object QuickReplyRuntime {
             .associate { file ->
                 file.nameWithoutExtension to file.readText(Charsets.UTF_8)
             }
-        return visibleReplies(extensionSettings, setJsonByName)
+        return visibleReplies(extensionSettings, setJsonByName, chatMetadata, characterAvatar)
     }
 
     fun visibleReplies(
         extensionSettings: Map<String, Any?>,
         setJsonByName: Map<String, String>,
+        chatMetadata: Map<String, Any?> = emptyMap(),
+        characterAvatar: String = "",
     ): List<QuickReplyItem> {
-        return quickReplySetRefs(extensionSettings)
+        return quickReplySetRefs(extensionSettings, chatMetadata, characterAvatar)
             .mapNotNull { it as? Map<*, *> }
             .filter { it["isVisible"] != false }
             .flatMap { setRef ->
@@ -45,11 +51,17 @@ object QuickReplyRuntime {
             }
     }
 
-    private fun quickReplySetRefs(extensionSettings: Map<String, Any?>): List<Any?> {
+    private fun quickReplySetRefs(
+        extensionSettings: Map<String, Any?>,
+        chatMetadata: Map<String, Any?>,
+        characterAvatar: String,
+    ): List<Any?> {
         val v2 = extensionSettings.mapValue("quickReplyV2")
         if (v2.isNotEmpty()) {
             if (v2["isEnabled"] != true) return emptyList()
-            return v2.mapValue("config").listValue("setList")
+            return v2.mapValue("config").listValue("setList") +
+                chatMetadata.mapValue("quickReply").listValue("setList") +
+                v2.mapValue("characterConfigs").mapValue(characterAvatar).listValue("setList")
         }
 
         val legacy = extensionSettings.mapValue("quickReply")

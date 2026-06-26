@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import org.json.JSONArray
+import org.json.JSONObject
 
 enum class RuntimeState {
     NOT_READY,
@@ -49,6 +51,7 @@ class ChatStore {
     var cfgNegativePrompt by mutableStateOf("")
     var cfgPositivePrompt by mutableStateOf("")
     var worldInfoName by mutableStateOf("")
+    var chatQuickReplyConfig by mutableStateOf<Map<String, Any?>>(emptyMap())
     var latestToast by mutableStateOf<RuntimeToast?>(null)
     private var toastSeq = 0L
     var itemizedPrompt by mutableStateOf<ItemizedPrompt?>(null)
@@ -76,6 +79,7 @@ class ChatStore {
         cfgNegativePrompt = snapshot.metadata.optString("cfgNegativePrompt", "")
         cfgPositivePrompt = snapshot.metadata.optString("cfgPositivePrompt", "")
         worldInfoName = snapshot.metadata.optString("worldInfo", "")
+        chatQuickReplyConfig = snapshot.metadata.optJSONObject("quickReply")?.toNativeMap().orEmpty()
         messages.clear()
         messages.addAll(snapshot.messages)
     }
@@ -213,6 +217,7 @@ class ChatStore {
         cfgNegativePrompt = ""
         cfgPositivePrompt = ""
         worldInfoName = ""
+        chatQuickReplyConfig = emptyMap()
         latestToast = null
         itemizedPrompt = null
         itemizedPromptLoading = false
@@ -225,3 +230,17 @@ class ChatStore {
         loadedExtensions.clear()
     }
 }
+
+private fun JSONObject.toNativeMap(): Map<String, Any?> =
+    keys().asSequence().associateWith { key -> opt(key).toNativeValue() }
+
+private fun JSONArray.toNativeList(): List<Any?> =
+    (0 until length()).map { index -> opt(index).toNativeValue() }
+
+private fun Any?.toNativeValue(): Any? =
+    when (this) {
+        null, JSONObject.NULL -> null
+        is JSONObject -> toNativeMap()
+        is JSONArray -> toNativeList()
+        else -> this
+    }

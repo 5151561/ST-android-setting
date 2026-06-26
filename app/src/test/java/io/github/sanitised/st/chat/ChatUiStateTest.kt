@@ -110,6 +110,30 @@ class ChatUiStateTest {
     }
 
     @Test
+    fun chatStoreAppliesQuickReplyChatConfigFromSnapshot() {
+        val store = ChatStore()
+        val snapshot = ChatSnapshot(
+            mode = "character",
+            avatarUrl = "Alice.png",
+            characterName = "Alice",
+            chatFile = "chat.jsonl",
+            isGenerating = false,
+            messages = emptyList(),
+            metadata = JSONObject()
+                .put(
+                    "quickReply",
+                    JSONObject()
+                        .put("setList", org.json.JSONArray().put(JSONObject().put("set", "Chat Set")))
+                )
+        )
+
+        store.applySnapshot(snapshot)
+
+        val setList = store.chatQuickReplyConfig["setList"] as List<*>
+        assertEquals("Chat Set", (setList.single() as Map<*, *>)["set"])
+    }
+
+    @Test
     fun attachmentDisplayUrlResolvesLocalSillyTavernPaths() {
         assertEquals(
             "http://127.0.0.1:8020/user/files/notes.pdf",

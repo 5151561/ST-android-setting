@@ -77,6 +77,9 @@ private fun Map<*, *>?.toSnapshotMetadata(): JSONObject {
         .put("cfgNegativePrompt", metadata["cfg_negative_prompt"].asString(metadata["cfgNegativePrompt"].asString()))
         .put("cfgPositivePrompt", metadata["cfg_positive_prompt"].asString(metadata["cfgPositivePrompt"].asString()))
         .put("worldInfo", metadata["world_info"].asString(metadata["worldInfo"].asString()))
+        .apply {
+            metadata["quickReply"]?.let { put("quickReply", it.toJsonValue()) }
+        }
 }
 
 private fun Map<*, *>.toChatMessage(id: Int): ChatMessage =

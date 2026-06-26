@@ -24,7 +24,10 @@ class NativeChatLoaderTest {
                         "cfg_guidance_scale" to 1.25,
                         "cfg_negative_prompt" to "flat",
                         "cfg_positive_prompt" to "vivid",
-                        "world_info" to "Library"
+                        "world_info" to "Library",
+                        "quickReply" to mapOf(
+                            "setList" to listOf(mapOf("set" to "Chat Set", "isVisible" to true))
+                        )
                     )
                 ),
                 mapOf(
@@ -55,6 +58,13 @@ class NativeChatLoaderTest {
         assertEquals("flat", snapshot.metadata.optString("cfgNegativePrompt"))
         assertEquals("vivid", snapshot.metadata.optString("cfgPositivePrompt"))
         assertEquals("Library", snapshot.metadata.optString("worldInfo"))
+        assertEquals(
+            "Chat Set",
+            snapshot.metadata.optJSONObject("quickReply")
+                ?.optJSONArray("setList")
+                ?.optJSONObject(0)
+                ?.optString("set")
+        )
 
         assertEquals(listOf(0, 1), snapshot.messages.map { it.id })
         assertEquals("Alex", snapshot.messages[0].name)
