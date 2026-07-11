@@ -234,8 +234,23 @@ fun NativeChatScreen(
                 val result = runCatching {
                     nativeChatLoader?.openCharacter(target.avatar, target.chatFile) ?: false
                 }
-                if (result.isSuccess) return@LaunchedEffect
-                lastError = result.exceptionOrNull()
+                when {
+                    result.getOrDefault(false) -> return@LaunchedEffect
+                    result.isSuccess -> {
+                        // 打开成功但没有可加载的聊天文件。未指定聊天文件说明角色从未聊过
+                        // (或角色卡 chat 字段指向的文件已不存在),对齐上游行为直接建新聊天;
+                        // 指定了聊天文件则明确报错,两种情况都不能静默滞留在加载页。
+                        if (target.chatFile.isNullOrBlank()) {
+                            val created = runCatching { nativeChatRuntime?.createNewChat(target.avatar) }
+                            if (!created.getOrNull().isNullOrBlank()) return@LaunchedEffect
+                            lastError = created.exceptionOrNull() ?: IllegalStateException("无法为该角色创建新聊天")
+                        } else {
+                            store.recordCommandError("聊天文件 ${target.chatFile} 不存在或为空")
+                            return@LaunchedEffect
+                        }
+                    }
+                    else -> lastError = result.exceptionOrNull()
+                }
                 delay(1000L * (attempt + 1))
             }
             store.recordCommandError(lastError?.message ?: "原生加载聊天失败")

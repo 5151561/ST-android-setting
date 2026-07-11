@@ -631,7 +631,21 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     if (route == STRoutes.CHAT) {
-                        pendingChatTarget = ChatTarget.Current
+                        // store 里已有会话时沿用(ChatTarget.Current);冷启动后 store 为空,
+                        // Current 没有任何加载逻辑会永久停在加载页,退回打开最近一条聊天。
+                        val storeHasChat = chatStore.chatFile.isNotBlank() ||
+                            chatStore.characterName.isNotBlank() ||
+                            chatStore.messages.isNotEmpty()
+                        pendingChatTarget = if (storeHasChat) {
+                            ChatTarget.Current
+                        } else {
+                            librarySnapshot.recentChats.firstOrNull()?.let { recent ->
+                                ChatTarget.CharacterChat(
+                                    avatar = recent.characterId,
+                                    chatFile = recent.id.substringAfter('/', "").ifBlank { null },
+                                )
+                            } ?: ChatTarget.Current
+                        }
                     }
                     navController.navigate(route) {
                         popUpTo(navController.graph.findStartDestination().id) {

@@ -43,7 +43,7 @@ class LocalTavernLibraryReader(
             .map { (characterDir, chatFile) ->
                 ChatSummary(
                     id = "${characterDir.name}/${chatFile.nameWithoutExtension}",
-                    characterId = characterDir.name,
+                    characterId = characterDir.avatarFileName(),
                     characterName = characterDir.displayName(),
                     avatarUrl = characterDir.characterAvatarUrl(),
                     lastMessage = chatFile.lastMessagePreview(),
@@ -62,6 +62,15 @@ class LocalTavernLibraryReader(
     private fun File.displayName(): String {
         val baseName = if (isFile) nameWithoutExtension else name
         return baseName.replace('_', ' ').trim().ifBlank { name }
+    }
+
+    // 聊天目录名是 avatar 文件名去掉 .png(上游约定);/api/characters/get 等接口
+    // 需要完整文件名,直接拿目录名调用会 404。
+    private fun File.avatarFileName(): String {
+        val charactersDir = File(userDir, "characters")
+        return listOf("$name.png", name)
+            .firstOrNull { File(charactersDir, it).isFile }
+            ?: "$name.png"
     }
 
     private fun File.characterAvatarUrl(): String? {

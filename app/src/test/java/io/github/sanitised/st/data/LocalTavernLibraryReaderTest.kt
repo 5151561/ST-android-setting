@@ -67,6 +67,8 @@ class LocalTavernLibraryReaderTest {
         val chats = reader.listRecentChats()
 
         assertEquals(listOf("new", "old"), chats.map { it.id.substringAfter('/') })
+        // characterId 必须是完整 avatar 文件名(聊天目录名 + .png),供 /api/characters/get 直接使用。
+        assertEquals("Seraphina.png", chats.first().characterId)
         assertEquals("Seraphina", chats.first().characterName)
         assertEquals(characterAvatar.toURI().toString(), chats.first().avatarUrl)
         assertEquals("latest reply", chats.first().lastMessage)
