@@ -45,11 +45,11 @@ git submodule update --init --recursive
 
 `MainActivity` 托管 `NavHost`，底部导航定义在 `ui/navigation/STNavGraph.kt`（`STRoutes`）。主要标签页：
 
-- **Home** (`chats/home`) — 仪表盘，状态卡片 + 最近聊天/角色 + 快捷操作。位于 `ui/prototype/PrototypeHomeScreen.kt`。
+- **Home** (`chats/home`) — 仪表盘，状态卡片 + 最近聊天/角色 + 快捷操作。位于 `ui/screens/PrototypeHomeScreen.kt`。
 - **Chat** (`chat`) — `chat/NativeChatScreen`，纯原生 Compose 聊天界面（无 WebView）。
-- **Characters** (`characters`) — 原生 Compose 角色管理：列表、详情、编辑。位于 `ui/prototype/PrototypeCharacterScreens.kt`。
-- **Tools** (`tools`) — 工具页面（世界书、预设、API 连接等）。位于 `ui/prototype/` 下。
-- **Settings** (`me`) — 设置页面。位于 `ui/prototype/PrototypeSystemScreens.kt`。
+- **Characters** (`characters`) — 原生 Compose 角色管理：列表、详情、编辑。位于 `ui/screens/PrototypeCharacterScreens.kt`。
+- **Tools** (`tools`) — 工具页面（世界书、预设、API 连接等）。位于 `ui/screens/` 下。
+- **Settings** (`me`) — 设置页面。位于 `ui/screens/PrototypeSystemScreens.kt`。
 
 ### 原生聊天架构
 
@@ -86,4 +86,4 @@ git submodule update --init --recursive
 - 图片加载用 Coil 3（`coil3.compose.AsyncImage`），网络图片依赖 `coil-network-okhttp` 组件。
 - Debug 变体使用 applicationId 后缀 `.dev`，应用名 "ST dev"。
 - `minSdk = 26`（Android 8.0），`targetSdk = 36`，`compileSdk = 37`。
-- `ui/prototype/` 是历史包名，里面是正式的 M3 原生界面（首页、角色、工具、设置等 Compose 屏幕）。
+- `ui/screens/` 存放正式的 M3 原生界面（首页、角色、工具、设置等 Compose 屏幕）。该包原名 `ui/prototype/`，因名不副实已于 2026-07 改名为 `ui/screens/`。

@@ -1,4 +1,4 @@
-package io.github.sanitised.st.ui.prototype
+package io.github.sanitised.st.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border

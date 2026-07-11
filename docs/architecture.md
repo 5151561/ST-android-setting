@@ -373,13 +373,13 @@ UI 唯一入口，保留四个动作：
 
 | 路由 | 文件 |
 |------|------|
-| `chats/home` | `ui/prototype/PrototypeHomeScreen.kt` |
+| `chats/home` | `ui/screens/PrototypeHomeScreen.kt` |
 | `chat` | `chat/NativeChatScreen.kt` |
-| `characters` | `ui/prototype/PrototypeCharacterScreens.kt` |
-| `tools` | `ui/prototype/PrototypeAdvancedScreens.kt` |
-| `me` | `ui/prototype/PrototypeSystemScreens.kt` |
+| `characters` | `ui/screens/PrototypeCharacterScreens.kt` |
+| `tools` | `ui/screens/PrototypeAdvancedScreens.kt` |
+| `me` | `ui/screens/PrototypeSystemScreens.kt` |
 | 群聊相关 | `chat/GroupChatScreen.kt`、`chat/GroupSettingsScreen.kt` 等 |
-| 群聊列表 | `ui/prototype/PrototypeGroupChatScreen.kt` |
+| 群聊列表 | `ui/screens/PrototypeGroupChatScreen.kt` |
 
 ### 主题系统
 

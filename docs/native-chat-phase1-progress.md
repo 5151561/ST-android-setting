@@ -288,7 +288,7 @@ JS: ctx.chatMetadata.note_prompt undefined（adapter 仍写 authors_note）
 ## 4. 验证命令
 
 ```bash
-./gradlew testDebugUnitTest --tests "io.github.sanitised.st.chat.NativeChatJsonOpsTest" --tests "io.github.sanitised.st.chat.NativeChatRuntimeTest" --tests "io.github.sanitised.st.chat.NativeChatRepositorySafetyTest" --tests "io.github.sanitised.st.chat.NativeChatUiRoutingTest" --tests "io.github.sanitised.st.chat.engine.NativeChatEnginePhase1ContractTest" --tests "io.github.sanitised.st.ui.prototype.PrototypePastChatsScreenTest"
+./gradlew testDebugUnitTest --tests "io.github.sanitised.st.chat.NativeChatJsonOpsTest" --tests "io.github.sanitised.st.chat.NativeChatRuntimeTest" --tests "io.github.sanitised.st.chat.NativeChatRepositorySafetyTest" --tests "io.github.sanitised.st.chat.NativeChatUiRoutingTest" --tests "io.github.sanitised.st.chat.engine.NativeChatEnginePhase1ContractTest" --tests "io.github.sanitised.st.ui.screens.PrototypePastChatsScreenTest"
 /Users/changlepan/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test app/src/test/js/chat_runtime_adapter_contract.test.mjs
 ```
 

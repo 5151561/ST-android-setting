@@ -58,8 +58,8 @@ import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.chat.engine.GroupReply
 import io.github.sanitised.st.chat.engine.NativeGroupGenerator
 import io.github.sanitised.st.chat.engine.pickGroupSpeaker
-import io.github.sanitised.st.ui.prototype.PrototypeAvatar
-import io.github.sanitised.st.ui.prototype.prototypeAvatarImageUrl
+import io.github.sanitised.st.ui.screens.PrototypeAvatar
+import io.github.sanitised.st.ui.screens.prototypeAvatarImageUrl
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch

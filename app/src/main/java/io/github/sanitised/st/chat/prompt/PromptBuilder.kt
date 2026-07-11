@@ -2,8 +2,8 @@ package io.github.sanitised.st.chat.prompt
 
 import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.chat.ChatMessage
-import io.github.sanitised.st.ui.prototype.activeApiConnectionProvider
-import io.github.sanitised.st.ui.prototype.modelForProvider
+import io.github.sanitised.st.ui.screens.activeApiConnectionProvider
+import io.github.sanitised.st.ui.screens.modelForProvider
 
 /**
  * Assembles a Chat Completion request payload on-device, replicating the core

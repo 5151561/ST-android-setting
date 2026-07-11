@@ -278,10 +278,10 @@ P0 snapshot 尽量小，先服务原生 Chat UI：
 | 导航入口 | `app/src/main/java/io/github/sanitised/st/MainActivity.kt` | Chat tab 从 WebView 页面切到原生 Chat screen；`webViewTargetSaver()` 支持 `rememberSaveable` 跨配置恢复 |
 | Chat UI 辅助 | `app/src/main/java/io/github/sanitised/st/chat/ChatUiState.kt` | 消息过滤（`visibleChatMessages`）、日期标签、滚动目标、消息 key、目标命令 key |
 | WebView 目标 | `app/src/main/java/io/github/sanitised/st/ui/webview/WebViewNavigator.kt` | `WebViewTarget` sealed class：`CHAT`、`CharacterChat(avatar, chatFile?)`、`GroupChat(groupId, chatId?)` |
-| 原型首页 | `app/src/main/java/io/github/sanitised/st/ui/prototype/PrototypeHomeScreen.kt` | 对话列表（置顶/全部过滤）、服务状态内联卡片 |
-| 原型群聊 | `app/src/main/java/io/github/sanitised/st/ui/prototype/PrototypeGroupChatScreen.kt` | 群聊列表、创建群聊（含 activationStrategy/allowSelfResponses）、打开群聊 |
-| 原型组件 | `app/src/main/java/io/github/sanitised/st/ui/prototype/PrototypeComponents.kt` | 可复用 UI 组件：`PrototypeSearchBar`、`PrototypeAvatar`、`PrototypeChipRow` 等 |
-| 原型模型 | `app/src/main/java/io/github/sanitised/st/ui/prototype/PrototypeModels.kt` | 数据映射（`ChatSummary.toPrototypeChatItem`、`CharacterSummary.toPrototypeCharacterCard`）、标签过滤 |
+| 原型首页 | `app/src/main/java/io/github/sanitised/st/ui/screens/PrototypeHomeScreen.kt` | 对话列表（置顶/全部过滤）、服务状态内联卡片 |
+| 原型群聊 | `app/src/main/java/io/github/sanitised/st/ui/screens/PrototypeGroupChatScreen.kt` | 群聊列表、创建群聊（含 activationStrategy/allowSelfResponses）、打开群聊 |
+| 原型组件 | `app/src/main/java/io/github/sanitised/st/ui/screens/PrototypeComponents.kt` | 可复用 UI 组件：`PrototypeSearchBar`、`PrototypeAvatar`、`PrototypeChipRow` 等 |
+| 原型模型 | `app/src/main/java/io/github/sanitised/st/ui/screens/PrototypeModels.kt` | 数据映射（`ChatSummary.toPrototypeChatItem`、`CharacterSummary.toPrototypeCharacterCard`）、标签过滤 |
 
 ## 6. Chat 界面入口迁移
 
@@ -1230,10 +1230,10 @@ UI 增强：
 
 | 文件 | 变更类型 | 说明 |
 |---|---|---|
-| `ui/prototype/PrototypePastChatsScreen.kt` | **新增** | 历史对话列表页面（搜索、操作 sheet、重命名/删除对话框、导出分享） |
+| `ui/screens/PrototypePastChatsScreen.kt` | **新增** | 历史对话列表页面（搜索、操作 sheet、重命名/删除对话框、导出分享） |
 | `ui/navigation/STNavGraph.kt` | 修改 | 新增 `PAST_CHATS` 路由和 `pastChats()` 辅助函数 |
 | `MainActivity.kt` | 修改 | 注册 PAST_CHATS 路由、角色详情页传入 `onOpenPastChats` 导航 |
-| `ui/prototype/PrototypeCharacterScreens.kt` | 修改 | 角色详情页新增"历史对话"入口卡片 |
+| `ui/screens/PrototypeCharacterScreens.kt` | 修改 | 角色详情页新增"历史对话"入口卡片 |
 | `res/xml/file_provider_paths.xml` | 修改 | 新增 `cache-path` 用于聊天导出文件分享 |
 
 #### 消息复制、编辑、删除（2026-05-29）
@@ -1322,11 +1322,11 @@ UI 增强：
 | `chat/NativeChatScreen.kt` | 修改 | 清除假数据、swipe 控件、快捷操作栏（含不可用反馈）、CHAT/GroupChat 目标匹配修正 |
 | `chat/ChatStore.kt` | 修改 | 新增 `mode` 字段，`applySnapshot` 设置 mode，`reset()` 重置 mode |
 | `chat/ChatRuntimeBridge.kt` | 修改 | 新增 `openGroup(groupId, chatId?)`、`swipePrevious(messageId)`、`swipeNext(messageId)` |
-| `ui/prototype/PrototypeModels.kt` | 修改 | 删除 fallback 工厂、新增 `prototypeCharacterTagFilters()`、移除 streaming/unread、置顶语义 |
-| `ui/prototype/PrototypeHomeScreen.kt` | 修改 | 移除 streaming/unread UI、过滤只保留"全部"/"置顶" |
-| `ui/prototype/PrototypeCharacterScreens.kt` | 修改 | 离线分支重排、真实标签、内联搜索栏、`runCatching` 保护 |
-| `ui/prototype/PrototypeGroupChatScreen.kt` | 修改 | toggle 互斥、API 参数完整、排序修正、刷新按钮 |
-| `ui/prototype/PrototypeComponents.kt` | 修改 | 新增 `PrototypeSearchBar` 组件 |
+| `ui/screens/PrototypeModels.kt` | 修改 | 删除 fallback 工厂、新增 `prototypeCharacterTagFilters()`、移除 streaming/unread、置顶语义 |
+| `ui/screens/PrototypeHomeScreen.kt` | 修改 | 移除 streaming/unread UI、过滤只保留"全部"/"置顶" |
+| `ui/screens/PrototypeCharacterScreens.kt` | 修改 | 离线分支重排、真实标签、内联搜索栏、`runCatching` 保护 |
+| `ui/screens/PrototypeGroupChatScreen.kt` | 修改 | toggle 互斥、API 参数完整、排序修正、刷新按钮 |
+| `ui/screens/PrototypeComponents.kt` | 修改 | 新增 `PrototypeSearchBar` 组件 |
 | `ui/webview/WebViewNavigator.kt` | 修改 | `WebViewTarget.GroupChat` sealed variant |
 | `MainActivity.kt` | 修改 | `webViewTargetSaver()`、`chatStore.reset()`、`openGroupChat` 导航、动态 drawer badge |
 | `test/.../ChatInterfaceAuditRegressionTest.kt` | **新增** | 10 个源码扫描回归测试 |

@@ -1,4 +1,4 @@
-package io.github.sanitised.st.ui.prototype
+package io.github.sanitised.st.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background

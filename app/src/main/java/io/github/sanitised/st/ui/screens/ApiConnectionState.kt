@@ -1,4 +1,4 @@
-package io.github.sanitised.st.ui.prototype
+package io.github.sanitised.st.ui.screens
 
 import io.github.sanitised.st.api.SecretProviderState
 import java.util.Locale

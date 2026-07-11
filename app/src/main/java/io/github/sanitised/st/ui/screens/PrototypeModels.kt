@@ -1,4 +1,4 @@
-package io.github.sanitised.st.ui.prototype
+package io.github.sanitised.st.ui.screens
 
 import androidx.compose.runtime.Immutable
 import io.github.sanitised.st.NodeState

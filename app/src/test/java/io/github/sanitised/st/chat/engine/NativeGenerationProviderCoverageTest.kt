@@ -1,7 +1,7 @@
 package io.github.sanitised.st.chat.engine
 
-import io.github.sanitised.st.ui.prototype.apiConnectionProviderForId
-import io.github.sanitised.st.ui.prototype.settingsWithSelectedApiProvider
+import io.github.sanitised.st.ui.screens.apiConnectionProviderForId
+import io.github.sanitised.st.ui.screens.settingsWithSelectedApiProvider
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
 

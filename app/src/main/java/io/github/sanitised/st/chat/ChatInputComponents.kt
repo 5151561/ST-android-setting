@@ -149,9 +149,9 @@ import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoSummary
-import io.github.sanitised.st.ui.prototype.PrototypeAssistPill
-import io.github.sanitised.st.ui.prototype.PrototypeAvatar
-import io.github.sanitised.st.ui.prototype.PrototypeGroupAvatar
+import io.github.sanitised.st.ui.screens.PrototypeAssistPill
+import io.github.sanitised.st.ui.screens.PrototypeAvatar
+import io.github.sanitised.st.ui.screens.PrototypeGroupAvatar
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers

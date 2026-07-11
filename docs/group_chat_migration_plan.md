@@ -232,7 +232,7 @@ GroupComposer.onSend(text)
 
 | 关注点 | 文件 |
 |---|---|
-| 群聊列表 | `ui/prototype/PrototypeGroupChatScreen.kt` |
+| 群聊列表 | `ui/screens/PrototypeGroupChatScreen.kt` |
 | 新建群聊（真实角色 + 创建） | `chat/NewGroupScreen.kt`、`MainActivity.kt`（`group-chat/new` 路由） |
 | 群聊详情（真实数据 + 发送） | `chat/GroupChatScreen.kt`、`MainActivity.kt`（`GROUP_CHAT_DETAIL` 路由） |
 | 群设置 / 成员（真实数据 + `/api/groups/edit`） | `chat/GroupSettingsScreen.kt`、`chat/GroupMembersScreen.kt` |
