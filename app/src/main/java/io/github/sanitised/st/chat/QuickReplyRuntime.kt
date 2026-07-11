@@ -1,7 +1,7 @@
 package io.github.sanitised.st.chat
 
+import io.github.sanitised.st.api.StJson
 import org.json.JSONObject
-import org.yaml.snakeyaml.Yaml
 import java.io.File
 
 sealed class QuickReplyExecution {
@@ -20,7 +20,7 @@ object QuickReplyRuntime {
         val settingsFile = File(userDir, "settings.json")
         if (!settingsFile.exists()) return emptyList()
         val extensionSettings = runCatching {
-            val root = Yaml().load<Any?>(settingsFile.readText(Charsets.UTF_8)) as? Map<*, *>
+            val root = StJson.parse(settingsFile.readText(Charsets.UTF_8)) as? Map<*, *>
             val extensions = (root?.get("extension_settings") ?: root?.get("extensions")) as? Map<*, *>
             extensions?.entries?.associate { (k, v) -> k.toString() to v } ?: emptyMap()
         }.getOrElse { emptyMap() }

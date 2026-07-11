@@ -2,15 +2,13 @@ package io.github.sanitised.st.data
 
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
+import io.github.sanitised.st.api.StJson
 import java.io.File
-import org.yaml.snakeyaml.Yaml
 
 class LocalTavernLibraryReader(
     private val dataRoot: File,
     private val userHandle: String = DEFAULT_USER_HANDLE
 ) {
-    private val yaml = Yaml()
-
     fun listCharacters(limit: Int = DEFAULT_LIST_LIMIT): List<CharacterSummary> {
         val charactersDir = File(userDir, "characters")
         return charactersDir.safeFiles()
@@ -90,7 +88,7 @@ class LocalTavernLibraryReader(
     }
 
     private fun String.messageText(): String? {
-        val value = runCatching { yaml.load<Any?>(this) }.getOrNull() as? Map<*, *> ?: return null
+        val value = StJson.parse(this) as? Map<*, *> ?: return null
         return (value["mes"] as? String)?.trim()?.takeIf { it.isNotBlank() }
     }
 
