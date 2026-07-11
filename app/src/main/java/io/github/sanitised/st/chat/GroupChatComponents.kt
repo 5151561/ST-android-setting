@@ -75,7 +75,7 @@ import java.util.UUID
 // GroupAvatar — 将群成员头像拼贴成圆角格栅
 // ─────────────────────────────────────────────────────────────
 @Composable
-fun GroupAvatar(ids: List<String>, members: List<DemoGroupMember>, baseUrl: String, size: Dp, modifier: Modifier = Modifier) {
+fun GroupAvatar(ids: List<String>, members: List<GroupMember>, baseUrl: String, size: Dp, modifier: Modifier = Modifier) {
     val activeMembers = ids.take(4).mapNotNull { id -> members.find { it.id == id } }
     val radius = size * 0.28f
     val gap = 1.5.dp
@@ -192,7 +192,7 @@ fun GroupAvatar(ids: List<String>, members: List<DemoGroupMember>, baseUrl: Stri
 
 @Composable
 internal fun GroupAvatarTile(
-    member: DemoGroupMember,
+    member: GroupMember,
     baseUrl: String,
     fontSize: androidx.compose.ui.unit.TextUnit,
     modifier: Modifier = Modifier
@@ -220,7 +220,7 @@ internal fun GroupAvatarTile(
 
 @Composable
 internal fun GroupMemberAvatar(
-    member: DemoGroupMember,
+    member: GroupMember,
     baseUrl: String,
     size: Dp,
     modifier: Modifier = Modifier,
@@ -261,8 +261,8 @@ internal fun GroupMemberAvatar(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupChatHeader(
-    group: DemoGroup,
-    members: List<DemoGroupMember>,
+    group: GroupInfo,
+    members: List<GroupMember>,
     baseUrl: String,
     onBack: () -> Unit,
     onHeaderClick: () -> Unit,
@@ -371,7 +371,7 @@ fun GroupChatHeader(
 // ─────────────────────────────────────────────────────────────
 @Composable
 fun MemberStrip(
-    members: List<DemoGroupMember>,
+    members: List<GroupMember>,
     baseUrl: String,
     onAddMemberClick: () -> Unit,
     onMemberClick: (String) -> Unit

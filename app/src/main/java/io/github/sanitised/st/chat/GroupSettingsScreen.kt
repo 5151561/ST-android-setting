@@ -69,7 +69,7 @@ fun GroupSettingsScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     val members = remember { mutableStateListOf<String>() }
-    val membersMockList = remember { mutableStateListOf<DemoGroupMember>() }
+    val membersMockList = remember { mutableStateListOf<GroupMember>() }
 
     LaunchedEffect(groupId) {
         val client = TavernCoreClient(baseUrl)
@@ -90,7 +90,7 @@ fun GroupSettingsScreen(
         membersMockList.addAll(group.members.mapIndexed { index, avatar ->
             val character = byId[avatar]
             val name = character?.name ?: avatar.removeSuffix(".png")
-            DemoGroupMember(
+            GroupMember(
                 id = avatar, name = name, subtitle = "", accent = gradientFor(avatar).last(),
                 role = "", queue = index + 1, muted = avatar in group.disabledMembers,
                 avatarUrl = character?.avatarUrl ?: avatar,

@@ -45,8 +45,8 @@ fun GroupMembersScreen(
     var base by remember { mutableStateOf<GroupSummary?>(null) }
 
     // 当前成员（按发言顺序）与候选角色（未加入），均由真实数据填充。
-    val activeMembers = remember { mutableStateListOf<DemoGroupMember>() }
-    val candidates = remember { mutableStateListOf<DemoGroupMember>() }
+    val activeMembers = remember { mutableStateListOf<GroupMember>() }
+    val candidates = remember { mutableStateListOf<GroupMember>() }
     var requestedSpeakerName by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
@@ -59,10 +59,10 @@ fun GroupMembersScreen(
         }
         val characters = runCatching { client.listCharacters() }.getOrDefault(emptyList())
         val byId = characters.associateBy { it.id }
-        fun toMember(avatar: String, index: Int): DemoGroupMember {
+        fun toMember(avatar: String, index: Int): GroupMember {
             val character = byId[avatar]
             val name = character?.name ?: avatar.removeSuffix(".png")
-            return DemoGroupMember(
+            return GroupMember(
                 id = avatar, name = name, subtitle = "", accent = gradientFor(avatar).last(),
                 role = "", queue = index + 1, muted = avatar in group.disabledMembers,
                 avatarUrl = character?.avatarUrl ?: avatar,
@@ -324,7 +324,7 @@ fun GroupMembersScreen(
 // ─────────────────────────────────────────────────────────────
 @Composable
 fun MemberManageRow(
-    member: DemoGroupMember,
+    member: GroupMember,
     order: Int,
     isFirst: Boolean,
     isLast: Boolean,

@@ -77,7 +77,7 @@ import java.util.UUID
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SpeakerSheet(
-    members: List<DemoGroupMember>,
+    members: List<GroupMember>,
     baseUrl: String,
     onDismiss: () -> Unit,
     onSelectSpeaker: (String) -> Unit,
@@ -280,12 +280,12 @@ internal fun getStrategyActionLabel(id: String): String {
 // 切换对话弹层数据模型
 // ─────────────────────────────────────────────────────────────
 // DEMO_PLACEHOLDER: 群聊历史对话/检查点/分支的静态模拟数据，对接 ST 后需替换为 /api/chats 列表。
-enum class DemoConvKind { CHAT, CHECKPOINT, BRANCH }
+enum class GroupConvKind { CHAT, CHECKPOINT, BRANCH }
 
-data class DemoConversation(
+data class GroupConversation(
     val id: String,
     val title: String,
-    val kind: DemoConvKind,
+    val kind: GroupConvKind,
     val messageCount: Int,
     val preview: String,
     val timeInfo: String,
@@ -297,20 +297,20 @@ data class DemoConversation(
 // ─────────────────────────────────────────────────────────────
 @Composable
 fun ConversationSwitcherSheet(
-    group: DemoGroup,
-    members: List<DemoGroupMember>,
+    group: GroupInfo,
+    members: List<GroupMember>,
     baseUrl: String,
-    conversations: List<DemoConversation>,
+    conversations: List<GroupConversation>,
     onDismiss: () -> Unit,
     onSelectConversation: (String) -> Unit,
     onNewConversation: () -> Unit,
     onManageAll: () -> Unit
 ) {
     // 群聊原生路径暂不支持检查点/分支，仅展示真实对话存档。
-    val checkpoints = emptyList<DemoConversation>()
+    val checkpoints = emptyList<GroupConversation>()
 
     var query by remember { mutableStateOf("") }
-    fun matches(c: DemoConversation) =
+    fun matches(c: GroupConversation) =
         query.isBlank() || c.title.contains(query, true) || c.preview.contains(query, true)
     val filteredConvs = conversations.filter { matches(it) }
     val filteredChecks = checkpoints.filter { matches(it) }
@@ -474,13 +474,13 @@ internal fun ConvSectionLabel(text: String) {
 }
 
 @Composable
-internal fun ConversationRow(c: DemoConversation, onClick: () -> Unit) {
+internal fun ConversationRow(c: GroupConversation, onClick: () -> Unit) {
     var menuExpanded by remember { mutableStateOf(false) }
     val iconBg = if (c.active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
     val icon = when (c.kind) {
-        DemoConvKind.CHAT -> Icons.Filled.Forum
-        DemoConvKind.CHECKPOINT -> Icons.Filled.Flag
-        DemoConvKind.BRANCH -> Icons.Filled.ForkRight
+        GroupConvKind.CHAT -> Icons.Filled.Forum
+        GroupConvKind.CHECKPOINT -> Icons.Filled.Flag
+        GroupConvKind.BRANCH -> Icons.Filled.ForkRight
     }
     Row(
         modifier = Modifier

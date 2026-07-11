@@ -76,7 +76,7 @@ import java.util.UUID
 // ─────────────────────────────────────────────────────────────
 
 /** 加载完成前的占位群（避免 UI 读到 demo 数据）。 */
-internal fun emptyDemoGroup(id: String): DemoGroup = DemoGroup(
+internal fun emptyGroupInfo(id: String): GroupInfo = GroupInfo(
     id = id,
     name = "",
     members = emptyList(),
@@ -99,7 +99,7 @@ internal fun groupStrategyName(value: Int): String = when (value) {
     else -> "natural"
 }
 
-internal fun GroupSummary.toDemoGroup(): DemoGroup = DemoGroup(
+internal fun GroupSummary.toGroupInfo(): GroupInfo = GroupInfo(
     id = id,
     name = name,
     members = members,
@@ -169,7 +169,7 @@ internal fun groupAvatarThumbnailUrl(avatar: String): String =
     "/thumbnail?type=avatar&file=${java.net.URLEncoder.encode(avatar, Charsets.UTF_8.name())}"
 
 /** 从群聊消息定位发言成员:优先上游 original_avatar 字段,退回按显示名匹配。 */
-internal fun findGroupSpeaker(message: ChatMessage, members: List<DemoGroupMember>): DemoGroupMember? {
+internal fun findGroupSpeaker(message: ChatMessage, members: List<GroupMember>): GroupMember? {
     val avatarId = message.extra.optString("original_avatar")
     if (avatarId.isNotBlank()) {
         members.firstOrNull { it.id == avatarId }?.let { return it }
@@ -192,7 +192,7 @@ internal fun groupUserChatMessage(id: Int, userName: String, text: String, date:
     )
 
 /** 流式生成期间的乐观占位消息,extra 带 original_avatar 供渲染层定位成员。 */
-internal fun groupPendingAssistantChatMessage(id: Int, member: DemoGroupMember, date: String): ChatMessage =
+internal fun groupPendingAssistantChatMessage(id: Int, member: GroupMember, date: String): ChatMessage =
     ChatMessage(
         id = id,
         name = member.name,

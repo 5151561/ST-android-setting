@@ -81,7 +81,7 @@ import java.util.UUID
 @Composable
 fun GroupMesAssistant(
     msg: ChatMessage,
-    member: DemoGroupMember,
+    member: GroupMember,
     baseUrl: String,
     showControls: Boolean,
     onSwipeLeft: () -> Unit,
@@ -192,7 +192,7 @@ fun GroupMesUser(msg: ChatMessage, onLongPress: (() -> Unit)? = null) {
 // TypingRow — 动态脉动的成员打字状态
 // ─────────────────────────────────────────────────────────────
 @Composable
-fun TypingRow(member: DemoGroupMember, baseUrl: String) {
+fun TypingRow(member: GroupMember, baseUrl: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()

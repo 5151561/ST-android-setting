@@ -72,9 +72,9 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-// 群聊 UI 的数据载体。名称沿用 Demo* 前缀，但已由真实 ST API 数据填充
+// 群聊 UI 的数据载体,由真实 ST API 数据填充
 // （群信息 / 成员 / 历史消息见 GroupChatScreen.reload()）。
-data class DemoGroup(
+data class GroupInfo(
     val id: String,
     val name: String,
     val members: List<String>,
@@ -90,7 +90,7 @@ data class DemoGroup(
     val chats: List<String> = emptyList()
 )
 
-data class DemoGroupMember(
+data class GroupMember(
     val id: String,
     val name: String,
     val subtitle: String,
@@ -120,8 +120,8 @@ fun GroupChatScreen(
 
     // Real group state, loaded from the local SillyTavern API by [groupId]/[chatId].
     // 消息与单聊共用 ChatMessage 模型(对齐上游:群聊消息就是带 original_avatar 的普通消息)。
-    val groupState = remember { mutableStateOf(emptyDemoGroup(groupId)) }
-    val membersList = remember { mutableStateListOf<DemoGroupMember>() }
+    val groupState = remember { mutableStateOf(emptyGroupInfo(groupId)) }
+    val membersList = remember { mutableStateListOf<GroupMember>() }
     val threadMessages = remember { mutableStateListOf<ChatMessage>() }
     var activeChatId by remember { mutableStateOf(chatId?.takeIf { it.isNotBlank() } ?: "") }
     var userName by remember { mutableStateOf("User") }
@@ -145,7 +145,7 @@ fun GroupChatScreen(
         val members = group.members.mapIndexed { index, avatar ->
             val character = byId[avatar]
             val name = character?.name ?: avatar.removeSuffix(".png")
-            DemoGroupMember(
+            GroupMember(
                 id = avatar,
                 name = name,
                 subtitle = character?.creatorNotes?.lineSequence()?.firstOrNull()?.take(24) ?: "",
@@ -166,7 +166,7 @@ fun GroupChatScreen(
             }
             .mapIndexed { index, map -> map.toNativeChatMessage(index) }
 
-        groupState.value = group.toDemoGroup()
+        groupState.value = group.toGroupInfo()
         membersList.clear(); membersList.addAll(members)
         threadMessages.clear(); threadMessages.addAll(messages)
         loadError = null
@@ -512,10 +512,10 @@ fun GroupChatScreen(
         if (showConversationSwitcher) {
             val chatIds = groupState.value.chats.ifEmpty { listOf(activeChatId).filter { it.isNotBlank() } }
             val conversations = chatIds.map { cid ->
-                DemoConversation(
+                GroupConversation(
                     id = cid,
                     title = cid,
-                    kind = DemoConvKind.CHAT,
+                    kind = GroupConvKind.CHAT,
                     messageCount = 0,
                     preview = "",
                     timeInfo = "",

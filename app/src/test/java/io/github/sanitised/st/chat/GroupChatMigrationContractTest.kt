@@ -119,7 +119,7 @@ class GroupChatMigrationContractTest {
 
         // No hardcoded demo state remains as the source of truth.
         assertFalse(settings.contains("mutableStateOf(\"雨夜小聚\")"))
-        assertFalse(members.contains("DemoGroupMember(\"aria\""))
+        assertFalse(members.contains("GroupMember(\"aria\""))
 
         // The REST client exposes the edit/delete endpoints.
         assertTrue(api.contains("suspend fun editGroup(group: GroupSummary)"))
@@ -133,7 +133,7 @@ class GroupChatMigrationContractTest {
         val screen = groupChatSources()
 
         // The switcher is fed real chats and can switch / start a new conversation.
-        assertTrue(screen.contains("conversations: List<DemoConversation>"))
+        assertTrue(screen.contains("conversations: List<GroupConversation>"))
         assertTrue(screen.contains("groupState.value.chats"))
         // The old internal demo archive list is gone.
         assertFalse(screen.contains("周末桌游夜"))
@@ -182,6 +182,6 @@ class GroupChatMigrationContractTest {
         val screen = File("src/main/java/io/github/sanitised/st/chat/NewGroupScreen.kt").readText()
         assertTrue(screen.contains("characters: List<CharacterSummary>"))
         assertFalse(screen.contains("DEMO_PLACEHOLDER"))
-        assertFalse(screen.contains("DemoGroupMember("))
+        assertFalse(screen.contains("GroupMember("))
     }
 }
