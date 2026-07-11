@@ -1,9 +1,11 @@
 # SillyTavern Chat 原生界面迁移方案
 
+> 2026-06-24 当前口径：本文早期章节描述的“原生 UI + 隐藏 WebView runtime/Bridge 兜底”已经被 runtime exit 取代。当前聊天路径为纯原生 `NativeChatScreen` / `NativeChatEngine`，见 `docs/native-chat-runtime-exit-status.md`。本文其余内容保留为迁移历史。
+
 版本：0.15
 日期：2026-06-03
-状态：**P0 已收口 + P1 基本可用（保存错误检测 best-effort）+ P2 全部落地 + P3 阶段 A+B+C 已落地（logprobs 因 ST 未导出阻塞、TTS/翻译/生图后续专项）+ 原生生成承接混合过渡已落地 + Native ChatSession Phase 1 已补安全护栏**（「原生生成（实验）」开关下，单聊打开、编辑、删除、隐藏、swipe 和生成成功路径可由原生 runtime 完成；生成成功后不再依赖隐藏 WebView reload，仍走 Bridge 的写操作会先 reload 对齐。详见 `docs/native-chat-webview-exit-plan.md` 与 `docs/native-chat-phase1-progress.md`。）
-适用范围：ST-android 下一阶段 Chat 原生化、JS Bridge、SillyTavern 运行时复用、API 对接
+状态：**已归档为历史迁移方案**。2026-06-24 后聊天路径已完成 runtime exit，当前实现以 `docs/native-chat-runtime-exit-status.md` 为准。
+适用范围：历史上的 Chat 原生化、JS Bridge、SillyTavern 运行时复用、API 对接设计记录。
 
 ## 1. 背景和目标
 

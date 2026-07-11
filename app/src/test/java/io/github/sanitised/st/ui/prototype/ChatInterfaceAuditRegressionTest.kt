@@ -42,7 +42,7 @@ class ChatInterfaceAuditRegressionTest {
         assertFalse(source.contains("badgeText = \"2\""))
         assertFalse(source.contains("badgeText = \"4\""))
         assertFalse(source.contains("supportingText = \"6 个\""))
-        assertTrue(source.contains("rememberSaveable(stateSaver = webViewTargetSaver())"))
+        assertTrue(source.contains("rememberSaveable(stateSaver = chatTargetSaver())"))
     }
 
     @Test
@@ -140,19 +140,16 @@ class ChatInterfaceAuditRegressionTest {
         assertTrue(routes.contains("const val GROUP_CHAT_DETAIL"))
         assertTrue(routes.contains("fun groupChatDetail(groupId: String, chatId: String?)"))
         assertTrue(openGroupChatBlock.contains("navController.navigate(STRoutes.groupChatDetail(groupId, chatId))"))
-        assertFalse(openGroupChatBlock.contains("pendingWebViewTarget = WebViewTarget.GroupChat"))
+        assertFalse(openGroupChatBlock.contains("pendingChatTarget = ChatTarget.GroupChat"))
         assertFalse(openGroupChatBlock.contains("navController.navigate(STRoutes.CHAT)"))
         assertTrue(groupDetailRouteBlock.contains("GroupChatScreen("))
     }
 
     @Test
     fun chatNavigationDoesNotShowPreviousChatMessagesForUnmatchedTarget() {
-        // The runtime WebView is now hosted persistently above the NavHost, so the
-        // store is no longer force-reset on every chat entry (that reset caused the
-        // multi-second reload). Stale messages from a previous chat must instead be
-        // suppressed by gating the message list on targetMatched: when the requested
-        // target does not match what the store currently holds, the loading view is
-        // shown until the new snapshot arrives.
+        // The store is no longer force-reset on every chat entry. Stale messages
+        // from a previous chat must be suppressed by gating the message list on
+        // targetMatched until the new native snapshot arrives.
         val nativeChat = File("src/main/java/io/github/sanitised/st/chat/NativeChatScreen.kt").readText()
 
         assertTrue(nativeChat.contains("val targetMatched = targetMatchesStore(target, store)"))
@@ -164,28 +161,35 @@ class ChatInterfaceAuditRegressionTest {
     fun genericChatTargetDoesNotTreatEmptyStoreAsMatched() {
         val source = File("src/main/java/io/github/sanitised/st/chat/NativeChatScreen.kt").readText()
 
-        assertFalse(source.contains("WebViewTarget.CHAT -> true"))
-        assertTrue(source.contains("WebViewTarget.CHAT -> store.chatFile.isNotBlank()"))
+        assertFalse(source.contains("ChatTarget.Current -> true"))
+        assertTrue(source.contains("ChatTarget.Current -> store.chatFile.isNotBlank()"))
     }
 
     @Test
-    fun nativeGenerationHydratesCharacterChatBeforeRuntimeSnapshot() {
+    fun nativeChatHydratesCharacterChatThroughNativeLoader() {
         val nativeChat = File("src/main/java/io/github/sanitised/st/chat/NativeChatScreen.kt").readText()
         val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
 
         assertTrue(nativeChat.contains("nativeChatLoader?.openCharacter"))
         assertTrue(nativeChat.contains("val nativeReadyForTarget = nativeChatLoadingEnabled && targetMatched"))
-        assertTrue(mainActivity.contains("nativeChatLoadingEnabled = nativeGenerationEnabled"))
+        assertTrue(mainActivity.contains("nativeChatLoadingEnabled = true"))
         assertTrue(mainActivity.contains("nativeChatLoader = nativeChatLoader"))
     }
 
     @Test
-    fun runtimeReadyDoesNotApplyGenericSnapshotBeforeTargetOpen() {
-        val bridge = File("src/main/java/io/github/sanitised/st/chat/ChatRuntimeBridge.kt").readText()
-        val runtimeReadyBlock = bridge
-            .substringAfter("is BridgeEvent.RuntimeReady -> {")
-            .substringBefore("is BridgeEvent.RuntimeError ->")
+    fun nativeChatLoadsQuickRepliesWithChatAndCharacterContext() {
+        val nativeChat = File("src/main/java/io/github/sanitised/st/chat/NativeChatScreen.kt").readText()
 
-        assertFalse(runtimeReadyBlock.contains("requestSnapshot()"))
+        assertTrue(nativeChat.contains("chatMetadata = store.chatQuickReplyConfig"))
+        assertTrue(nativeChat.contains("characterAvatar = store.avatarUrl"))
+    }
+
+    @Test
+    fun mainActivityDoesNotCreateHiddenChatRuntimeHost() {
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+
+        assertFalse(mainActivity.contains("ChatWebViewScreen"))
+        assertFalse(mainActivity.contains("chatRuntimeActivated"))
+        assertFalse(mainActivity.contains("pendingWebViewTarget"))
     }
 }

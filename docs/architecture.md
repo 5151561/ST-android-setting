@@ -1,5 +1,7 @@
 # ST-android 架构文档
 
+> 2026-06-24 当前口径：App 内聊天已退出隐藏 WebView runtime，聊天唯一入口为 `NativeChatScreen` + `NativeChatEngine`。旧 `ChatWebViewScreen` / `ChatRuntimeBridge` / `chat_runtime_adapter.js` 已删除。详见 `docs/native-chat-runtime-exit-status.md`。
+
 ## 项目概览
 
 ST-android 是一个第三方 SillyTavern Android 客户端。它在设备本地通过 foreground service 运行嵌入式 Node.js + SillyTavern 服务端，并用 Jetpack Compose 构建原生 UI。
@@ -16,19 +18,18 @@ ST-android 是一个第三方 SillyTavern Android 客户端。它在设备本地
 ┌────────────────────────────────────────────────────────────┐
 │                      Android App                           │
 │                                                            │
-│  ┌──────────────┐  ┌───────────────┐  ┌────────────────┐  │
-│  │  Compose UI  │  │  WebView 层   │  │  MainViewModel │  │
-│  │  (原生界面)   │  │ (聊天运行时)   │  │   (中心状态)    │  │
-│  └──────┬───────┘  └───────┬───────┘  └───────┬────────┘  │
-│         │                  │                   │           │
-│         │     ┌────────────┴──────────┐        │           │
-│         │     │    JS Bridge 层       │        │           │
-│         │     │ STAndroidBridge       │        │           │
-│         │     │ ChatRuntimeBridge     │        │           │
-│         │     │ chat_runtime_adapter  │        │           │
-│         │     └───────────────────────┘        │           │
-│         │                                      │           │
-│  ┌──────┴──────────────────────────────────────┴───────┐   │
+│  ┌──────────────┐  ┌────────────────┐  ┌──────────────┐  │
+│  │  Compose UI  │  │ Native Chat    │  │ MainViewModel│  │
+│  │  (原生界面)   │  │ Runtime        │  │  (中心状态)   │  │
+│  └──────┬───────┘  └───────┬────────┘  └──────┬───────┘  │
+│         │                  │                  │          │
+│         │   ┌──────────────┴──────────────┐   │          │
+│         │   │ NativeChatEngine             │   │          │
+│         │   │ NativeGenerationRouter       │   │          │
+│         │   │ QuickReply/DataBank/Prompt   │   │          │
+│         │   └──────────────┬──────────────┘   │          │
+│         │                  │                  │          │
+│  ┌──────┴──────────────────┴──────────────────┴──────┐   │
 │  │              数据访问层                               │   │
 │  │  TavernCoreClient (HTTP API)                        │   │
 │  │  LocalTavernLibraryReader (本地文件)                  │   │
@@ -215,107 +216,54 @@ ST-android 采用**双路径**数据访问策略：
 
 ---
 
-## 三、JS Bridge 层（原生 ↔ WebView 通信）
+## 三、原生聊天运行时层
 
-聊天界面正在从纯 WebView 迁移到原生 Compose，核心设计原则是**运行时复用**：SillyTavern Web 前端仍在隐藏 WebView 中运行（负责提示词组装、世界书、流式生成、扩展注入等），原生端只负责 UI 渲染和用户交互。
+聊天页已经退出隐藏 WebView runtime。`NativeChatScreen` 是唯一聊天界面，所有聊天动作通过 `ChatEngine` 接口进入 `NativeChatEngine`，再由原生 JSONL、PromptAssembly 和本地 SillyTavern 后端 endpoint 完成。
 
-### 通信架构
+### 运行时架构
 
 ```
-┌──────────────────┐                    ┌──────────────────┐
-│   Compose UI     │                    │    WebView       │
-│  NativeChatScreen│                    │  SillyTavern JS  │
-└────────┬─────────┘                    └────────┬─────────┘
-         │                                       │
-         │  ChatRuntimeBridge                     │
-         │  (发送 BridgeMessage)                   │
-         ├──────── command ──────────────────────→│
-         │    chat.send / generation.stop /       │
-         │    message.edit / ...                  │
-         │                                       │
-         │  STAndroidBridge.postChatEvent()       │
-         │←──────── event ───────────────────────┤
-         │    chat.loaded / stream.token /        │
-         │    generation.started / ...            │
-         │                                       │
-         │  ChatStore (Compose State)             │
-         │  ← 事件驱动 UI 更新                     │
-         └───────────────────────────────────────┘
+┌──────────────────┐
+│ NativeChatScreen │
+└────────┬─────────┘
+         │ ChatEngine.send / stop / regenerate / continue
+┌────────▼─────────┐
+│ NativeChatEngine │
+└────────┬─────────┘
+         ├─ NativeChatRepository / NativeChatJsonOps：JSONL 与 header metadata 保存
+         ├─ PromptBuilder / TextPromptBuilder：提示词组装
+         ├─ NativeGenerationRouter：连接页 provider 到后端 route
+         ├─ QuickReplyRuntime：快捷回复读取与执行
+         ├─ ItemizedPromptStore：生成时 prompt 明细记录
+         └─ DataBankRepository：settings / 角色 / 聊天附件聚合
 ```
 
-### STAndroidBridge
+### ChatEngine
 
-**文件**：`ui/webview/STAndroidBridge.kt`
+**文件**：`chat/engine/ChatEngine.kt`
 
-注入为 `window.STAndroid`，暴露给 WebView JS 的接口：
+UI 唯一入口，保留四个动作：
 
-| `@JavascriptInterface` 方法 | 说明 |
+| 方法 | 说明 |
 |------|------|
-| `postChatEvent(json)` | JS → Native 事件通道 |
-| `getAppInfo()` | 返回应用信息（平台、包名、版本） |
-| `getRuntimeInfo()` | 返回运行时信息（host、port、baseUrl） |
-| `getThemeMode()` | 返回当前主题模式（light/dark/auto） |
-| `copyToClipboard(text)` | 复制文本到剪贴板 |
-| `shareText(text)` | 调用系统分享 |
-| `setKeepScreenOn(enabled)` | 控制屏幕常亮 |
+| `send(text)` | 发送用户消息，写入待发送附件到消息 `extra`，组装 prompt 并生成回复 |
+| `stop()` | 停止当前原生 stream |
+| `regenerate()` | 为最后一条 AI 消息新增 swipe 并保存 JSONL |
+| `continueGeneration()` | 继续当前消息并保存追加内容 |
 
-### chat_runtime_adapter.js
+### NativeGenerationRouter
 
-**文件**：`assets/chat_runtime_adapter.js`
+**文件**：`chat/engine/NativeGenerationRouter.kt`
 
-注入到 WebView 的 JS 脚本，创建 `window.STAndroidChatRuntime` 对象，负责：
-- 监听 SillyTavern 前端事件（聊天加载、消息变化、生成状态等）
-- 将事件序列化为 JSON 并通过 `STAndroid.postChatEvent()` 发送到 Native
-- 接收 Native 发来的命令（通过 `dispatch()` 方法）并调用 SillyTavern 内部 API 执行
+按当前连接页 provider 选择原生后端 route：
 
-### ChatRuntimeBridge
+| Provider | Route |
+|------|------|
+| OpenAI 系 / Chat Completion | `generateChatCompletion*` |
+| TextGen WebUI 系 | `generateTextCompletion*` |
+| Kobold / Kobold Horde / NovelAI | Text Completion 兼容 route |
 
-**文件**：`chat/ChatRuntimeBridge.kt`
-
-Native 端的 Bridge 管理器，封装所有与 WebView 运行时的交互：
-
-**命令（Native → WebView）**
-
-| 方法 | Bridge 命令名 | 说明 |
-|------|------|------|
-| `sendMessage(text)` | `chat.send` | 发送聊天消息（可携带附件） |
-| `stopGeneration()` | `generation.stop` | 停止生成 |
-| `regenerate()` | `generation.regenerate` | 重新生成 |
-| `continueGeneration()` | `generation.continue` | 继续生成 |
-| `openCharacter(avatarUrl, chatFile?)` | `chat.openCharacter` | 打开角色聊天 |
-| `openGroup(groupId, chatId?)` | `chat.openGroup` | 打开群聊 |
-| `swipePrevious(messageId)` | `message.swipePrevious` | 切换到上一条 swipe |
-| `swipeNext(messageId)` | `message.swipeNext` | 切换到下一条 swipe |
-| `editMessage(messageId, newText)` | `message.edit` | 编辑消息 |
-| `deleteMessageFromChat(messageId)` | `message.delete` | 删除消息 |
-| `hideMessage(messageId)` | `message.hide` | 隐藏消息 |
-| `unhideMessage(messageId)` | `message.unhide` | 取消隐藏 |
-| `setAuthorsNote(text)` | `authorsNote.set` | 设置作者注释 |
-| `setCfg(scale, negative, positive)` | `cfg.set` | 设置 CFG 参数 |
-| `newChat()` | `chat.new` | 新建聊天 |
-| `reloadChat()` | `chat.reload` | 重新加载聊天 |
-| `requestSnapshot()` | `runtime.getSnapshot` | 请求聊天快照 |
-| `retrySave()` | `runtime.save` | 重试保存 |
-
-**事件（WebView → Native）**
-
-| 事件名 | BridgeEvent 类型 | 说明 |
-|------|------|------|
-| `runtime.ready` | `RuntimeReady` | 运行时就绪 |
-| `runtime.error` | `RuntimeError` | 运行时错误 |
-| `chat.loaded` | `ChatLoaded` | 聊天快照加载完成 |
-| `chat.changed` | `ChatChanged` | 聊天切换 |
-| `message.added` | `MessageAdded` | 新消息 |
-| `message.updated` | `MessageUpdated` | 消息更新 |
-| `message.deleted` | `MessageDeleted` | 消息删除 |
-| `generation.started` | `GenerationStarted` | 开始生成 |
-| `generation.ended` | `GenerationEnded` | 生成完成 |
-| `generation.stopped` | `GenerationStopped` | 生成被停止 |
-| `generation.error` | `GenerationError` | 生成出错 |
-| `stream.token` | `StreamToken` | 流式 token |
-| `save.error` | `SaveError` | 保存失败 |
-| `bridge.result` | `CommandResult` | 命令执行成功 |
-| `bridge.error` | `CommandError` | 命令执行失败 |
+不再存在 Bridge fallback；未支持 provider 会明确返回 unsupported 错误。
 
 ### ChatStore
 
@@ -338,18 +286,6 @@ Native 端的 Bridge 管理器，封装所有与 WebView 运行时的交互：
 | `worldInfoName` | `String` | 绑定的世界书 |
 
 ### 数据模型
-
-**BridgeMessage** — Native → WebView 的命令消息格式：
-
-```json
-{
-  "id": "uuid",
-  "kind": "command",
-  "name": "chat.send",
-  "payload": { "text": "Hello" },
-  "timestamp": 1234567890
-}
-```
 
 **ChatMessage** — 单条聊天消息：
 
@@ -400,7 +336,6 @@ Native 端的 Bridge 管理器，封装所有与 WebView 运行时的交互：
 ├── 仪表盘 / 状态卡片 / 最近聊天 / 快捷操作
 
 聊天 (chat)
-├── WebView 聊天 (ChatWebViewScreen)
 ├── 原生 1v1 聊天 (NativeChatScreen)
 ├── 群聊 (GroupChatScreen)
 ├── 群聊设置 (GroupSettingsScreen)
@@ -439,7 +374,7 @@ Native 端的 Bridge 管理器，封装所有与 WebView 运行时的交互：
 | 路由 | 文件 |
 |------|------|
 | `chats/home` | `ui/prototype/PrototypeHomeScreen.kt` |
-| `chat` | `ui/webview/ChatWebViewScreen.kt` + `chat/NativeChatScreen.kt` |
+| `chat` | `chat/NativeChatScreen.kt` |
 | `characters` | `ui/prototype/PrototypeCharacterScreens.kt` |
 | `tools` | `ui/prototype/PrototypeAdvancedScreens.kt` |
 | `me` | `ui/prototype/PrototypeSystemScreens.kt` |
@@ -506,11 +441,16 @@ app/src/main/
 │   │   └── TavernCoreApi.kt     # SillyTavern HTTP API 客户端
 │   │
 │   ├── chat/
-│   │   ├── ChatBridgeModels.kt  # Bridge 消息协议和数据模型
-│   │   ├── ChatRuntimeBridge.kt # WebView 运行时通信管理
+│   │   ├── ChatModels.kt        # 聊天消息、附件、提示词和 Data Bank 数据模型
+│   │   ├── ChatTarget.kt        # 当前聊天目标
 │   │   ├── ChatStore.kt         # 聊天状态容器
 │   │   ├── ChatUiState.kt       # 聊天 UI 状态
 │   │   ├── NativeChatScreen.kt  # 原生 1v1 聊天界面
+│   │   ├── NativeChatRuntime.kt # 原生消息操作
+│   │   ├── NativeChatJsonOps.kt # JSONL/header 元数据写入
+│   │   ├── QuickReplyRuntime.kt # 原生 Quick Replies
+│   │   ├── DataBankRepository.kt # 原生 Data Bank 聚合
+│   │   ├── ItemizedPromptStore.kt # Prompt 明细记录
 │   │   ├── GroupChatScreen.kt   # 群聊界面
 │   │   ├── GroupSettingsScreen.kt # 群聊设置
 │   │   ├── GroupMembersScreen.kt  # 群成员管理
@@ -521,10 +461,7 @@ app/src/main/
 │   │
 │   └── ui/
 │       ├── webview/
-│       │   ├── ChatWebViewScreen.kt  # WebView 聊天容器
-│       │   ├── STAndroidBridge.kt    # JS Bridge 接口
-│       │   ├── WebViewNavigator.kt   # WebView 导航 + adapter 注入
-│       │   └── WebViewErrorPage.kt   # WebView 错误页
+│       │   └── WebViewErrorPage.kt   # WebView 错误页复用组件
 │       │
 │       ├── navigation/
 │       │   ├── STNavGraph.kt    # 路由定义
@@ -556,7 +493,6 @@ app/src/main/
 │           └── STColors.kt      # 颜色定义
 │
 ├── assets/
-│   ├── chat_runtime_adapter.js  # WebView 聊天运行时适配器
 │   ├── legal/                   # 开源许可证
 │   └── node_payload/            # Node.js + SillyTavern 打包
 │       ├── manifest.json

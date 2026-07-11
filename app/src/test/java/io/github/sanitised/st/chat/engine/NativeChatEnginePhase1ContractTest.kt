@@ -4,9 +4,15 @@ import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.api.TavernCoreApi
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.chat.ChatStore
+import io.github.sanitised.st.chat.PendingAttachment
 import io.github.sanitised.st.chat.buildNativeCharacterChatSnapshot
+import io.github.sanitised.st.chat.fileAttachments
+import io.github.sanitised.st.chat.mediaAttachments
 import java.lang.reflect.Proxy
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
@@ -20,13 +26,11 @@ class NativeChatEnginePhase1ContractTest {
 
     @Test
     fun nativeSuccessPathSavesJsonlWithoutReloadingCompatibilityRuntime() = runBlocking {
-        val bridge = RecordingBridgeActions()
         val api = RecordingTavernCoreApi(settings = openAiSettings())
         val store = readyCharacterStore(api.currentChat())
         val engine = NativeChatEngine(
             scope = this,
             store = store,
-            bridge = bridge,
             clientProvider = { api.proxy() },
             logger = NativeChatLogger.None,
         )
@@ -34,7 +38,6 @@ class NativeChatEnginePhase1ContractTest {
         engine.send("hello")
         joinLaunchedJobs()
 
-        assertEquals(emptyList<String>(), bridge.events)
         assertEquals("main.jsonl", api.savedChatFiles().last())
         assertTrue(api.savedChatFiles().first().startsWith("__native-backup__main__"))
         assertEquals(listOf("hello", "native reply"), api.savedMessages())
@@ -42,13 +45,12 @@ class NativeChatEnginePhase1ContractTest {
     }
 
     @Test
-    fun unsupportedNativeSendAlignsWebViewBeforeBridgeSend() = runBlocking {
-        val bridge = RecordingBridgeActions()
-        val api = RecordingTavernCoreApi(settings = mapOf("main_api" to "kobold"))
+    fun unsupportedNativeSendReportsNativeProviderGapWithoutFallback() = runBlocking {
+        val api = RecordingTavernCoreApi(settings = mapOf("main_api" to "unknown-provider"))
+        val store = readyCharacterStore(api.currentChat())
         val engine = NativeChatEngine(
             scope = this,
-            store = readyCharacterStore(api.currentChat()),
-            bridge = bridge,
+            store = store,
             clientProvider = { api.proxy() },
             logger = NativeChatLogger.None,
         )
@@ -56,24 +58,119 @@ class NativeChatEnginePhase1ContractTest {
         engine.send("hello")
         joinLaunchedJobs()
 
-        assertEquals(listOf("reloadChat", "sendMessage:hello"), bridge.events)
+        assertEquals(emptyList<String>(), api.savedChatFiles())
+        assertEquals("当前 provider 尚未接入原生生成", store.runtimeError)
+        assertEquals(emptyList<String>(), store.messages.map { it.mes })
     }
 
     @Test
-    fun bridgeGenerationWritesAlignWebViewBeforeDispatch() {
-        val bridge = RecordingBridgeActions()
+    fun regenerateAppendsNewSwipeAndPersistsJsonl() = runBlocking {
+        val api = RecordingTavernCoreApi(settings = openAiSettings(), chat = RecordingTavernCoreApi.chatWithAssistant())
+        val store = readyCharacterStore(api.currentChat())
         val engine = NativeChatEngine(
-            scope = kotlinx.coroutines.CoroutineScope(Job()),
-            store = readyCharacterStore(RecordingTavernCoreApi.initialChat()),
-            bridge = bridge,
-            clientProvider = { error("Bridge-only actions should not need the API") },
+            scope = this,
+            store = store,
+            clientProvider = { api.proxy() },
             logger = NativeChatLogger.None,
         )
 
         engine.regenerate()
-        engine.continueGeneration()
+        joinLaunchedJobs()
 
-        assertEquals(listOf("reloadChat", "regenerate", "reloadChat", "continueGeneration"), bridge.events)
+        val savedAssistant = api.savedAssistantMessage()
+        assertEquals("native reply", savedAssistant["mes"])
+        assertEquals(2, savedAssistant["swipe_id"])
+        assertEquals(listOf("old reply", "alternate reply", "native reply"), savedAssistant["swipes"])
+        assertEquals("native reply", store.messages.last().mes)
+        assertEquals(2, store.messages.last().swipeId)
+    }
+
+    @Test
+    fun continueGenerationAppendsToActiveSwipeAndPersistsJsonl() = runBlocking {
+        val api = RecordingTavernCoreApi(
+            settings = openAiSettings(),
+            chat = RecordingTavernCoreApi.chatWithAssistant(),
+            reply = " continued"
+        )
+        val store = readyCharacterStore(api.currentChat())
+        val engine = NativeChatEngine(
+            scope = this,
+            store = store,
+            clientProvider = { api.proxy() },
+            logger = NativeChatLogger.None,
+        )
+
+        engine.continueGeneration()
+        joinLaunchedJobs()
+
+        val savedAssistant = api.savedAssistantMessage()
+        assertEquals("old reply continued", savedAssistant["mes"])
+        assertEquals(0, savedAssistant["swipe_id"])
+        assertEquals(listOf("old reply continued", "alternate reply"), savedAssistant["swipes"])
+        assertEquals("old reply continued", store.messages.last().mes)
+    }
+
+    @Test
+    fun nativeSendPersistsPendingAttachmentsIntoUserMessageExtra() = runBlocking {
+        val api = RecordingTavernCoreApi(settings = openAiSettings())
+        val store = readyCharacterStore(api.currentChat())
+        store.addPendingAttachment(PendingAttachment(url = "/user/files/lore.txt", name = "lore.txt", size = 42L, isMedia = false))
+        store.addPendingAttachment(PendingAttachment(url = "/user/images/ref.png", name = "ref.png", size = 2048L, isMedia = true))
+        val engine = NativeChatEngine(
+            scope = this,
+            store = store,
+            clientProvider = { api.proxy() },
+            logger = NativeChatLogger.None,
+        )
+
+        engine.send("see attached")
+        joinLaunchedJobs()
+
+        val userMessage = store.messages.first()
+        assertEquals(emptyList<PendingAttachment>(), store.pendingAttachments.toList())
+        assertEquals("lore.txt", userMessage.fileAttachments.single().name)
+        assertEquals("ref.png", userMessage.mediaAttachments.single().title)
+        assertEquals(listOf("see attached", "native reply"), api.savedMessages())
+        assertEquals("lore.txt", api.savedUserFileNames().single())
+        assertEquals("ref.png", api.savedUserMediaNames().single())
+    }
+
+    @Test
+    fun stopCancelsInFlightGenerationSoNextSendCannotReviveItsSave() = runBlocking {
+        val firstStreamStarted = CompletableDeferred<Unit>()
+        val releaseFirstStream = CompletableDeferred<Unit>()
+        val api = RecordingTavernCoreApi(
+            settings = openAiSettings(),
+            streamReply = { call ->
+                flow {
+                    if (call == 1) {
+                        firstStreamStarted.complete(Unit)
+                        releaseFirstStream.await()
+                        emit("stale reply")
+                    } else {
+                        emit("fresh reply")
+                    }
+                }
+            },
+        )
+        val store = readyCharacterStore(api.currentChat())
+        val engine = NativeChatEngine(
+            scope = this,
+            store = store,
+            clientProvider = { api.proxy() },
+            logger = NativeChatLogger.None,
+        )
+
+        engine.send("first")
+        firstStreamStarted.await()
+        engine.stop()
+
+        engine.send("second")
+        releaseFirstStream.complete(Unit)
+        joinLaunchedJobs()
+
+        assertEquals(listOf("second", "fresh reply"), api.savedMessages())
+        assertEquals(listOf("second", "fresh reply"), store.messages.map { it.mes })
     }
 
     private fun readyCharacterStore(chat: MutableList<Any?>): ChatStore =
@@ -105,36 +202,16 @@ class NativeChatEnginePhase1ContractTest {
             ),
         )
 
-    private class RecordingBridgeActions : ChatRuntimeBridgeActions {
-        val events = mutableListOf<String>()
-
-        override fun sendMessage(text: String) {
-            events += "sendMessage:$text"
-        }
-
-        override fun stopGeneration() {
-            events += "stopGeneration"
-        }
-
-        override fun regenerate() {
-            events += "regenerate"
-        }
-
-        override fun continueGeneration() {
-            events += "continueGeneration"
-        }
-
-        override fun reloadChat() {
-            events += "reloadChat"
-        }
-    }
-
     private class RecordingTavernCoreApi(
         private val settings: Map<String, Any?>,
+        chat: MutableList<Any?> = initialChat(),
+        private val reply: String = "native reply",
+        private val streamReply: ((Int) -> Flow<String>)? = null,
     ) {
-        private var chat = initialChat()
+        private var chat = chat
         private var saved: MutableList<Any?>? = null
         private val saveCalls = mutableListOf<String>()
+        private var streamCalls = 0
 
         fun currentChat(): MutableList<Any?> = chat.deepCopyChat()
 
@@ -147,6 +224,24 @@ class NativeChatEnginePhase1ContractTest {
                 }
 
         fun savedChatFiles(): List<String> = saveCalls.toList()
+
+        fun savedAssistantMessage(): Map<String, Any?> {
+            @Suppress("UNCHECKED_CAST")
+            return (saved ?: error("No saved chat")).drop(1).last() as Map<String, Any?>
+        }
+
+        fun savedUserFileNames(): List<String> = savedUserExtraList("files", "name")
+
+        fun savedUserMediaNames(): List<String> = savedUserExtraList("media", "name")
+
+        private fun savedUserExtraList(listKey: String, valueKey: String): List<String> {
+            val row = (saved ?: error("No saved chat")).drop(1).first() as Map<*, *>
+            val extra = row["extra"] as? Map<*, *> ?: return emptyList()
+            val list = extra[listKey] as? List<*> ?: return emptyList()
+            return list.mapNotNull { item ->
+                (item as? Map<*, *>)?.get(valueKey)?.toString()
+            }
+        }
 
         fun proxy(): TavernCoreApi =
             Proxy.newProxyInstance(
@@ -174,10 +269,16 @@ class NativeChatEnginePhase1ContractTest {
                         }
                         Unit
                     }
-                    "generateChatCompletionStream" -> flowOf("native reply")
-                    "generateChatCompletion" -> "native reply"
-                    "generateTextCompletionStream" -> flowOf("native reply")
-                    "generateTextCompletion" -> "native reply"
+                    "generateChatCompletionStream" -> {
+                        streamCalls += 1
+                        streamReply?.invoke(streamCalls) ?: flowOf(reply)
+                    }
+                    "generateChatCompletion" -> reply
+                    "generateTextCompletionStream" -> {
+                        streamCalls += 1
+                        streamReply?.invoke(streamCalls) ?: flowOf(reply)
+                    }
+                    "generateTextCompletion" -> reply
                     else -> error("Unexpected TavernCoreApi call: ${method.name}")
                 }
             } as TavernCoreApi
@@ -190,6 +291,37 @@ class NativeChatEnginePhase1ContractTest {
                         "character_name" to "Alice",
                         "chat_metadata" to linkedMapOf("integrity" to "start"),
                     )
+                )
+
+            fun chatWithAssistant(): MutableList<Any?> =
+                mutableListOf(
+                    linkedMapOf(
+                        "user_name" to "Alex",
+                        "character_name" to "Alice",
+                        "chat_metadata" to linkedMapOf("integrity" to "start"),
+                    ),
+                    linkedMapOf(
+                        "name" to "Alex",
+                        "is_user" to true,
+                        "is_system" to false,
+                        "send_date" to "June 1, 2026 1:00pm",
+                        "mes" to "hello",
+                        "extra" to emptyMap<String, Any?>(),
+                    ),
+                    linkedMapOf(
+                        "name" to "Alice",
+                        "is_user" to false,
+                        "is_system" to false,
+                        "send_date" to "June 1, 2026 1:01pm",
+                        "mes" to "old reply",
+                        "swipes" to listOf("old reply", "alternate reply"),
+                        "swipe_id" to 0,
+                        "swipe_info" to listOf(
+                            mapOf("send_date" to "a"),
+                            mapOf("send_date" to "b"),
+                        ),
+                        "extra" to mapOf("reasoning" to "kept"),
+                    ),
                 )
         }
     }

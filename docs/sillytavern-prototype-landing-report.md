@@ -1,5 +1,7 @@
 # SillyTavern Mobile 设计原型落地情况评估报告
 
+> 2026-06-24 当前口径：报告中“聊天主界面采用 WebView 封装”的评估已过期。聊天页已迁到纯原生实现，见 `docs/native-chat-runtime-exit-status.md`。
+
 本报告系统评估了 `SillyTavern Mobile` 交互原型稿（基于 React+Babel）在原生安卓项目 `ST-android-setting`（基于 Jetpack Compose 与 Node.js 本地服务）中的落地实现与对接情况。本审计结合了当前项目的实际源码与本地设计资源，旨在为后续版本的迭代、验收与合规发布提供技术路线与量化基准。
 
 ---
@@ -8,9 +10,9 @@
 
 *   **交互原型基线**：[SillyTavern Prototype.html](file:///Users/changlepan/Downloads/sillytavern/SillyTavern%20Prototype.html) 及其配套的 [sillytavern-prototype-gap-audit.md](file:///Users/changlepan/Downloads/sillytavern/sillytavern-prototype-gap-audit.md)。
 *   **原生安卓基线**：`ST-android-setting` (主模块: `app/`)，主要界面位于 [app/src/main/java/io/github/sanitised/st/ui/prototype/](file:///Users/changlepan/stas/ST-android-setting/app/src/main/java/io/github/sanitised/st/ui/prototype/)。
-*   **总体还原还原度**：**92%**（除聊天主界面采用高性能 WebView 封装外，其余 12 个主要界面均已实现 **100% 原生 Jetpack Compose 像素级落地**，并完成了真实本地服务端 API 的状态绑定）。
+*   **总体还原还原度**：**92%**（历史评估值）。2026-06-24 后聊天主界面也已改为原生 Compose 链路，当前聊天实现见 `docs/native-chat-runtime-exit-status.md`。
 *   **核心架构决策**：
-    *   **主路径 WebView 保留**：聊天主界面（Chat Screen）涉及繁复的 Markdown 渲染、人物 Expression 表情包注入、RAG 向量库逻辑与插件运行时环境。原生化成本极高且极易引起对上游的不兼容，故保留在深度优化的 WebView 容器中。
+    *   **聊天主路径纯原生**：聊天主界面（Chat Screen）已迁到 `NativeChatScreen` / `NativeChatEngine`，不再保留隐藏 WebView runtime。
     *   **辅助控制面 Native 化**：角色库、编辑详情、世界书、扮演者（Persona）、API连接、AI采样、本地服务控制台、数据备份/快照管理全面 Native 化，提供卓越的单手握持操作流与系统级硬隔离稳定性。
 
 ---
@@ -21,7 +23,7 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **导航外壳** | [Drawer.jsx](file:///Users/changlepan/Downloads/sillytavern/screens/Drawer.jsx) / `prototype.jsx` | [STBottomBar.kt](file:///Users/changlepan/stas/ST-android-setting/app/src/main/java/io/github/sanitised/st/ui/navigation/STBottomBar.kt) / [MainActivity.kt](file:///Users/changlepan/stas/ST-android-setting/app/src/main/java/io/github/sanitised/st/MainActivity.kt) | **100%** | 基于 `STNavigationScaffold` 渲染侧边抽屉与底部导航，Drawer 状态（如连接状态）动态适配本地 Node 服务状态。 | 已完成。无显式缝隙。 |
 | **对话列表** | [ChatList.jsx](file:///Users/changlepan/Downloads/sillytavern/screens/ChatList.jsx) | [PrototypeHomeScreen.kt](file:///Users/changlepan/stas/ST-android-setting/app/src/main/java/io/github/sanitised/st/ui/prototype/PrototypeHomeScreen.kt) (`STRoutes.HOME`) | **100%** | 对接 `librarySnapshot.recentChats` 接口，展示真实会话列表；服务未运行或数据为空时自动 fallback 至原型设计演示数据。 | 单人聊天历史的管理（如导入/导出/重命名）需从角色管理层聚合到全局会话列表。 |
-| **聊天主屏** | [Chat.jsx](file:///Users/changlepan/Downloads/sillytavern/screens/Chat.jsx) | `ui/webview/ChatWebViewScreen` (`STRoutes.CHAT`) | **WebView 承接** | 通过 `@JavascriptInterface` (类 `STAndroidBridge` 与 `ChatRuntimeBridge`) 桥接剪贴板、主题切换与文件共享。 | 目前不建议将生成层和消息流原生化，继续保持 WebView 契约的稳定性。 |
+| **聊天主屏** | [Chat.jsx](file:///Users/changlepan/Downloads/sillytavern/screens/Chat.jsx) | `chat/NativeChatScreen.kt` (`STRoutes.CHAT`) | **原生承接** | `NativeChatEngine` 通过 `TavernCoreApi` 调用本地 SillyTavern 后端，JSONL 保存由原生侧负责。 | 仍需真机手动回归全部 provider、附件、Quick Replies、提示词分析、Data Bank、checkpoint/branch。 |
 | **角色管理** | [CharLib.jsx](file:///Users/changlepan/Downloads/sillytavern/screens/CharLib.jsx) | [PrototypeCharacterScreens.kt](file:///Users/changlepan/stas/ST-android-setting/app/src/main/java/io/github/sanitised/st/ui/prototype/PrototypeCharacterScreens.kt) (`STRoutes.CHARACTERS`) | **100%** | 对接 `/api/characters/all`。原生支持角色名搜索、收藏卡片展示、标签筛选和批量选择态。 | 文件夹管理器和标签增删的增量操作需要封装。 |
 | **角色详情/编辑**| [CharEdit.jsx](file:///Users/changlepan/Downloads/sillytavern/screens/CharEdit.jsx) | [PrototypeCharacterScreens.kt](file:///Users/changlepan/stas/ST-android-setting/app/src/main/java/io/github/sanitised/st/ui/prototype/PrototypeCharacterScreens.kt) (`STRoutes.CHARACTER_DETAIL`) | **100%** | 对接 `/api/characters/get`、`/edit`。支持头像裁剪上传、Scenario 字段、世界书及 Persona 连接绑定。 | Alt Greetings、Tavern Card V2 部分元数据细节表单有待在 M4 进一步展开。 |
 | **世界书管理** | `Misc.jsx` (`WorldInfoScreen`) | [PrototypeSystemScreens.kt](file:///Users/changlepan/stas/ST-android-setting/app/src/main/java/io/github/sanitised/st/ui/prototype/PrototypeSystemScreens.kt) (`STRoutes.WORLD_INFO`) | **95%** (P1) | 对接 `/api/worldinfo/list` 与 `/edit`。原生实现 Lorebook 列表、词条快速切换、词条启停与高阶注入参数设定。 | 完整世界书的多文件归档、合并与概率排序的高级细节，M3 阶段做保真保存，不设复杂原生表单。 |

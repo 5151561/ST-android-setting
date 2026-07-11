@@ -3,24 +3,9 @@ package io.github.sanitised.st.chat
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeChatUiRoutingTest {
-
-    @Test
-    fun hiddenWebViewActivatesOnlyWhenNativeGenerationIsDisabled() {
-        assertFalse(
-            NativeChatUiRouting.shouldActivateHiddenWebViewForChatEntry(
-                nativeGenerationEnabled = true,
-            )
-        )
-        assertTrue(
-            NativeChatUiRouting.shouldActivateHiddenWebViewForChatEntry(
-                nativeGenerationEnabled = false,
-            )
-        )
-    }
 
     @Test
     fun nativeRuntimeIsSelectedOnlyForMatchedSingleCharacterChat() {

@@ -4,6 +4,7 @@ import io.github.sanitised.st.api.CharacterChatSummary
 import io.github.sanitised.st.api.CharacterDetail
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeChatRuntimeTest {
@@ -50,6 +51,32 @@ class NativeChatRuntimeTest {
         assertEquals("main", source.savedChat(branchName).headerMetadata()["main_chat"])
     }
 
+    @Test
+    fun createsNewCharacterChatAndOpensIt() = runBlocking {
+        val source = FakeNativeChatDataSource(
+            character = CharacterDetail(
+                id = "Alice.png",
+                name = "Alice",
+                chat = "main.jsonl",
+                firstMessage = "Welcome back.",
+                alternateGreetings = listOf("Alternate hello.")
+            )
+        )
+        val store = ChatStore().apply {
+            applySnapshot(snapshot(), markRuntimeReady = false)
+        }
+        val runtime = NativeChatRuntime(store) { source }
+
+        val newChat = runtime.createNewChat("Alice.png")
+
+        assertTrue(newChat.startsWith("Alice - "))
+        assertEquals(newChat, store.chatFile)
+        assertEquals(listOf("Welcome back."), store.messages.map { it.mes })
+        assertEquals("Alice", source.savedChat(newChat).header()["character_name"])
+        assertEquals(listOf("Welcome back."), source.savedChat(newChat).messages().map { it["mes"] })
+        assertEquals(listOf("Welcome back.", "Alternate hello."), source.savedChat(newChat).message(0)["swipes"])
+    }
+
     private fun snapshot(): ChatSnapshot =
         buildNativeCharacterChatSnapshot(
             avatar = "Alice.png",
@@ -58,12 +85,14 @@ class NativeChatRuntimeTest {
             rawChat = FakeNativeChatDataSource.initialChat()
         )
 
-    private class FakeNativeChatDataSource : NativeChatDataSource {
+    private class FakeNativeChatDataSource(
+        private val character: CharacterDetail = CharacterDetail(id = "Alice.png", name = "Alice", chat = "main.jsonl"),
+    ) : NativeChatDataSource {
         private val chats = linkedMapOf("main" to initialChat())
         private val saved = linkedMapOf<String, MutableList<Any?>>()
 
         override suspend fun getCharacter(avatar: String): CharacterDetail =
-            CharacterDetail(id = avatar, name = "Alice", chat = "main.jsonl")
+            character.copy(id = avatar)
 
         override suspend fun getChatJsonl(avatar: String, chatFile: String): MutableList<Any?> =
             (chats[chatFile.removeSuffix(".jsonl")] ?: mutableListOf()).deepCopyChat()
@@ -128,6 +157,11 @@ class NativeChatRuntimeTest {
         val header = first() as Map<String, Any?>
         @Suppress("UNCHECKED_CAST")
         return header["chat_metadata"] as Map<String, Any?>
+    }
+
+    private fun List<Any?>.header(): Map<String, Any?> {
+        @Suppress("UNCHECKED_CAST")
+        return first() as Map<String, Any?>
     }
 }
 

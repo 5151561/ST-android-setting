@@ -150,7 +150,7 @@ import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.prototype.PrototypeAssistPill
 import io.github.sanitised.st.ui.prototype.PrototypeAvatar
 import io.github.sanitised.st.ui.prototype.PrototypeGroupAvatar
-import io.github.sanitised.st.ui.webview.WebViewTarget
+import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -161,18 +161,17 @@ import kotlinx.coroutines.withContext
 @Composable
 fun NativeChatScreen(
     status: NodeStatus,
-    target: WebViewTarget,
+    target: ChatTarget,
     store: ChatStore,
-    bridge: ChatRuntimeBridge,
     engine: ChatEngine,
-    nativeChatLoadingEnabled: Boolean = false,
+    nativeChatLoadingEnabled: Boolean = true,
     nativeChatLoader: NativeChatLoader? = null,
     nativeChatRuntime: NativeChatRuntime? = null,
+    quickReplyDataRoot: File? = null,
+    itemizedPromptStore: ItemizedPromptStore = ItemizedPromptStore.Global,
     onBackToHome: () -> Unit,
     onOpenPastChats: (() -> Unit)? = null,
     onShowMessage: (String) -> Unit,
-    settingsDirty: Boolean = false,
-    onSettingsConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -189,6 +188,8 @@ fun NativeChatScreen(
     var branchListMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var showItemizedSheet by remember { mutableStateOf(false) }
     var showDataBankSheet by remember { mutableStateOf(false) }
+    var quickReplyDraftToken by remember { mutableStateOf(0) }
+    var quickReplyDraftText by remember { mutableStateOf("") }
 
     fun uploadAttachment(uri: Uri, isMedia: Boolean) {
         scope.launch {
@@ -212,17 +213,7 @@ fun NativeChatScreen(
 
     LaunchedEffect(status.state) {
         if (status.state != NodeState.RUNNING) {
-            bridge.markRuntimeLoading()
-        }
-    }
-
-    // When the native settings UI changed the API/model, the persistent runtime still
-    // holds stale in-memory settings. Reload settings.json (+ reconnect) once the
-    // runtime is ready, before opening/refreshing the chat.
-    LaunchedEffect(store.runtimeState, settingsDirty) {
-        if (settingsDirty && store.runtimeState == RuntimeState.READY) {
-            bridge.reloadSettings()
-            onSettingsConsumed()
+            store.markRuntimeUnavailable("服务未运行")
         }
     }
 
@@ -233,7 +224,7 @@ fun NativeChatScreen(
     }
     LaunchedEffect(nativeTargetKey) {
         if (nativeTargetKey == null) return@LaunchedEffect
-        if (target is WebViewTarget.CharacterChat) {
+        if (target is ChatTarget.CharacterChat) {
             runCatching {
                 nativeChatLoader?.openCharacter(target.avatar, target.chatFile) ?: false
             }.onFailure { error ->
@@ -242,21 +233,22 @@ fun NativeChatScreen(
         }
     }
 
-    val readyTargetKey = if (store.runtimeState == RuntimeState.READY) readyTargetCommandKey(target) else null
-    LaunchedEffect(readyTargetKey) {
-        if (readyTargetKey == null) return@LaunchedEffect
-        // The runtime WebView is persistent (hosted above the NavHost), so runtime.ready
-        // fires only once. Re-trigger a best-effort connect on chat entry so an API that
-        // was configured after the runtime first loaded still gets connected.
-        bridge.connect(auto = true)
-        when (target) {
-            WebViewTarget.CHAT -> bridge.requestSnapshot()
-            is WebViewTarget.CharacterChat -> bridge.openCharacter(target.avatar, target.chatFile)
-            is WebViewTarget.GroupChat -> bridge.openGroup(target.groupId, target.chatId)
+    val targetMatched = targetMatchesStore(target, store)
+    LaunchedEffect(quickReplyDataRoot, status.state, targetMatched, store.chatFile, store.avatarUrl, store.chatQuickReplyConfig) {
+        val root = quickReplyDataRoot ?: return@LaunchedEffect
+        if (status.state != NodeState.RUNNING || !targetMatched) return@LaunchedEffect
+        val replies = withContext(Dispatchers.IO) {
+            runCatching {
+                QuickReplyRuntime.visibleReplies(
+                    dataRoot = root,
+                    chatMetadata = store.chatQuickReplyConfig,
+                    characterAvatar = store.avatarUrl,
+                )
+            }.getOrDefault(emptyList())
         }
+        store.setQuickReplies(replies)
     }
 
-    val targetMatched = targetMatchesStore(target, store)
     val visibleCharacterName = if (targetMatched) {
         store.characterName.ifBlank { target.displayLabel() }
     } else {
@@ -266,7 +258,7 @@ fun NativeChatScreen(
     val visibleAvatarUrl = if (targetMatched) {
         store.avatarUrl
     } else {
-        (target as? WebViewTarget.CharacterChat)?.avatar.orEmpty()
+        (target as? ChatTarget.CharacterChat)?.avatar.orEmpty()
     }
     val nativeReadyForTarget = nativeChatLoadingEnabled && targetMatched
     val readyForTarget = (store.runtimeState == RuntimeState.READY || nativeReadyForTarget) && targetMatched
@@ -279,14 +271,12 @@ fun NativeChatScreen(
     )
 
     fun launchNativeAction(
-        fallback: () -> Unit,
         successMessage: String,
         action: suspend NativeChatRuntime.() -> Unit,
     ) {
         val runtime = nativeSingleChatRuntime
         if (runtime == null) {
-            runAlignedBridgeWrite(reload = bridge::reloadChat, write = fallback)
-            if (successMessage.isNotBlank()) onShowMessage(successMessage)
+            onShowMessage("当前会话暂不支持该原生操作")
             return
         }
         scope.launch {
@@ -323,14 +313,32 @@ fun NativeChatScreen(
                 onBack = onBackToHome,
                 onSearch = { onShowMessage("消息搜索暂未接入原生聊天运行时") },
                 onReloadChat = {
-                    bridge.reloadChat()
-                    onShowMessage("已请求重新同步当前聊天")
+                    scope.launch {
+                        val loaded = if (target is ChatTarget.CharacterChat) {
+                            nativeChatLoader?.openCharacter(target.avatar, target.chatFile) == true
+                        } else {
+                            false
+                        }
+                        onShowMessage(if (loaded) "已重新加载当前聊天" else "当前聊天无法重新加载")
+                    }
                 },
                 onOpenCfg = { showCfgDialog = true },
                 onOpenWorldInfo = { showWorldInfoSheet = true },
                 onOpenDataBank = {
-                    bridge.loadDataBank()
                     showDataBankSheet = true
+                    store.beginDataBankLoad()
+                    scope.launch {
+                        runCatching {
+                            DataBankRepository {
+                                TavernCoreClient("http://127.0.0.1:${status.port}")
+                            }.load(store.avatarUrl, store.chatFile)
+                        }.onSuccess { bank ->
+                            store.applyDataBank(bank)
+                        }.onFailure { error ->
+                            store.applyDataBank(DataBankAttachments(emptyList(), emptyList(), emptyList()))
+                            onShowMessage(error.message ?: "Data Bank 加载失败")
+                        }
+                    }
                 },
                 onOpenPastChats = if (isGroupMode) {
                     { showGroupChatsSheet = true }
@@ -342,8 +350,8 @@ fun NativeChatScreen(
             if (store.saveError != null) {
                 SaveErrorBanner(
                     message = store.saveError!!,
-                    onRetry = { bridge.retrySave() },
-                    onDismiss = { bridge.dismissSaveError() }
+                    onRetry = { onShowMessage("保存重试已由原生保存流程自动处理") },
+                    onDismiss = { store.clearSaveError() }
                 )
             }
 
@@ -366,7 +374,6 @@ fun NativeChatScreen(
                         onEditTextChange = { editText = it },
                         onSwipePrevious = { messageId ->
                             launchNativeAction(
-                                fallback = { bridge.swipePrevious(messageId) },
                                 successMessage = "",
                             ) {
                                 swipePrevious(messageId)
@@ -374,7 +381,6 @@ fun NativeChatScreen(
                         },
                         onSwipeNext = { messageId ->
                             launchNativeAction(
-                                fallback = { bridge.swipeNext(messageId) },
                                 successMessage = "",
                             ) {
                                 swipeNext(messageId)
@@ -386,10 +392,6 @@ fun NativeChatScreen(
                         onSaveEdit = { messageId ->
                             val text = editText
                             launchNativeAction(
-                                fallback = {
-                                    bridge.editMessage(messageId, text)
-                                    editingMessageId = -1
-                                },
                                 successMessage = "消息已保存",
                             ) {
                                 editMessage(messageId, text)
@@ -416,7 +418,16 @@ fun NativeChatScreen(
                 QuickReplyStrip(
                     items = store.quickReplies,
                     enabled = readyForTarget && !store.isGenerating,
-                    onExecute = { item -> bridge.executeQuickReply(item.setName, item.label) }
+                    onExecute = { item ->
+                        when (val result = QuickReplyRuntime.execute(item)) {
+                            is QuickReplyExecution.Send -> engine.send(result.text)
+                            is QuickReplyExecution.Draft -> {
+                                quickReplyDraftText = result.text
+                                quickReplyDraftToken += 1
+                            }
+                            is QuickReplyExecution.Unsupported -> onShowMessage(result.reason)
+                        }
+                    }
                 )
             }
 
@@ -424,6 +435,8 @@ fun NativeChatScreen(
                 isGenerating = store.isGenerating,
                 runtimeReady = readyForTarget,
                 pendingAttachments = store.pendingAttachments,
+                injectedText = quickReplyDraftText,
+                injectedTextToken = quickReplyDraftToken,
                 onSend = { text -> engine.send(text) },
                 onStop = { engine.stop() },
                 onVoiceInput = { onShowMessage("语音输入暂未接入") },
@@ -471,15 +484,13 @@ fun NativeChatScreen(
             onHideToggle = {
                 if (message.isSystem) {
                     launchNativeAction(
-                        fallback = { bridge.unhideMessage(message.id) },
-                        successMessage = "消息已取消隐藏",
+                            successMessage = "消息已取消隐藏",
                     ) {
                         setMessageHidden(message.id, false)
                     }
                 } else {
                     launchNativeAction(
-                        fallback = { bridge.hideMessage(message.id) },
-                        successMessage = "消息已隐藏（不会被 AI 看到）",
+                            successMessage = "消息已隐藏（不会被 AI 看到）",
                     ) {
                         setMessageHidden(message.id, true)
                     }
@@ -492,7 +503,6 @@ fun NativeChatScreen(
             },
             onCreateBranch = {
                 launchNativeAction(
-                    fallback = { bridge.createBranch(message.id) },
                     successMessage = "",
                 ) {
                     val name = createBranch(message.id)
@@ -505,7 +515,7 @@ fun NativeChatScreen(
                 selectedMessage = null
             },
             onItemizedPrompt = {
-                bridge.loadItemizedPrompt(message.id)
+                store.applyItemizedPrompt(itemizedPromptStore.get(message.id))
                 showItemizedSheet = true
                 selectedMessage = null
             },
@@ -526,7 +536,6 @@ fun NativeChatScreen(
             messageName = message.name,
             onConfirm = {
                 launchNativeAction(
-                    fallback = { bridge.deleteMessageFromChat(message.id) },
                     successMessage = "消息已删除",
                 ) {
                     deleteMessage(message.id)
@@ -543,9 +552,9 @@ fun NativeChatScreen(
             groupId = store.avatarUrl,
             currentChatFile = store.chatFile,
             onDismiss = { showGroupChatsSheet = false },
-            onOpenChat = { chatId ->
+            onOpenChat = {
                 showGroupChatsSheet = false
-                bridge.openGroup(store.avatarUrl, chatId)
+                onShowMessage("群聊历史切换请从群聊详情页打开")
             }
         )
     }
@@ -556,7 +565,6 @@ fun NativeChatScreen(
             onDismiss = { showAuthorsNoteDialog = false },
             onSave = { text ->
                 launchNativeAction(
-                    fallback = { bridge.setAuthorsNote(text) },
                     successMessage = "作者注已保存",
                 ) { setAuthorsNote(text) }
                 showAuthorsNoteDialog = false
@@ -572,7 +580,6 @@ fun NativeChatScreen(
             onDismiss = { showCfgDialog = false },
             onSave = { scale, negativePrompt, positivePrompt ->
                 launchNativeAction(
-                    fallback = { bridge.setCfg(scale, negativePrompt, positivePrompt) },
                     successMessage = "CFG 引导已保存",
                 ) { setCfg(scale.toDouble(), negativePrompt, positivePrompt) }
                 showCfgDialog = false
@@ -594,7 +601,6 @@ fun NativeChatScreen(
             onDismiss = { checkpointMessage = null },
             onConfirm = { name ->
                 launchNativeAction(
-                    fallback = { bridge.createCheckpoint(message.id, name.ifBlank { null }) },
                     successMessage = "",
                 ) {
                     val created = createCheckpoint(message.id, name)
@@ -614,7 +620,6 @@ fun NativeChatScreen(
             onOpen = { name ->
                 branchListMessage = null
                 launchNativeAction(
-                    fallback = { bridge.openCheckpoint(name) },
                     successMessage = "已打开 $name",
                 ) {
                     openChat(name)
@@ -648,19 +653,19 @@ fun NativeChatScreen(
     }
 }
 
-private fun targetMatchesStore(target: WebViewTarget, store: ChatStore): Boolean {
+private fun targetMatchesStore(target: ChatTarget, store: ChatStore): Boolean {
     return when (target) {
-        WebViewTarget.CHAT -> store.chatFile.isNotBlank() ||
+        ChatTarget.Current -> store.chatFile.isNotBlank() ||
             store.characterName.isNotBlank() ||
             store.messages.isNotEmpty()
-        is WebViewTarget.CharacterChat -> {
+        is ChatTarget.CharacterChat -> {
             val characterMatches = listOf(store.avatarUrl, store.characterName)
                 .any { identifiersMatch(target.avatar, it) }
             val chatMatches = target.chatFile.isNullOrBlank() ||
                 normalizeChatFile(target.chatFile) == normalizeChatFile(store.chatFile)
             characterMatches && chatMatches
         }
-        is WebViewTarget.GroupChat -> {
+        is ChatTarget.GroupChat -> {
             val groupMatches = store.mode == "group" &&
                 identifiersMatch(target.groupId, store.avatarUrl)
             val chatMatches = target.chatId.isNullOrBlank() ||
@@ -670,14 +675,14 @@ private fun targetMatchesStore(target: WebViewTarget, store: ChatStore): Boolean
     }
 }
 
-private fun WebViewTarget.displayLabel(): String {
+private fun ChatTarget.displayLabel(): String {
     return when (this) {
-        WebViewTarget.CHAT -> "对话"
-        is WebViewTarget.CharacterChat -> chatFile
+        ChatTarget.Current -> "对话"
+        is ChatTarget.CharacterChat -> chatFile
             ?.takeIf { it.isNotBlank() }
             ?.substringBeforeLast(".jsonl")
             ?: avatar.substringAfterLast('/').substringBeforeLast('.').ifBlank { "角色聊天" }
-        is WebViewTarget.GroupChat -> chatId
+        is ChatTarget.GroupChat -> chatId
             ?.takeIf { it.isNotBlank() }
             ?: groupId.ifBlank { "群聊" }
     }
@@ -2106,6 +2111,8 @@ private fun ChatInputBar(
     isGenerating: Boolean,
     runtimeReady: Boolean,
     pendingAttachments: List<PendingAttachment>,
+    injectedText: String,
+    injectedTextToken: Int,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
     onVoiceInput: () -> Unit,
@@ -2116,6 +2123,10 @@ private fun ChatInputBar(
     var text by rememberSaveable { mutableStateOf("") }
     var showAttach by rememberSaveable { mutableStateOf(false) }
     val hasPendingAttachments = pendingAttachments.isNotEmpty()
+
+    LaunchedEffect(injectedTextToken) {
+        if (injectedText.isNotBlank()) text = injectedText
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
         if (showAttach) {

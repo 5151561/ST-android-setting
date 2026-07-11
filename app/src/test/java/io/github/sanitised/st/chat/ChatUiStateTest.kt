@@ -1,6 +1,5 @@
 package io.github.sanitised.st.chat
 
-import io.github.sanitised.st.ui.webview.WebViewTarget
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -55,14 +54,14 @@ class ChatUiStateTest {
 
     @Test
     fun readyTargetCommandKeyIsStableForSameTarget() {
-        assertEquals("snapshot", readyTargetCommandKey(WebViewTarget.CHAT))
+        assertEquals("snapshot", readyTargetCommandKey(ChatTarget.Current))
         assertEquals(
             "character:Aria.png:chat-a",
-            readyTargetCommandKey(WebViewTarget.CharacterChat("Aria.png", "chat-a"))
+            readyTargetCommandKey(ChatTarget.CharacterChat("Aria.png", "chat-a"))
         )
         assertEquals(
             "group:group-1:chat-a",
-            readyTargetCommandKey(WebViewTarget.GroupChat("group-1", "chat-a"))
+            readyTargetCommandKey(ChatTarget.GroupChat("group-1", "chat-a"))
         )
     }
 
@@ -108,6 +107,30 @@ class ChatUiStateTest {
         assertEquals("avoid purple prose", store.cfgNegativePrompt)
         assertEquals("stay grounded", store.cfgPositivePrompt)
         assertEquals("Archive World", store.worldInfoName)
+    }
+
+    @Test
+    fun chatStoreAppliesQuickReplyChatConfigFromSnapshot() {
+        val store = ChatStore()
+        val snapshot = ChatSnapshot(
+            mode = "character",
+            avatarUrl = "Alice.png",
+            characterName = "Alice",
+            chatFile = "chat.jsonl",
+            isGenerating = false,
+            messages = emptyList(),
+            metadata = JSONObject()
+                .put(
+                    "quickReply",
+                    JSONObject()
+                        .put("setList", org.json.JSONArray().put(JSONObject().put("set", "Chat Set")))
+                )
+        )
+
+        store.applySnapshot(snapshot)
+
+        val setList = store.chatQuickReplyConfig["setList"] as List<*>
+        assertEquals("Chat Set", (setList.single() as Map<*, *>)["set"])
     }
 
     @Test

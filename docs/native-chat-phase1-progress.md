@@ -1,5 +1,7 @@
 # Chat 原生化 Phase 1 进度
 
+> 2026-06-24 当前口径：Phase 1 之后的隐藏 WebView runtime 已删除，Bridge fallback 不再存在。本文保留为历史进度记录，最新状态见 `docs/native-chat-runtime-exit-status.md`。
+
 日期：2026-06-10
 分支：`codex/native-chat-phase1`
 

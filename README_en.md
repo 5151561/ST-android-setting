@@ -102,6 +102,14 @@ The first build takes around 2–3 hours (compiling Node.js from source). Subseq
 
 Output: `app/build/outputs/apk/debug/app-debug.apk`
 
+## Documentation
+
+- Full knowledge base: [wiki/Home.md](wiki/Home.md)
+- User guide: [wiki/User-Guide.md](wiki/User-Guide.md)
+- Developer guide: [wiki/Developer-Guide.md](wiki/Developer-Guide.md)
+- Current detailed architecture: [docs/architecture.md](docs/architecture.md)
+- R&D document index: [docs/README.md](docs/README.md)
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md).

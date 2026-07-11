@@ -20,7 +20,19 @@ object TextPromptBuilder {
     private const val DEFAULT_MAX_CONTEXT = 2048
     private const val DEFAULT_AUTHORS_NOTE_DEPTH = 4
 
-    private val supportedApiTypes = setOf("ooba", "koboldcpp", "llamacpp", "ollama")
+    private val supportedApiTypes = setOf(
+        "ooba",
+        "koboldcpp",
+        "tabby",
+        "aphrodite",
+        "mancer",
+        "featherless",
+        "llamacpp",
+        "ollama",
+        "kobold",
+        "koboldhorde",
+        "novelai",
+    )
     private val allowedStoryPlaceholders = setOf(
         "system",
         "description",
@@ -338,9 +350,16 @@ object TextPromptBuilder {
     private fun modelForApiType(textGen: Map<String, Any?>, apiType: String): String =
         when (apiType) {
             "ooba" -> textGen.stringValue("custom_model")
+            "koboldcpp" -> textGen.stringValue("koboldcpp_model")
+            "tabby" -> textGen.stringValue("tabby_model")
+            "aphrodite" -> textGen.stringValue("aphrodite_model")
+            "mancer" -> textGen.stringValue("mancer_model")
+            "featherless" -> textGen.stringValue("featherless_model")
             "llamacpp" -> textGen.stringValue("llamacpp_model")
             "ollama" -> textGen.stringValue("ollama_model")
-            "koboldcpp" -> textGen.stringValue("koboldcpp_model")
+            "kobold" -> textGen.stringValue("kobold_model")
+            "koboldhorde" -> textGen.stringValue("horde_model")
+            "novelai" -> textGen.stringValue("novelai_model")
             else -> ""
         }
 

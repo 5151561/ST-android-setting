@@ -14,8 +14,20 @@ class NativeEngineModeTest {
     }
 
     @Test
-    fun routesFirstBatchTextCompletionTypesToNativeTextCompletion() {
-        listOf("ooba", "koboldcpp", "llamacpp", "ollama").forEach { apiType ->
+    fun routesConnectionPageTextCompletionTypesToNativeTextCompletion() {
+        listOf(
+            "ooba",
+            "koboldcpp",
+            "tabby",
+            "aphrodite",
+            "mancer",
+            "featherless",
+            "llamacpp",
+            "ollama",
+            "kobold",
+            "koboldhorde",
+            "novelai",
+        ).forEach { apiType ->
             assertEquals(
                 apiType,
                 NativeEngineMode.TEXT_COMPLETION,
@@ -25,17 +37,13 @@ class NativeEngineModeTest {
     }
 
     @Test
-    fun fallsBackForUnsupportedTextCompletionTypesButAcceptsPhase2StoryStrings() {
-        assertEquals(
-            NativeEngineMode.FALLBACK,
-            engineMode(settings(apiType = "tabby"))
-        )
+    fun reportsUnsupportedForUnsupportedStoryPositionButAcceptsPhase2StoryStrings() {
         assertEquals(
             NativeEngineMode.TEXT_COMPLETION,
             engineMode(settings(storyString = "{{#if description}}{{description}}{{/if}}"))
         )
         assertEquals(
-            NativeEngineMode.FALLBACK,
+            NativeEngineMode.UNSUPPORTED,
             engineMode(settings(storyStringPosition = 1))
         )
     }
