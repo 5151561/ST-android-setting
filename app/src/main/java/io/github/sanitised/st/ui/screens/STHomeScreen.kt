@@ -52,21 +52,21 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.PaddingValues
 
 @Composable
-fun PrototypeChatListScreen(
+fun STChatListScreen(
     status: NodeStatus,
     recentChats: List<ChatSummary>,
     stLabel: String,
     nodeLabel: String,
     onStart: () -> Unit,
     onStop: () -> Unit,
-    onOpenChat: (PrototypeChatItem) -> Unit,
+    onOpenChat: (STChatItem) -> Unit,
     onNewChat: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val openDrawer = LocalSTOpenDrawer.current
     val chatItems = remember(recentChats) {
-        recentChats.map { chat -> chat.toPrototypeChatItem() }
+        recentChats.map { chat -> chat.toSTChatItem() }
     }
     val baseUrl = remember(status.port) { "http://127.0.0.1:${status.port}" }
     var selectedFilter by remember { mutableIntStateOf(0) }
@@ -86,22 +86,22 @@ fun PrototypeChatListScreen(
             ) {
                 item {
                     Column(modifier = Modifier.statusBarsPadding()) {
-                        PrototypeTopHeader(
+                        STTopHeader(
                             title = "对话",
                             leading = {
-                                PrototypeIconButton(
+                                STIconButton(
                                     icon = Icons.Filled.Menu,
                                     contentDescription = "打开抽屉",
                                     onClick = openDrawer
                                 )
                             },
                             actions = {
-                                PrototypeIconButton(
+                                STIconButton(
                                     icon = Icons.Filled.Search,
                                     contentDescription = "搜索会话",
                                     onClick = { onShowMessage("搜索会话功能开发中") }
                                 )
-                                PrototypeIconButton(
+                                STIconButton(
                                     icon = Icons.Filled.FilterList,
                                     contentDescription = "过滤会话",
                                     onClick = { onShowMessage("过滤会话功能开发中") }
@@ -109,7 +109,7 @@ fun PrototypeChatListScreen(
                             }
                         )
 
-                        PrototypeChipRow(
+                        STChipRow(
                             items = listOf(
                                 "全部 ${chatItems.size}",
                                 "置顶 ${chatItems.count { it.favorite }}"
@@ -123,7 +123,7 @@ fun PrototypeChatListScreen(
 
                 if (status.state != NodeState.RUNNING) {
                     item {
-                        PrototypeServiceInlineCard(
+                        STServiceInlineCard(
                             status = status,
                             stLabel = stLabel,
                             nodeLabel = nodeLabel,
@@ -136,7 +136,7 @@ fun PrototypeChatListScreen(
                 }
 
                 items(filteredChats, key = { it.id }) { chat ->
-                    PrototypeChatListItem(
+                    STChatListItem(
                         item = chat,
                         baseUrl = baseUrl,
                         onClick = { onOpenChat(chat) }
@@ -160,8 +160,8 @@ fun PrototypeChatListScreen(
 }
 
 @Composable
-private fun PrototypeChatListItem(
-    item: PrototypeChatItem,
+private fun STChatListItem(
+    item: STChatItem,
     baseUrl: String,
     onClick: () -> Unit
 ) {
@@ -176,20 +176,20 @@ private fun PrototypeChatListItem(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (item.kind == PrototypeChatKind.GROUP) {
-                PrototypeGroupAvatar(
+            if (item.kind == STChatKind.GROUP) {
+                STGroupAvatar(
                     initials = listOf(item.initial),
                     imageUrls = listOf(item.avatarUrl),
                     baseUrl = baseUrl,
                     size = 52.dp
                 )
             } else {
-                PrototypeAvatar(
+                STAvatar(
                     label = item.initial,
                     imageUrl = item.avatarUrl,
                     baseUrl = baseUrl,
                     size = 52.dp,
-                    gradient = prototypeGradientFor(item.id.hashCode())
+                    gradient = stGradientFor(item.id.hashCode())
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
@@ -247,7 +247,7 @@ private fun PrototypeChatListItem(
 }
 
 @Composable
-private fun PrototypeServiceInlineCard(
+private fun STServiceInlineCard(
     status: NodeStatus,
     stLabel: String,
     nodeLabel: String,
@@ -265,7 +265,7 @@ private fun PrototypeServiceInlineCard(
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PrototypeStatusDot(
+                STStatusDot(
                     color = when (status.state) {
                         NodeState.RUNNING -> MaterialTheme.colorScheme.tertiary
                         NodeState.ERROR -> MaterialTheme.colorScheme.error

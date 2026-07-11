@@ -137,7 +137,7 @@ private fun settingsWithGlobalSelect(settings: Map<String, Any?>, books: List<St
 // ── 10/11 世界书管理 + 长按操作表 ───────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrototypeWorldBookManageScreen(
+fun STWorldBookManageScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -182,8 +182,8 @@ fun PrototypeWorldBookManageScreen(
         title = "世界书",
         onBack = onBack,
         actions = {
-            PrototypeIconButton(Icons.Filled.Search, "搜索", { onShowMessage("搜索世界书") })
-            PrototypeIconButton(Icons.Filled.Settings, "全局设置", onOpenGlobalSettings)
+            STIconButton(Icons.Filled.Search, "搜索", { onShowMessage("搜索世界书") })
+            STIconButton(Icons.Filled.Settings, "全局设置", onOpenGlobalSettings)
         }
     ) {
         if (!running) {
@@ -227,11 +227,11 @@ fun PrototypeWorldBookManageScreen(
         }
         books.forEachIndexed { i, b ->
             val active = globalSelect.contains(b.id)
-            PrototypeListItem(
+            STListItem(
                 headline = b.name,
                 supporting = if (active) "全局激活中" else "点击查看条目",
                 leading = {
-                    PrototypeTileIcon(
+                    STTileIcon(
                         icon = Icons.Filled.AutoStories,
                         tint = MaterialTheme.colorScheme.surfaceContainer,
                         contentColor = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
@@ -245,7 +245,7 @@ fun PrototypeWorldBookManageScreen(
                             Text("全局", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     } else {
-                        PrototypeIconButton(Icons.Filled.MoreVert, "更多", { actionsForBook = b })
+                        STIconButton(Icons.Filled.MoreVert, "更多", { actionsForBook = b })
                     }
                 },
                 divider = i < books.lastIndex,
@@ -296,7 +296,7 @@ fun PrototypeWorldBookManageScreen(
                 modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                PrototypeTileIcon(Icons.Filled.AutoStories, tint = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.primary)
+                STTileIcon(Icons.Filled.AutoStories, tint = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(14.dp))
                 Text(book.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
             }
@@ -318,7 +318,7 @@ fun PrototypeWorldBookManageScreen(
 
 // ── 12 条目列表 ──────────────────────────────────────────────────────────────
 @Composable
-fun PrototypeLorebookDetailScreen(
+fun STLorebookDetailScreen(
     status: NodeStatus,
     baseUrl: String,
     bookName: String,
@@ -359,8 +359,8 @@ fun PrototypeLorebookDetailScreen(
             subtitle = book?.let { "${it.entries.size} 条" } ?: "",
             onBack = onBack,
             actions = {
-                PrototypeIconButton(Icons.Filled.Search, "搜索", { onShowMessage("搜索条目") })
-                PrototypeIconButton(Icons.Filled.MoreVert, "更多", { onShowMessage("更多操作") })
+                STIconButton(Icons.Filled.Search, "搜索", { onShowMessage("搜索条目") })
+                STIconButton(Icons.Filled.MoreVert, "更多", { onShowMessage("更多操作") })
             }
         ) {
             if (!running) { ServiceOffline(); return@P0Scaffold }
@@ -383,9 +383,9 @@ fun PrototypeLorebookDetailScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                PrototypeIconButton(Icons.Filled.ChevronLeft, "上一页", { if (page > 0) page-- })
+                STIconButton(Icons.Filled.ChevronLeft, "上一页", { if (page > 0) page-- })
                 Text("第 ${page + 1} / $pageCount 页", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 10.dp))
-                PrototypeIconButton(Icons.Filled.ChevronRight, "下一页", { if (page < pageCount - 1) page++ })
+                STIconButton(Icons.Filled.ChevronRight, "下一页", { if (page < pageCount - 1) page++ })
             }
         }
         if (running) {
@@ -445,7 +445,7 @@ private fun WiEntryRow(e: WorldInfoEntry, onClick: () -> Unit, onToggle: (Boolea
 
 // ── 13/14 条目编辑器（内容 / 插入与触发）─────────────────────────────────────
 @Composable
-fun PrototypeWorldEntryEditScreen(
+fun STWorldEntryEditScreen(
     status: NodeStatus,
     baseUrl: String,
     bookName: String,
@@ -536,7 +536,7 @@ fun PrototypeWorldEntryEditScreen(
         onBack = onClose,
         closeIcon = true,
         actions = {
-            PrototypeIconButton(Icons.Filled.Check, "保存", { save() })
+            STIconButton(Icons.Filled.Check, "保存", { save() })
         }
     ) {
         if (!running) { ServiceOffline(); return@P0Scaffold }
@@ -635,7 +635,7 @@ private fun keysFrom(text: String): List<String> =
 
 // ── 15 全局激活设置 ──────────────────────────────────────────────────────────
 @Composable
-fun PrototypeWIGlobalSettingsScreen(
+fun STWIGlobalSettingsScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -681,7 +681,7 @@ fun PrototypeWIGlobalSettingsScreen(
         title = "世界书 · 全局设置",
         subtitle = "作用于所有世界书的激活规则",
         onBack = onBack,
-        actions = { PrototypeIconButton(Icons.Filled.Check, "保存", { save() }) }
+        actions = { STIconButton(Icons.Filled.Check, "保存", { save() }) }
     ) {
         if (!running) { ServiceOffline(); return@P0Scaffold }
         if (loading) { LoadingRow("正在读取设置…"); return@P0Scaffold }

@@ -80,7 +80,7 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrototypePastChatsScreen(
+fun STPastChatsScreen(
     status: NodeStatus,
     baseUrl: String,
     avatar: String,

@@ -7,13 +7,13 @@ import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
 
-enum class PrototypeChatKind {
+enum class STChatKind {
     DIRECT,
     GROUP
 }
 
 @Immutable
-data class PrototypeChatItem(
+data class STChatItem(
     val id: String,
     val characterId: String,
     val chatFile: String?,
@@ -23,11 +23,11 @@ data class PrototypeChatItem(
     val time: String,
     val initial: String,
     val favorite: Boolean,
-    val kind: PrototypeChatKind = PrototypeChatKind.DIRECT
+    val kind: STChatKind = STChatKind.DIRECT
 )
 
 @Immutable
-data class PrototypeCharacterCard(
+data class STCharacterCard(
     val id: String,
     val avatarUrl: String? = null,
     val name: String,
@@ -40,7 +40,7 @@ data class PrototypeCharacterCard(
 )
 
 @Immutable
-data class PrototypeDrawerState(
+data class STDrawerState(
     val personaName: String,
     val personaInitial: String,
     val connectionEyebrow: String,
@@ -52,9 +52,9 @@ data class PrototypeDrawerState(
             status: NodeStatus,
             stLabel: String,
             nodeLabel: String
-        ): PrototypeDrawerState {
+        ): STDrawerState {
             val running = status.state == NodeState.RUNNING
-            return PrototypeDrawerState(
+            return STDrawerState(
                 personaName = "我（默认）",
                 personaInitial = "我",
                 connectionEyebrow = if (running) "已连接" else "本地服务",
@@ -73,23 +73,23 @@ data class PrototypeDrawerState(
     }
 }
 
-fun ChatSummary.toPrototypeChatItem(): PrototypeChatItem {
+fun ChatSummary.toSTChatItem(): STChatItem {
     val parsedChatFile = id.substringAfter('/', missingDelimiterValue = "").ifBlank { null }
-    return PrototypeChatItem(
+    return STChatItem(
         id = id,
         characterId = characterId,
         chatFile = parsedChatFile,
         avatarUrl = avatarUrl ?: characterId.takeIf { it.isNotBlank() },
         title = characterName.ifBlank { characterId.readableName() },
         preview = lastMessage?.trim().orEmpty().ifBlank { "还没有消息，点开开始一段新对话。" },
-        time = prototypeRelativeTimeLabel(lastUpdated),
+        time = stRelativeTimeLabel(lastUpdated),
         initial = characterName.initial(),
         favorite = isPinned,
-        kind = PrototypeChatKind.DIRECT
+        kind = STChatKind.DIRECT
     )
 }
 
-fun prototypeCharacterTagFilters(
+fun stCharacterTagFilters(
     characters: List<CharacterSummary>,
     limit: Int = 4
 ): List<String> {
@@ -100,7 +100,7 @@ fun prototypeCharacterTagFilters(
     characters.flatMap { it.tags }
         .map { it.trim() }
         .filter { it.isNotBlank() }
-        .filter { it.isVisiblePrototypeTagFilter() }
+        .filter { it.isVisibleSTTagFilter() }
         .forEach { tag ->
             val key = tag.lowercase()
             val current = counts[key]
@@ -121,8 +121,8 @@ fun prototypeCharacterTagFilters(
         .take(limit)
 }
 
-fun CharacterSummary.toPrototypeCharacterCard(index: Int): PrototypeCharacterCard {
-    return PrototypeCharacterCard(
+fun CharacterSummary.toSTCharacterCard(index: Int): STCharacterCard {
+    return STCharacterCard(
         id = id,
         avatarUrl = avatarUrl,
         name = name.ifBlank { id.readableName() },
@@ -137,12 +137,12 @@ fun CharacterSummary.toPrototypeCharacterCard(index: Int): PrototypeCharacterCar
         initial = name.initial(),
         messageCount = chatSize.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
         favorite = isFavorite,
-        gradient = prototypeGradientFor(index)
+        gradient = stGradientFor(index)
     )
 }
 
-fun CharacterDetail.toPrototypeCharacterCard(index: Int): PrototypeCharacterCard {
-    return PrototypeCharacterCard(
+fun CharacterDetail.toSTCharacterCard(index: Int): STCharacterCard {
+    return STCharacterCard(
         id = id,
         avatarUrl = avatarUrl,
         name = name.ifBlank { id.readableName() },
@@ -151,11 +151,11 @@ fun CharacterDetail.toPrototypeCharacterCard(index: Int): PrototypeCharacterCard
         initial = name.initial(),
         messageCount = 0,
         favorite = isFavorite,
-        gradient = prototypeGradientFor(index)
+        gradient = stGradientFor(index)
     )
 }
 
-fun prototypeGradientFor(index: Int): List<Long> {
+fun stGradientFor(index: Int): List<Long> {
     val gradients = listOf(
         listOf(0xFFFFD7B0, 0xFFA55A2A),
         listOf(0xFF8FB6C6, 0xFF2F5567),
@@ -176,7 +176,7 @@ private fun String.readableName(): String =
 private fun String.linePreview(): String =
     lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
 
-internal fun prototypeRelativeTimeLabel(
+internal fun stRelativeTimeLabel(
     timestampMs: Long,
     nowMs: Long = System.currentTimeMillis()
 ): String {
@@ -196,9 +196,9 @@ internal fun prototypeRelativeTimeLabel(
     }
 }
 
-private fun String.isVisiblePrototypeTagFilter(): Boolean {
+private fun String.isVisibleSTTagFilter(): Boolean {
     val normalized = lowercase()
-    if (normalized in hiddenPrototypeTagFilters) return false
+    if (normalized in hiddenSTTagFilters) return false
     if (normalized.matches(Regex("v\\d+"))) return false
     if (normalized.startsWith("内部:") || normalized.startsWith("internal:")) return false
     return true
@@ -206,7 +206,7 @@ private fun String.isVisiblePrototypeTagFilter(): Boolean {
 
 private fun Int.floorMod(other: Int): Int = ((this % other) + other) % other
 
-private val hiddenPrototypeTagFilters = setOf(
+private val hiddenSTTagFilters = setOf(
     "not_dead",
     "dead",
     "scenario",

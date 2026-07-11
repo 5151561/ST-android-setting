@@ -5,7 +5,7 @@ import org.junit.Test
 
 class ThemeColorSourceTest {
     @Test
-    fun defaultsToBrandPrototypeColors() {
+    fun defaultsToBrandSTColors() {
         assertEquals(ThemeColorSource.BRAND, ThemeColorSource.fromStorage(null))
         assertEquals(ThemeColorSource.BRAND, ThemeColorSource.fromStorage(""))
         assertEquals(ThemeColorSource.BRAND, ThemeColorSource.fromStorage("unknown"))

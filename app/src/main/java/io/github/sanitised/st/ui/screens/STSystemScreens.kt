@@ -142,7 +142,7 @@ import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 
 @Composable
-fun PrototypeWorldInfoScreen(
+fun STWorldInfoScreen(
     status: NodeStatus,
     baseUrl: String,
     onStartService: () -> Unit,
@@ -170,40 +170,40 @@ fun PrototypeWorldInfoScreen(
         loading = false
     }
 
-    PrototypeRoot(modifier = modifier) {
-        PrototypeTopHeader(
+    STRoot(modifier = modifier) {
+        STTopHeader(
             title = "世界书",
             subtitle = "动态注入的设定。条目根据关键词触发或常驻。",
             leading = {
-                PrototypeIconButton(Icons.Filled.Menu, "打开抽屉", openDrawer)
+                STIconButton(Icons.Filled.Menu, "打开抽屉", openDrawer)
             },
             actions = {
-                PrototypeIconButton(Icons.Filled.Tune, "管理", onOpenManage)
-                PrototypeIconButton(Icons.Filled.Settings, "全局设置", onOpenGlobalSettings)
+                STIconButton(Icons.Filled.Tune, "管理", onOpenManage)
+                STIconButton(Icons.Filled.Settings, "全局设置", onOpenGlobalSettings)
             }
         )
         if (!running) {
-            PrototypeSystemInfoCard("本地服务未启动", "启动服务后会加载真实世界书。") {
+            STSystemInfoCard("本地服务未启动", "启动服务后会加载真实世界书。") {
                 Button(onClick = onStartService) { Text("启动服务") }
             }
         } else if (loading) {
-            PrototypeLoadingCard("正在读取世界书…")
+            STLoadingCard("正在读取世界书…")
         } else if (books.isEmpty()) {
-            PrototypeSystemInfoCard("暂无世界书", "在 SillyTavern 中尚未创建世界书。")
+            STSystemInfoCard("暂无世界书", "在 SillyTavern 中尚未创建世界书。")
         } else {
-            PrototypeSectionHeader(
+            STSectionHeader(
                 title = "本地世界书",
                 trailing = {
                     Text("${books.size} 本已加载", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
             )
-            PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
+            STListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
                 books.forEachIndexed { index, book ->
-                    PrototypeListItem(
+                    STListItem(
                         headline = book.name,
                         supporting = "包含设定与条目",
                         leading = {
-                            PrototypeTileIcon(
+                            STTileIcon(
                                 icon = Icons.Filled.AutoStories,
                                 tint = MaterialTheme.colorScheme.primaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -215,7 +215,7 @@ fun PrototypeWorldInfoScreen(
                     )
                 }
             }
-            PrototypeSectionHeader(title = "常用条目预览")
+            STSectionHeader(title = "常用条目预览")
             val entries = firstBook?.entries.orEmpty()
             if (entries.isNotEmpty()) {
                 entries.take(4).forEach { entry ->
@@ -228,14 +228,14 @@ fun PrototypeWorldInfoScreen(
                     )
                 }
             } else {
-                PrototypeSystemInfoCard("暂无世界书条目", "当绑定并启用世界书时，符合触发关键词的条目会在此预览。")
+                STSystemInfoCard("暂无世界书条目", "当绑定并启用世界书时，符合触发关键词的条目会在此预览。")
             }
         }
     }
 }
 
 @Composable
-fun PrototypePersonaScreen(
+fun STPersonaScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -274,14 +274,14 @@ fun PrototypePersonaScreen(
                     .verticalScroll(rememberScrollState())
                     .statusBarsPadding()
             ) {
-                PrototypeTopHeader(
+                STTopHeader(
                     title = "扮演者",
                     leading = {
-                        PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                        STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                     },
                     actions = {
-                        PrototypeIconButton(Icons.Filled.AutoFixHigh, "AI 生成", { onShowMessage("AI 生成扮演者功能开发中") })
-                        PrototypeIconButton(Icons.Filled.Add, "新建", { onShowMessage("新建扮演者功能开发中") })
+                        STIconButton(Icons.Filled.AutoFixHigh, "AI 生成", { onShowMessage("AI 生成扮演者功能开发中") })
+                        STIconButton(Icons.Filled.Add, "新建", { onShowMessage("新建扮演者功能开发中") })
                     },
                     titleBottomPadding = 4.dp
                 )
@@ -293,21 +293,21 @@ fun PrototypePersonaScreen(
                 )
 
                 if (!running) {
-                    PrototypeSystemInfoCard("本地服务未启动", "启动 SillyTavern 服务后可加载和管理扮演者设定。")
+                    STSystemInfoCard("本地服务未启动", "启动 SillyTavern 服务后可加载和管理扮演者设定。")
                 } else if (personas.isEmpty()) {
-                    PrototypeSystemInfoCard("暂无扮演者设定", "点击右下角“新建”以添加您在聊天中扮演的角色。")
+                    STSystemInfoCard("暂无扮演者设定", "点击右下角“新建”以添加您在聊天中扮演的角色。")
                 } else {
-                    PrototypeSectionHeader("当前激活")
+                    STSectionHeader("当前激活")
                     activePersonas.forEach { persona ->
-                        PrototypePersonaRow(persona = persona, active = true)
+                        STPersonaRow(persona = persona, active = true)
                     }
 
                     if (otherPersonas.isNotEmpty()) {
-                        PrototypeSectionHeader("所有扮演者", trailing = {
+                        STSectionHeader("所有扮演者", trailing = {
                             Text("管理绑定", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         })
                         otherPersonas.forEach { persona ->
-                            PrototypePersonaRow(
+                            STPersonaRow(
                                 persona = persona,
                                 active = false,
                                 onClick = {
@@ -353,7 +353,7 @@ fun PrototypePersonaScreen(
 }
 
 @Composable
-fun PrototypeAISettingsScreen(
+fun STAISettingsScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -412,8 +412,8 @@ fun PrototypeAISettingsScreen(
         }
     }
 
-    PrototypeBackRoot(title = "AI 设置", onBack = onBack, modifier = modifier, actions = {
-        PrototypeIconButton(Icons.Filled.RestartAlt, "重置", {
+    STBackRoot(title = "AI 设置", onBack = onBack, modifier = modifier, actions = {
+        STIconButton(Icons.Filled.RestartAlt, "重置", {
             if (running) {
                 scope.launch {
                     runCatching {
@@ -427,7 +427,7 @@ fun PrototypeAISettingsScreen(
                 onShowMessage("服务未运行，无法重置")
             }
         })
-        PrototypeIconButton(Icons.Filled.Save, "保存", {
+        STIconButton(Icons.Filled.Save, "保存", {
             if (running) {
                 scope.launch {
                     runCatching {
@@ -454,7 +454,7 @@ fun PrototypeAISettingsScreen(
             }
         })
     }) {
-        PrototypePresetCard(
+        STPresetCard(
             presetLibrary = presetLibrary,
             onSelectPreset = { apiId, name ->
                 scope.launch {
@@ -473,7 +473,7 @@ fun PrototypeAISettingsScreen(
                 }
             }
         )
-        PrototypeSectionHeader("提示模板", trailing = {
+        STSectionHeader("提示模板", trailing = {
             Text("仅文本补全", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         })
         val instructName = presetLibrary?.categories?.firstOrNull { it.apiId == "instruct" }
@@ -482,28 +482,28 @@ fun PrototypeAISettingsScreen(
             ?.presets?.firstOrNull { it.selected }?.name ?: "—"
         val syspromptName = presetLibrary?.categories?.firstOrNull { it.apiId == "sysprompt" }
             ?.presets?.firstOrNull { it.selected }?.name ?: "—"
-        PrototypeTemplateRow(Icons.Filled.Code, "Instruct 模板", instructName, "角色名 / 系统提示遵循模型格式", toggle = true)
-        PrototypeTemplateRow(Icons.Filled.Bookmarks, "上下文模板", contextName, "角色描述 + 场景 + 历史的组织方式")
-        PrototypeTemplateRow(Icons.Filled.Tune, "系统提示", syspromptName, "注入到对话最前", toggle = true, checked = true)
-        PrototypeTemplateRow(Icons.AutoMirrored.Filled.StickyNote2, "作者注 / 深度笔记", "未设置", "按需注入到指定深度")
-        PrototypeSectionHeader("核心采样")
-        PrototypeStatefulSlider("温度 Temperature", temp, 0f..2f) { temp = it }
-        PrototypeStatefulSlider("Top P", topP, 0f..1f) { topP = it }
-        PrototypeStatefulSlider("Top K", topK, 0f..1f) { topK = it }
-        PrototypeStatefulSlider("Min P", minP, 0f..1f) { minP = it }
-        PrototypeSectionHeader("重复抑制")
-        PrototypeStatefulSlider("频率惩罚", freqPenalty, -2f..2f) { freqPenalty = it }
-        PrototypeStatefulSlider("存在惩罚", presPenalty, -2f..2f) { presPenalty = it }
-        PrototypeSectionHeader("高级 — 极少改动")
-        PrototypeSwitchRow("启用流式输出", "边生成边显示", streamingEnabled) { streamingEnabled = it }
-        PrototypeSwitchRow("禁止思考链泄露", "过滤掉 <think> 标签内容", true)
-        PrototypeSwitchRow("DRY (动态重复抑制)", "抗循环更激进的算法", false)
-        PrototypeSwitchRow("温度最后采样", "先 Top-P 再温度", false)
+        STTemplateRow(Icons.Filled.Code, "Instruct 模板", instructName, "角色名 / 系统提示遵循模型格式", toggle = true)
+        STTemplateRow(Icons.Filled.Bookmarks, "上下文模板", contextName, "角色描述 + 场景 + 历史的组织方式")
+        STTemplateRow(Icons.Filled.Tune, "系统提示", syspromptName, "注入到对话最前", toggle = true, checked = true)
+        STTemplateRow(Icons.AutoMirrored.Filled.StickyNote2, "作者注 / 深度笔记", "未设置", "按需注入到指定深度")
+        STSectionHeader("核心采样")
+        STStatefulSlider("温度 Temperature", temp, 0f..2f) { temp = it }
+        STStatefulSlider("Top P", topP, 0f..1f) { topP = it }
+        STStatefulSlider("Top K", topK, 0f..1f) { topK = it }
+        STStatefulSlider("Min P", minP, 0f..1f) { minP = it }
+        STSectionHeader("重复抑制")
+        STStatefulSlider("频率惩罚", freqPenalty, -2f..2f) { freqPenalty = it }
+        STStatefulSlider("存在惩罚", presPenalty, -2f..2f) { presPenalty = it }
+        STSectionHeader("高级 — 极少改动")
+        STSwitchRow("启用流式输出", "边生成边显示", streamingEnabled) { streamingEnabled = it }
+        STSwitchRow("禁止思考链泄露", "过滤掉 <think> 标签内容", true)
+        STSwitchRow("DRY (动态重复抑制)", "抗循环更激进的算法", false)
+        STSwitchRow("温度最后采样", "先 Top-P 再温度", false)
     }
 }
 
 @Composable
-fun PrototypeMeScreen(
+fun STMeScreen(
     autoCheckEnabled: Boolean,
     onAutoCheckChanged: (Boolean) -> Unit,
     autoOpenBrowserEnabled: Boolean,
@@ -549,11 +549,11 @@ fun PrototypeMeScreen(
 ) {
     val openDrawer = LocalSTOpenDrawer.current
 
-    PrototypeRoot(modifier = modifier) {
-        PrototypeTopHeader(
+    STRoot(modifier = modifier) {
+        STTopHeader(
             title = "我的",
-            leading = { PrototypeIconButton(Icons.Filled.Menu, "打开抽屉", openDrawer) },
-            actions = { PrototypeIconButton(Icons.Filled.Search, "搜索设置", { onShowMessage("搜索设置功能开发中") }) }
+            leading = { STIconButton(Icons.Filled.Menu, "打开抽屉", openDrawer) },
+            actions = { STIconButton(Icons.Filled.Search, "搜索设置", { onShowMessage("搜索设置功能开发中") }) }
         )
         // User card with chevron - direct and simple borderless style
         Row(
@@ -563,7 +563,7 @@ fun PrototypeMeScreen(
                 .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            PrototypeAvatar("我", size = 56.dp, ringColor = MaterialTheme.colorScheme.primary)
+            STAvatar("我", size = 56.dp, ringColor = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text("我（默认）", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
@@ -576,119 +576,119 @@ fun PrototypeMeScreen(
             )
         }
         // ── 外观 ──
-        PrototypeSectionHeader("外观")
-        PrototypeSettingsGroup {
-            PrototypeListItem(
+        STSectionHeader("外观")
+        STSettingsGroup {
+            STListItem(
                 headline = "主题",
                 supporting = when (themeMode) {
                     ThemeMode.LIGHT -> "浅色模式"
                     ThemeMode.DARK -> "深色模式"
                     ThemeMode.AUTO -> "跟随系统"
                 },
-                leading = { PrototypeTileIcon(Icons.Filled.Palette) },
-                trailing = { PrototypeMiniSwatch() },
+                leading = { STTileIcon(Icons.Filled.Palette) },
+                trailing = { STMiniSwatch() },
                 divider = true,
                 onClick = onOpenAppearance
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "界面主题与颜色",
                 supporting = "已安装主题、颜色细调、自定义 CSS",
-                leading = { PrototypeTileIcon(Icons.Filled.ColorLens) },
+                leading = { STTileIcon(Icons.Filled.ColorLens) },
                 divider = true,
                 onClick = onOpenTheme
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "字号",
                 supporting = "点击调整",
-                leading = { PrototypeTileIcon(Icons.Filled.TextFields) },
+                leading = { STTileIcon(Icons.Filled.TextFields) },
                 divider = true,
                 onClick = onOpenAppearance
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "聊天背景",
                 supporting = "背景网格、锁定、上传",
-                leading = { PrototypeTileIcon(Icons.Filled.Image) },
+                leading = { STTileIcon(Icons.Filled.Image) },
                 divider = true,
                 onClick = onOpenBackgrounds
             )
-            PrototypeSwitchRow("消息冒泡风格", "关闭则使用全宽文档样式", bubbleStyle, onBubbleStyleChanged)
+            STSwitchRow("消息冒泡风格", "关闭则使用全宽文档样式", bubbleStyle, onBubbleStyleChanged)
         }
         // ── 行为 ──
-        PrototypeSectionHeader("行为")
-        PrototypeSettingsGroup {
-            PrototypeListItem(
+        STSectionHeader("行为")
+        STSettingsGroup {
+            STListItem(
                 headline = "聊天与消息",
                 supporting = "平滑流式、自动继续、消息显示、示例消息行为",
-                leading = { PrototypeTileIcon(Icons.AutoMirrored.Filled.Chat) },
+                leading = { STTileIcon(Icons.AutoMirrored.Filled.Chat) },
                 divider = true,
                 onClick = onOpenChatBehavior
             )
-            PrototypeSwitchRow("流式生成时震动反馈", "逐字到达时轻微震动", vibrationFeedback, onVibrationFeedbackChanged)
-            PrototypeSwitchRow("敏感操作二次确认", "删除消息、清空对话等", secondConfirmation, onSecondConfirmationChanged)
-            PrototypeSwitchRow("启动时自动连接 API", null, autoOpenBrowserEnabled, onAutoOpenBrowserChanged)
-            PrototypeSwitchRow("滑动呼出抽屉", "从左边缘横扫", swipeDrawer, onSwipeDrawerChanged)
+            STSwitchRow("流式生成时震动反馈", "逐字到达时轻微震动", vibrationFeedback, onVibrationFeedbackChanged)
+            STSwitchRow("敏感操作二次确认", "删除消息、清空对话等", secondConfirmation, onSecondConfirmationChanged)
+            STSwitchRow("启动时自动连接 API", null, autoOpenBrowserEnabled, onAutoOpenBrowserChanged)
+            STSwitchRow("滑动呼出抽屉", "从左边缘横扫", swipeDrawer, onSwipeDrawerChanged)
         }
         // ── 数据 ──
-        PrototypeSectionHeader("数据")
-        PrototypeSettingsGroup {
-            PrototypeListItem(
+        STSectionHeader("数据")
+        STSettingsGroup {
+            STListItem(
                 headline = "自动备份",
                 supporting = "点击配置",
-                leading = { PrototypeTileIcon(Icons.Filled.Backup) },
+                leading = { STTileIcon(Icons.Filled.Backup) },
                 divider = true,
                 onClick = { onShowMessage("备份设置功能开发中") }
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "同步",
                 supporting = "未开启",
-                leading = { PrototypeTileIcon(Icons.Filled.CloudSync) },
+                leading = { STTileIcon(Icons.Filled.CloudSync) },
                 divider = true,
                 onClick = { onShowMessage("同步设置功能开发中") }
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "导出全部数据",
                 supporting = ".charx + .json 包",
-                leading = { PrototypeTileIcon(Icons.Filled.FolderZip) },
+                leading = { STTileIcon(Icons.Filled.FolderZip) },
                 onClick = { onShowMessage("数据导出功能开发中") }
             )
         }
         // ── 服务与安全 ──
-        PrototypeSectionHeader("服务与安全")
-        PrototypeSettingsGroup {
-            PrototypeListItem(
+        STSectionHeader("服务与安全")
+        STSettingsGroup {
+            STListItem(
                 headline = "API 连接设置",
                 supporting = "SillyTavern 核心端点接入与预设管理",
-                leading = { PrototypeTileIcon(Icons.Filled.Cable) },
+                leading = { STTileIcon(Icons.Filled.Cable) },
                 divider = true,
                 onClick = onOpenConnections
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "API 密钥管理",
                 supporting = "管理所有 AI 供应商 API 凭证",
-                leading = { PrototypeTileIcon(Icons.Filled.VpnKey) },
+                leading = { STTileIcon(Icons.Filled.VpnKey) },
                 divider = true,
                 onClick = onOpenSecrets
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "扩展管理",
                 supporting = "管理 SillyTavern 扩展插件",
-                leading = { PrototypeTileIcon(Icons.Filled.Extension) },
+                leading = { STTileIcon(Icons.Filled.Extension) },
                 onClick = onOpenExtensions
             )
         }
 
         // ── 实验性 ──
-        PrototypeSectionHeader("实验性")
-        PrototypeSettingsGroup {
-            PrototypeSwitchRow("开发者模式", "显示 token 计数与请求 JSON", developerMode, onDeveloperModeChanged)
+        STSectionHeader("实验性")
+        STSettingsGroup {
+            STSwitchRow("开发者模式", "显示 token 计数与请求 JSON", developerMode, onDeveloperModeChanged)
         }
         // ── 关于 ──
-        PrototypeSectionHeader("关于")
-        PrototypeSettingsGroup {
-            PrototypeListItem(
+        STSectionHeader("关于")
+        STSettingsGroup {
+            STListItem(
                 headline = "SillyTavern Mobile",
                 supporting = "${appVersion.ifBlank { "—" }} · 第三方移动客户端",
-                leading = { PrototypeTileIcon(Icons.Filled.Info) },
+                leading = { STTileIcon(Icons.Filled.Info) },
                 onClick = { onShowMessage("版本信息") }
             )
         }
@@ -698,7 +698,7 @@ fun PrototypeMeScreen(
 
 
 @Composable
-fun PrototypeStCoreScreen(
+fun STStCoreScreen(
     status: NodeStatus,
     stLabel: String,
     nodeLabel: String,
@@ -766,10 +766,10 @@ fun PrototypeStCoreScreen(
 
     var allowBackgroundRun by remember { mutableStateOf(true) }
 
-    PrototypeBackRoot(title = "ST 核心", onBack = onBack, modifier = modifier, actions = {
-        PrototypeIconButton(Icons.Filled.MoreVert, "更多", { onShowMessage("更多内核操作功能开发中") })
+    STBackRoot(title = "ST 核心", onBack = onBack, modifier = modifier, actions = {
+        STIconButton(Icons.Filled.MoreVert, "更多", { onShowMessage("更多内核操作功能开发中") })
     }) {
-        PrototypeStStatusHero(status, stLabel, nodeLabel, onStartService, onStopService, onOpenBrowser)
+        STStStatusHero(status, stLabel, nodeLabel, onStartService, onStopService, onOpenBrowser)
         
         if (running || starting) {
             Surface(
@@ -836,72 +836,72 @@ fun PrototypeStCoreScreen(
         }
 
         if (busyMessage.isNotBlank()) {
-            PrototypeSystemInfoCard("正在处理", busyMessage)
+            STSystemInfoCard("正在处理", busyMessage)
         }
         if (showBackupOperationCard) {
-            PrototypeOperationCard(backupOperationTitle, backupOperationDetails, backupOperationProgressPercent, backupOperationAnchor?.name.orEmpty())
+            STOperationCard(backupOperationTitle, backupOperationDetails, backupOperationProgressPercent, backupOperationAnchor?.name.orEmpty())
         }
         if (showCustomOperationCard) {
-            PrototypeOperationCard(customOperationTitle, customOperationDetails, customOperationProgressPercent, customOperationAnchor?.name.orEmpty()) {
+            STOperationCard(customOperationTitle, customOperationDetails, customOperationProgressPercent, customOperationAnchor?.name.orEmpty()) {
                 if (customOperationCancelable) onCancelCustomOperation()
             }
         }
         
-        PrototypeSectionHeader("管理")
-        PrototypeSettingsGroup {
-            PrototypeListItem(
+        STSectionHeader("管理")
+        STSettingsGroup {
+            STListItem(
                 headline = "内核版本",
                 supporting = if (isCustomInstalled) "自定义 · ${customInstalledLabel.orEmpty()}" else "自带 · $stLabel",
-                leading = { PrototypeTileIcon(Icons.Filled.Settings, tint = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) },
+                leading = { STTileIcon(Icons.Filled.Settings, tint = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) },
                 divider = true,
                 onClick = onLoadCustomZip
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "数据备份与快照",
                 supporting = "导出或导入完整数据",
-                leading = { PrototypeTileIcon(Icons.Filled.Upload, tint = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) },
+                leading = { STTileIcon(Icons.Filled.Upload, tint = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) },
                 divider = true,
                 onClick = onExport
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "运行日志",
                 supporting = "stdout · stderr · service",
-                leading = { PrototypeTileIcon(Icons.Filled.Info, tint = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer) },
+                leading = { STTileIcon(Icons.Filled.Info, tint = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer) },
                 divider = true,
                 onClick = onShowLogs
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "清除用户数据",
                 supporting = "危险操作，清除全部数据",
-                leading = { PrototypeTileIcon(Icons.Filled.Delete, tint = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer) },
+                leading = { STTileIcon(Icons.Filled.Delete, tint = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer) },
                 divider = true,
                 onClick = onRemoveUserData
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "恢复自带内核",
                 supporting = "清理自定义 ST 版本",
-                leading = { PrototypeTileIcon(Icons.Filled.RestartAlt, tint = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface) },
+                leading = { STTileIcon(Icons.Filled.RestartAlt, tint = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface) },
                 onClick = onResetToDefault
             )
         }
 
-        PrototypeSectionHeader("自动化")
-        PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
-            PrototypeListItem(
+        STSectionHeader("自动化")
+        STListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
+            STListItem(
                 headline = "启动 App 时自动唤起服务",
                 supporting = "进入主屏后立即拉起 Node 进程",
                 trailing = { Switch(checked = autoStartService, onCheckedChange = onAutoStartServiceChanged) },
                 divider = true,
                 onClick = { onAutoStartServiceChanged(!autoStartService) }
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "服务就绪后自动打开浏览器",
                 supporting = "对 :8000 进行 TCP 探测后跳转",
                 trailing = { Switch(checked = autoOpenBrowser, onCheckedChange = onAutoOpenBrowserChanged) },
                 divider = true,
                 onClick = { onAutoOpenBrowserChanged(!autoOpenBrowser) }
             )
-            PrototypeListItem(
+            STListItem(
                 headline = "允许后台持续运行",
                 supporting = "加入电池白名单后更稳定",
                 trailing = { Switch(checked = allowBackgroundRun, onCheckedChange = { allowBackgroundRun = it }) },
@@ -909,22 +909,22 @@ fun PrototypeStCoreScreen(
             )
         }
 
-        PrototypeSectionHeader("设置快照", trailing = {
+        STSectionHeader("设置快照", trailing = {
             Text(if (settingsSnapshotsLoading) "加载中" else "${settingsSnapshots.size} 个", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         })
-        PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
-            PrototypeListItem(
+        STListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
+            STListItem(
                 headline = "创建设置快照",
                 supporting = settingsSnapshotMessage.ifBlank { "保存当前设置，方便回滚" },
-                leading = { PrototypeTileIcon(Icons.Filled.Backup) },
+                leading = { STTileIcon(Icons.Filled.Backup) },
                 divider = settingsSnapshots.isNotEmpty(),
                 onClick = onCreateSettingsSnapshot
             )
             settingsSnapshots.take(5).forEachIndexed { index, snap ->
-                PrototypeListItem(
+                STListItem(
                     headline = snap.name,
                     supporting = "${snap.size} bytes",
-                    leading = { PrototypeTileIcon(Icons.Filled.CheckCircle) },
+                    leading = { STTileIcon(Icons.Filled.CheckCircle) },
                     divider = index != settingsSnapshots.take(5).lastIndex,
                     onClick = { onRestoreSettingsSnapshot(snap.name) }
                 )
@@ -934,7 +934,7 @@ fun PrototypeStCoreScreen(
 }
 
 @Composable
-private fun PrototypeRoot(
+private fun STRoot(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -952,14 +952,14 @@ private fun PrototypeRoot(
 }
 
 @Composable
-internal fun PrototypeBackRoot(
+internal fun STBackRoot(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit
 ) {
-    PrototypeRoot(modifier = modifier) {
+    STRoot(modifier = modifier) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -967,7 +967,7 @@ internal fun PrototypeBackRoot(
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+            STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
@@ -999,14 +999,14 @@ private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, s
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (constant) {
-                        PrototypeBadge(
+                        STBadge(
                             "常驻",
                             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                             contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
                     if (selective) {
-                        PrototypeBadge(
+                        STBadge(
                             "关键词触发",
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -1020,7 +1020,7 @@ private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, s
             Text("关键词", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 8.dp)) {
                 keys.split(", ").forEach { keyword ->
-                    PrototypeBadge(
+                    STBadge(
                         keyword,
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1033,7 +1033,7 @@ private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, s
 }
 
 @Composable
-private fun PrototypePersonaRow(
+private fun STPersonaRow(
     persona: PersonaProfile,
     active: Boolean,
     onClick: (() -> Unit)? = null
@@ -1049,13 +1049,13 @@ private fun PrototypePersonaRow(
         border = if (active) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null
     ) {
         Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            PrototypeAvatar(persona.name, size = 48.dp, ringColor = if (active) MaterialTheme.colorScheme.primary else null)
+            STAvatar(persona.name, size = 48.dp, ringColor = if (active) MaterialTheme.colorScheme.primary else null)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(persona.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     if (active) {
-                        PrototypeBadge(
+                        STBadge(
                             "当前",
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -1079,7 +1079,7 @@ private fun PrototypePersonaRow(
 }
 
 @Composable
-private fun PrototypePresetCard(
+private fun STPresetCard(
     presetLibrary: io.github.sanitised.st.api.PresetLibrary?,
     onSelectPreset: (String, String) -> Unit
 ) {
@@ -1158,19 +1158,19 @@ private fun PrototypePresetCard(
 }
 
 @Composable
-private fun PrototypeTemplateRow(icon: ImageVector, label: String, value: String, hint: String, toggle: Boolean = false, checked: Boolean = false) {
-    PrototypeListItem(
+private fun STTemplateRow(icon: ImageVector, label: String, value: String, hint: String, toggle: Boolean = false, checked: Boolean = false) {
+    STListItem(
         headline = "$label · $value",
         supporting = hint,
-        leading = { PrototypeTileIcon(icon) },
+        leading = { STTileIcon(icon) },
         trailing = { if (toggle) Switch(checked = checked, onCheckedChange = null) },
         onClick = {}
     )
 }
 
 @Composable
-private fun PrototypeSliderSection(title: String, values: List<Pair<String, Float>>) {
-    PrototypeSectionHeader(title)
+private fun STSliderSection(title: String, values: List<Pair<String, Float>>) {
+    STSectionHeader(title)
     Column(modifier = Modifier.padding(horizontal = 20.dp)) {
         values.forEach { (label, initial) ->
             val range = remember(label) {
@@ -1211,7 +1211,7 @@ private fun PrototypeSliderSection(title: String, values: List<Pair<String, Floa
 }
 
 @Composable
-private fun PrototypeStatefulSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
+private fun STStatefulSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1231,7 +1231,7 @@ private fun PrototypeStatefulSlider(label: String, value: Float, range: ClosedFl
 }
 
 @Composable
-private fun PrototypeSwitchRow(label: String, sub: String?, checked: Boolean, onChanged: (Boolean) -> Unit = {}) {
+private fun STSwitchRow(label: String, sub: String?, checked: Boolean, onChanged: (Boolean) -> Unit = {}) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1248,30 +1248,30 @@ private fun PrototypeSwitchRow(label: String, sub: String?, checked: Boolean, on
 }
 
 @Composable
-private fun PrototypeSettingsGroup(content: @Composable ColumnScope.() -> Unit) {
-    PrototypeListSurface(modifier = Modifier.padding(horizontal = 16.dp), content = content)
+private fun STSettingsGroup(content: @Composable ColumnScope.() -> Unit) {
+    STListSurface(modifier = Modifier.padding(horizontal = 16.dp), content = content)
 }
 
 @Composable
-private fun PrototypeNavRow(icon: ImageVector, title: String, sub: String, onClick: () -> Unit) {
-    PrototypeListItem(
+private fun STNavRow(icon: ImageVector, title: String, sub: String, onClick: () -> Unit) {
+    STListItem(
         headline = title,
         supporting = sub,
-        leading = { PrototypeTileIcon(icon) },
+        leading = { STTileIcon(icon) },
         onClick = onClick
     )
 }
 
 @Composable
-private fun PrototypeStStatusHero(status: NodeStatus, stLabel: String, nodeLabel: String, onStart: () -> Unit, onStop: () -> Unit, onOpen: () -> Unit) {
+private fun STStStatusHero(status: NodeStatus, stLabel: String, nodeLabel: String, onStart: () -> Unit, onStop: () -> Unit, onOpen: () -> Unit) {
     val running = status.state == NodeState.RUNNING
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            PrototypeStatusDot(if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline)
+            STStatusDot(if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline)
             Spacer(Modifier.width(10.dp))
             Text(if (running) "运行中" else "已停止", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.weight(1f))
-            PrototypeBadge(":${status.port}")
+            STBadge(":${status.port}")
         }
         Text(if (running) "SillyTavern 正在为你运行" else "SillyTavern 已停止", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 12.dp))
         Text("$stLabel · $nodeLabel", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
@@ -1299,7 +1299,7 @@ private fun PrototypeStStatusHero(status: NodeStatus, stLabel: String, nodeLabel
 }
 
 @Composable
-private fun PrototypeOperationCard(title: String, details: String, progress: Int?, anchor: String, onCancel: (() -> Unit)? = null) {
+private fun STOperationCard(title: String, details: String, progress: Int?, anchor: String, onCancel: (() -> Unit)? = null) {
     Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer, border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(title.ifBlank { anchor.ifBlank { "正在处理" } }, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
@@ -1313,14 +1313,14 @@ private fun PrototypeOperationCard(title: String, details: String, progress: Int
 }
 
 @Composable
-private fun PrototypeLoadingCard(text: String) {
-    PrototypeSystemInfoCard(text, "请稍候。") {
+private fun STLoadingCard(text: String) {
+    STSystemInfoCard(text, "请稍候。") {
         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
     }
 }
 
 @Composable
-internal fun PrototypeSystemInfoCard(title: String, body: String, action: @Composable (() -> Unit)? = null) {
+internal fun STSystemInfoCard(title: String, body: String, action: @Composable (() -> Unit)? = null) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1340,7 +1340,7 @@ internal fun PrototypeSystemInfoCard(title: String, body: String, action: @Compo
 }
 
 @Composable
-private fun PrototypeMiniSwatch() {
+private fun STMiniSwatch() {
     val colors = listOf(0xFFFFB871, 0xFFC6CB95, 0xFFE5C0A2, 0xFF251F17)
     Row {
         colors.forEachIndexed { index, colorLong ->
@@ -1358,7 +1358,7 @@ private fun PrototypeMiniSwatch() {
 }
 
 @Composable
-fun PrototypeGlassTextField(
+fun STGlassTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
@@ -1428,7 +1428,7 @@ fun PrototypeGlassTextField(
     }
 }
 
-// ── Map 读取扩展(被多个 Prototype 屏幕共享)──
+// ── Map 读取扩展(被多个 ST 屏幕共享)──
 internal fun Map<*, *>?.stringValue(key: String): String {
     return (this?.get(key) as? String).orEmpty()
 }

@@ -122,7 +122,7 @@ fun PremiumSectionHeader(
 }
 
 @Composable
-fun PrototypePreviewBanner(modifier: Modifier = Modifier) {
+fun STPreviewBanner(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -202,7 +202,7 @@ fun AnimatedToast(
 // ─────────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrototypeSecretsScreen(
+fun STSecretsScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -265,13 +265,13 @@ fun PrototypeSecretsScreen(
                     .navigationBarsPadding()
                     .padding(bottom = 88.dp)
             ) {
-                PrototypeTopHeader(
+                STTopHeader(
                     title = "API 密钥管理",
                     leading = {
-                        PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                        STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                     },
                     actions = {
-                        PrototypeIconButton(
+                        STIconButton(
                             icon = Icons.Filled.Security,
                             contentDescription = "安全模式",
                             onClick = { toastMessage = "安全模式已激活：所有敏感字段经过混淆处理" }
@@ -312,16 +312,16 @@ fun PrototypeSecretsScreen(
 
                 when {
                     !running -> {
-                        PrototypeSystemInfoCard(
+                        STSystemInfoCard(
                             "服务未启动，无法读取真实密钥",
                             "这里不再展示模拟密钥。启动 SillyTavern 后端后，会从后端密钥接口读取当前配置。"
                         )
                     }
                     loading && backendSecrets.isEmpty() -> {
-                        PrototypeSystemInfoCard("正在读取后端密钥", "正在同步 SillyTavern 当前保存的 API 密钥状态。")
+                        STSystemInfoCard("正在读取后端密钥", "正在同步 SillyTavern 当前保存的 API 密钥状态。")
                     }
                     secretRows.isEmpty() -> {
-                        PrototypeSystemInfoCard("后端暂无配置的密钥", "可点击下方“新增”按钮配置新的 API 供应商密钥。")
+                        STSystemInfoCard("后端暂无配置的密钥", "可点击下方“新增”按钮配置新的 API 供应商密钥。")
                     }
                     else -> {
                         secretRows.forEach { row ->
@@ -361,7 +361,7 @@ fun PrototypeSecretsScreen(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            PrototypeBadge(
+                                            STBadge(
                                                 label = row.statusLabel,
                                                 containerColor = statusBadgeBg,
                                                 contentColor = statusBadgeColor
@@ -376,7 +376,7 @@ fun PrototypeSecretsScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                     }
-                                    PrototypeIconButton(
+                                    STIconButton(
                                         icon = Icons.Filled.Edit,
                                         contentDescription = "编辑",
                                         onClick = {
@@ -783,7 +783,7 @@ fun PrototypeSecretsScreen(
 // 21 · 扩展中心 (ExtensionsScreen)
 // ─────────────────────────────────────────────────────────────
 @Composable
-fun PrototypeExtensionsScreen(
+fun STExtensionsScreen(
     onBack: () -> Unit,
     onOpenQuickReplies: () -> Unit,
     onShowMessage: (String) -> Unit,
@@ -816,19 +816,19 @@ fun PrototypeExtensionsScreen(
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
         ) {
-            PrototypeTopHeader(
+            STTopHeader(
                 title = "扩展中心",
                 leading = {
-                    PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                    STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                 },
                 actions = {
-                    PrototypeIconButton(Icons.Filled.CloudDownload, "扩展商店", { onShowMessage("打开扩展应用商店…") })
-                    PrototypeIconButton(Icons.Filled.Settings, "设置", { onShowMessage("扩展中心高级首选项功能开发中") })
+                    STIconButton(Icons.Filled.CloudDownload, "扩展商店", { onShowMessage("打开扩展应用商店…") })
+                    STIconButton(Icons.Filled.Settings, "设置", { onShowMessage("扩展中心高级首选项功能开发中") })
                 },
                 titleBottomPadding = 4.dp
             )
 
-            PrototypePreviewBanner()
+            STPreviewBanner()
 
             // Horizontal Filters
             Row(
@@ -980,7 +980,7 @@ fun PrototypeExtensionsScreen(
 // ─────────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrototypeAuthorNoteCFGScreen(
+fun STAuthorNoteCFGScreen(
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -1023,14 +1023,14 @@ fun PrototypeAuthorNoteCFGScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            PrototypeTopHeader(
+            STTopHeader(
                 title = "作者注 & CFG",
                 leading = {
-                    PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                    STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                 },
                 actions = {
-                    PrototypeIconButton(Icons.Filled.Tune, "采样调试", { onShowMessage("打开采样调试仪表盘…") })
-                    PrototypeIconButton(
+                    STIconButton(Icons.Filled.Tune, "采样调试", { onShowMessage("打开采样调试仪表盘…") })
+                    STIconButton(
                         icon = Icons.Filled.Save,
                         contentDescription = "保存",
                         onClick = { onShowMessage("作者注与采样逻辑已注入级联栈") }
@@ -1039,7 +1039,7 @@ fun PrototypeAuthorNoteCFGScreen(
                 titleBottomPadding = 4.dp
             )
 
-            PrototypePreviewBanner()
+            STPreviewBanner()
 
             // Stateful Tabs
             Row(
@@ -1143,14 +1143,14 @@ fun PrototypeAuthorNoteCFGScreen(
                         var sw1 by remember { mutableStateOf(true) }
                         var sw2 by remember { mutableStateOf(true) }
 
-                        PrototypeListItem(
+                        STListItem(
                             headline = "随世界书触发扫描",
                             supporting = "允许作者注激活 Lorebook 中的关联关键词",
                             trailing = { Switch(checked = sw1, onCheckedChange = { sw1 = it }) },
                             onClick = { sw1 = !sw1 }
                         )
 
-                        PrototypeListItem(
+                        STListItem(
                             headline = "仅在当前单聊中生效",
                             supporting = "不将该作者注回写到角色卡元数据中",
                             trailing = { Switch(checked = sw2, onCheckedChange = { sw2 = it }) },
@@ -1258,14 +1258,14 @@ fun PrototypeAuthorNoteCFGScreen(
                         var sw3 by remember { mutableStateOf(true) }
                         var sw4 by remember { mutableStateOf(true) }
 
-                        PrototypeListItem(
+                        STListItem(
                             headline = "强行合并角色反向提示词",
                             supporting = "自动追加当前角色卡内自带 of negative 字段",
                             trailing = { Switch(checked = sw3, onCheckedChange = { sw3 = it }) },
                             onClick = { sw3 = !sw3 }
                         )
 
-                        PrototypeListItem(
+                        STListItem(
                             headline = "对级联使用深度合并策略",
                             supporting = "深度 2 级合并，减少对上下文预算消耗",
                             trailing = { Switch(checked = sw4, onCheckedChange = { sw4 = it }) },
@@ -1370,7 +1370,7 @@ fun PrototypeAuthorNoteCFGScreen(
 // 22 · 快捷回复 (QuickReplyScreen)
 // ─────────────────────────────────────────────────────────────
 @Composable
-fun PrototypeQuickReplyScreen(
+fun STQuickReplyScreen(
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -1396,19 +1396,19 @@ fun PrototypeQuickReplyScreen(
                     .statusBarsPadding()
                     .navigationBarsPadding()
             ) {
-                PrototypeTopHeader(
+                STTopHeader(
                     title = "快捷回复配置",
                     leading = {
-                        PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                        STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                     },
                     actions = {
-                        PrototypeIconButton(Icons.Filled.FileUpload, "导出", { toastMessage = "已导出快捷回复配置" })
-                        PrototypeIconButton(Icons.Filled.Add, "新增", { toastMessage = "新增快捷指令宏成功" })
+                        STIconButton(Icons.Filled.FileUpload, "导出", { toastMessage = "已导出快捷回复配置" })
+                        STIconButton(Icons.Filled.Add, "新增", { toastMessage = "新增快捷指令宏成功" })
                     },
                     titleBottomPadding = 4.dp
                 )
 
-                PrototypePreviewBanner()
+                STPreviewBanner()
 
                 // Stateful Scope Tabs
                 Row(
@@ -1649,7 +1649,7 @@ data class SimulatedReply(
 
 // Helper layout component for prototype details
 @Composable
-private fun PrototypeSystemInfoCard(
+private fun STSystemInfoCard(
     title: String,
     details: String
 ) {
@@ -1690,7 +1690,7 @@ private fun PrototypeSystemInfoCard(
 // ─────────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrototypeMemoryScreen(
+fun STMemoryScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -1741,13 +1741,13 @@ fun PrototypeMemoryScreen(
                     .statusBarsPadding()
                     .navigationBarsPadding()
             ) {
-                PrototypeTopHeader(
+                STTopHeader(
                     title = "记忆与回顾",
                     leading = {
-                        PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                        STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                     },
                     actions = {
-                        PrototypeIconButton(
+                        STIconButton(
                             icon = Icons.Filled.History,
                             contentDescription = "检查点历史",
                             onClick = { toastMessage = "检查点历史就绪" }
@@ -1765,7 +1765,7 @@ fun PrototypeMemoryScreen(
                     titleBottomPadding = 4.dp
                 )
 
-                PrototypePreviewBanner()
+                STPreviewBanner()
 
                 // Stateful Tabs (Summary, Vector search, checkpoints timeline)
                 Row(
@@ -1873,7 +1873,7 @@ fun PrototypeMemoryScreen(
                             PremiumSectionHeader(title = "自动摘要配置")
 
                             var autoSummaryUpdate by remember { mutableStateOf(true) }
-                            PrototypeListItem(
+                            STListItem(
                                 headline = "自动摘要更新",
                                 supporting = "在后台悄悄重构，不阻塞生成等待时间",
                                 trailing = { Switch(checked = autoSummaryUpdate, onCheckedChange = { autoSummaryUpdate = it }) },
@@ -2006,7 +2006,7 @@ fun PrototypeMemoryScreen(
                                                     color = STThemePrimary,
                                                     fontWeight = FontWeight.Bold
                                                 )
-                                                PrototypeBadge(
+                                                STBadge(
                                                     label = "相似度: " + String.format("%.2f", res.similarity),
                                                     containerColor = STThemeTertiary.copy(alpha = 0.12f),
                                                     contentColor = STThemeTertiary
@@ -2111,7 +2111,7 @@ fun PrototypeMemoryScreen(
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
-                                            PrototypeBadge(
+                                            STBadge(
                                                 label = cp.tag,
                                                 containerColor = if (cp.active) STThemePrimary.copy(alpha = 0.12f) else Color(0x0DFFFFFF),
                                                 contentColor = if (cp.active) STThemePrimary else MaterialTheme.colorScheme.onSurfaceVariant
@@ -2306,7 +2306,7 @@ data class SimulatedCheckpoint(
 // ─────────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrototypeAppearanceScreen(
+fun STAppearanceScreen(
     fontSize: Float,
     onFontSizeChanged: (Float) -> Unit,
     reduceMotion: Boolean,
@@ -2378,13 +2378,13 @@ fun PrototypeAppearanceScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(bottom = 24.dp)
             ) {
-                PrototypeTopHeader(
+                STTopHeader(
                     title = "主题外观与阅读",
                     leading = {
-                        PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                        STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                     },
                     actions = {
-                        PrototypeIconButton(
+                        STIconButton(
                             icon = Icons.Filled.FileDownload,
                             contentDescription = "导入主题",
                             onClick = { toastMessage = "打开本地主题库导入…" }
@@ -2402,7 +2402,7 @@ fun PrototypeAppearanceScreen(
                     titleBottomPadding = 4.dp
                 )
 
-                PrototypePreviewBanner()
+                STPreviewBanner()
 
                 // Live Preview Card (Live Typography Preview)
                 PremiumCard(
@@ -2560,14 +2560,14 @@ fun PrototypeAppearanceScreen(
 
                 PremiumSectionHeader(title = "性能与交互优化")
 
-                PrototypeListItem(
+                STListItem(
                     headline = "减少动效渲染 (Reduce Motion)",
                     supporting = "关闭全屏转场、抽屉划过的贝塞尔缓动",
                     trailing = { Switch(checked = reduceMotion, onCheckedChange = onReduceMotionChanged) },
                     onClick = { onReduceMotionChanged(!reduceMotion) }
                 )
 
-                PrototypeListItem(
+                STListItem(
                     headline = "高能效省电模式 (Fast UI Mode)",
                     supporting = "降低背景图模糊毛玻璃滤镜运算",
                     trailing = { Switch(checked = fastMode, onCheckedChange = { fastMode = it }) },

@@ -117,7 +117,7 @@ private val THEME_COLOR_FIELDS = listOf(
 // ── 20/21 背景管理 ───────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun PrototypeBackgroundsScreen(
+fun STBackgroundsScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -145,8 +145,8 @@ fun PrototypeBackgroundsScreen(
         title = "聊天背景",
         onBack = onBack,
         actions = {
-            PrototypeIconButton(Icons.Filled.Search, "搜索", { onShowMessage("搜索背景") })
-            PrototypeIconButton(Icons.Filled.AddPhotoAlternate, "上传", { onShowMessage("上传背景：在文件管理器中选择图片") })
+            STIconButton(Icons.Filled.Search, "搜索", { onShowMessage("搜索背景") })
+            STIconButton(Icons.Filled.AddPhotoAlternate, "上传", { onShowMessage("上传背景：在文件管理器中选择图片") })
         }
     ) {
         if (!running) { Offline("启动服务后可读写真实背景。"); return@P0Scaffold }
@@ -235,7 +235,7 @@ private fun BackgroundTile(bg: String, baseUrl: String, modifier: Modifier = Mod
 
 // ── 22 界面主题 ──────────────────────────────────────────────────────────────
 @Composable
-fun PrototypeThemeScreen(
+fun STThemeScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -279,7 +279,7 @@ fun PrototypeThemeScreen(
     P0Scaffold(
         title = "界面主题",
         onBack = onBack,
-        actions = { PrototypeIconButton(Icons.Filled.Check, "保存", { save(); onShowMessage("主题设置已保存") }) }
+        actions = { STIconButton(Icons.Filled.Check, "保存", { save(); onShowMessage("主题设置已保存") }) }
     ) {
         if (!running) { Offline("启动服务后可读写真实主题。"); return@P0Scaffold }
         if (loading) { Loading("正在读取设置…"); return@P0Scaffold }
@@ -290,7 +290,7 @@ fun PrototypeThemeScreen(
         }
         themes.forEachIndexed { i, name ->
             val isCurrent = name == currentTheme
-            PrototypeListItem(
+            STListItem(
                 headline = name,
                 supporting = if (isCurrent) "正在使用" else "点击应用",
                 leading = {
@@ -347,7 +347,7 @@ fun PrototypeThemeScreen(
 
 // ── 23 聊天与消息 ────────────────────────────────────────────────────────────
 @Composable
-fun PrototypeChatBehaviorScreen(
+fun STChatBehaviorScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -393,7 +393,7 @@ fun PrototypeChatBehaviorScreen(
         title = "聊天与消息",
         subtitle = "设置 · 行为",
         onBack = onBack,
-        actions = { PrototypeIconButton(Icons.Filled.Check, "保存", { save() }) }
+        actions = { STIconButton(Icons.Filled.Check, "保存", { save() }) }
     ) {
         if (!running) { Offline("启动服务后可读写真实聊天设置。"); return@P0Scaffold }
         if (loading) { Loading("正在读取设置…"); return@P0Scaffold }

@@ -100,7 +100,7 @@ private val characterImportMimeTypes = arrayOf(
 )
 
 @Composable
-fun PrototypeCharacterLibraryScreen(
+fun STCharacterLibraryScreen(
     status: NodeStatus,
     baseUrl: String,
     onStartService: () -> Unit,
@@ -164,7 +164,7 @@ fun PrototypeCharacterLibraryScreen(
     }
 
     val tagFilters = remember(characters) {
-        prototypeCharacterTagFilters(characters)
+        stCharacterTagFilters(characters)
     }
     val filterChips = remember(characters, tagFilters) {
         listOf("全部", "收藏", "最近") + tagFilters
@@ -178,7 +178,7 @@ fun PrototypeCharacterLibraryScreen(
 
     val cards = remember(characters, searchQuery, selectedFilter, tagFilters) {
         val selectedTag = tagFilters.getOrNull(selectedFilter - 3)
-        characters.mapIndexed { index, item -> item to item.toPrototypeCharacterCard(index) }
+        characters.mapIndexed { index, item -> item to item.toSTCharacterCard(index) }
             .filter { (item, card) ->
                 val queryMatched = searchQuery.isBlank() ||
                     card.name.contains(searchQuery, ignoreCase = true) ||
@@ -204,45 +204,45 @@ fun PrototypeCharacterLibraryScreen(
                     .fillMaxSize()
                     .statusBarsPadding()
             ) {
-                PrototypeTopHeader(
+                STTopHeader(
                     title = "角色",
                     titleBottomPadding = 12.dp,
                     leading = {
-                        PrototypeIconButton(
+                        STIconButton(
                             icon = Icons.Filled.Menu,
                             contentDescription = "打开抽屉",
                             onClick = openDrawer
                         )
                     },
                     actions = {
-                        PrototypeIconButton(
+                        STIconButton(
                             icon = Icons.Filled.Download,
                             contentDescription = "导入角色",
                             onClick = { importLauncher.launch(characterImportMimeTypes) }
                         )
-                        PrototypeIconButton(
+                        STIconButton(
                             icon = Icons.AutoMirrored.Filled.Sort,
                             contentDescription = "排序",
                             onClick = { onShowMessage("按最近更新排序") }
                         )
                     }
                 )
-                PrototypeSearchBar(
+                STSearchBar(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     placeholder = "搜索 ${cards.size} 个角色…",
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
-                PrototypeChipRow(
+                STChipRow(
                     items = filterChips,
                     selectedIndex = selectedFilter,
                     onSelected = { selectedFilter = it },
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 8.dp)
                 )
                 when {
-                    loading -> PrototypeInfoBlock("正在加载角色库…", "请稍候，正在从本地 SillyTavern 读取角色。")
-                    error != null -> PrototypeInfoBlock("角色加载失败", error.orEmpty())
-                    !serverRunning && characters.isEmpty() -> PrototypeOfflineBlock(onStartService = onStartService)
+                    loading -> STInfoBlock("正在加载角色库…", "请稍候，正在从本地 SillyTavern 读取角色。")
+                    error != null -> STInfoBlock("角色加载失败", error.orEmpty())
+                    !serverRunning && characters.isEmpty() -> STOfflineBlock(onStartService = onStartService)
                     else -> LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
                         modifier = Modifier.fillMaxSize(),
@@ -256,7 +256,7 @@ fun PrototypeCharacterLibraryScreen(
                         )
                     ) {
                         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                            PrototypeSectionHeader(
+                            STSectionHeader(
                                 title = when {
                                     selectedFilter == 1 -> "收藏"
                                     selectedFilter == 2 -> "最近"
@@ -274,7 +274,7 @@ fun PrototypeCharacterLibraryScreen(
                             )
                         }
                         items(cards, key = { it.id }) { card ->
-                            PrototypeCharacterCardView(
+                            STCharacterCardView(
                                 card = card,
                                 baseUrl = baseUrl,
                                 onClick = { onOpenCharacter(card.id) },
@@ -300,7 +300,7 @@ fun PrototypeCharacterLibraryScreen(
 }
 
 @Composable
-fun PrototypeCharacterProfileScreen(
+fun STCharacterProfileScreen(
     status: NodeStatus,
     baseUrl: String,
     avatar: String?,
@@ -339,7 +339,7 @@ fun PrototypeCharacterProfileScreen(
             ?.takeIf { it.exists() }
             ?.toURI()
             ?.toString()
-        PrototypeCharacterCard(
+        STCharacterCard(
             id = avatar.orEmpty(),
             avatarUrl = localAvatarUrl,
             name = avatar?.substringBeforeLast('.')?.replace('_', ' ')?.trim()?.ifBlank { "未知角色" } ?: "未知角色",
@@ -348,10 +348,10 @@ fun PrototypeCharacterProfileScreen(
             initial = avatar?.trim()?.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
             messageCount = 0,
             favorite = false,
-            gradient = prototypeGradientFor(avatar.hashCode())
+            gradient = stGradientFor(avatar.hashCode())
         )
     }
-    val card = detail?.toPrototypeCharacterCard(0) ?: fallback
+    val card = detail?.toSTCharacterCard(0) ?: fallback
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(
@@ -367,23 +367,23 @@ fun PrototypeCharacterProfileScreen(
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                PrototypeIconButton(
+                STIconButton(
                     icon = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "返回",
                     onClick = onBack
                 )
                 Spacer(modifier = Modifier.weight(1f))
-                PrototypeIconButton(
+                STIconButton(
                     icon = Icons.Filled.Edit,
                     contentDescription = "编辑角色",
                     onClick = onOpenFullEdit
                 )
-                PrototypeIconButton(
+                STIconButton(
                     icon = Icons.Filled.PlayArrow,
                     contentDescription = "开始对话",
                     onClick = { onOpenChat(null) }
                 )
-                PrototypeIconButton(
+                STIconButton(
                     icon = Icons.Filled.MoreVert,
                     contentDescription = "更多",
                     onClick = { onShowMessage("更多角色操作功能开发中") }
@@ -475,9 +475,9 @@ fun PrototypeCharacterProfileScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
                 if (!serverRunning) {
-                    PrototypeOfflineBlock(onStartService = onStartService)
+                    STOfflineBlock(onStartService = onStartService)
                 } else if (loading) {
-                    PrototypeInfoBlock("正在读取角色…", "从 SillyTavern 加载角色卡内容。")
+                    STInfoBlock("正在读取角色…", "从 SillyTavern 加载角色卡内容。")
                 }
                 CharacterDetailSections(detail = detail, fallback = card)
                 Spacer(modifier = Modifier.height(32.dp))
@@ -487,7 +487,7 @@ fun PrototypeCharacterProfileScreen(
 }
 
 @Composable
-fun PrototypeCharacterCreateScreen(
+fun STCharacterCreateScreen(
     status: NodeStatus,
     baseUrl: String,
     onStartService: () -> Unit,
@@ -518,7 +518,7 @@ fun PrototypeCharacterCreateScreen(
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                 Spacer(Modifier.weight(1f))
                 Button(
                     enabled = running && name.isNotBlank() && !saving,
@@ -550,7 +550,7 @@ fun PrototypeCharacterCreateScreen(
             }
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 CharacterHero(
-                    card = PrototypeCharacterCard(
+                    card = STCharacterCard(
                         id = "new",
                         name = name.ifBlank { "新角色" },
                         subtitle = subtitle.ifBlank { "给这张角色卡写一句简介" },
@@ -558,14 +558,14 @@ fun PrototypeCharacterCreateScreen(
                         initial = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "+",
                         messageCount = 0,
                         favorite = false,
-                        gradient = prototypeGradientFor(4)
+                        gradient = stGradientFor(4)
                     ),
                     baseUrl = baseUrl
                 )
                 if (!running) {
-                    PrototypeOfflineBlock(onStartService = onStartService)
+                    STOfflineBlock(onStartService = onStartService)
                 }
-                PrototypeSectionHeader("基本信息")
+                STSectionHeader("基本信息")
                 Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = name,
@@ -603,8 +603,8 @@ fun PrototypeCharacterCreateScreen(
 }
 
 @Composable
-private fun PrototypeCharacterCardView(
-    card: PrototypeCharacterCard,
+private fun STCharacterCardView(
+    card: STCharacterCard,
     baseUrl: String,
     onClick: () -> Unit,
     onOpenChat: () -> Unit
@@ -626,7 +626,7 @@ private fun PrototypeCharacterCardView(
             ) {
                 var avatarLoadFailed by remember(card.avatarUrl, baseUrl) { mutableStateOf(false) }
                 val avatarModel = remember(card.avatarUrl, baseUrl) {
-                    prototypeAvatarImageUrl(baseUrl, card.avatarUrl)
+                    stAvatarImageUrl(baseUrl, card.avatarUrl)
                 }
                 if (avatarModel != null && !avatarLoadFailed) {
                     AsyncImage(
@@ -690,7 +690,7 @@ private fun PrototypeCharacterCardView(
                         tint = Color.White
                     )
                 }
-                PrototypeBadge(
+                STBadge(
                     label = "${card.messageCount} 消息",
                     containerColor = Color.Black.copy(alpha = 0.50f),
                     contentColor = Color.White,
@@ -724,7 +724,7 @@ private fun PrototypeCharacterCardView(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     card.tags.ifEmpty { listOf("角色卡") }.forEach { tag ->
-                        PrototypeBadge(label = tag)
+                        STBadge(label = tag)
                     }
                 }
             }
@@ -733,7 +733,7 @@ private fun PrototypeCharacterCardView(
 }
 
 @Composable
-private fun CharacterHero(card: PrototypeCharacterCard, baseUrl: String) {
+private fun CharacterHero(card: STCharacterCard, baseUrl: String) {
     val gradientColors = remember(card.gradient) { card.gradient.map { Color(it) } }
     Box(
         modifier = Modifier
@@ -743,7 +743,7 @@ private fun CharacterHero(card: PrototypeCharacterCard, baseUrl: String) {
     ) {
         var avatarLoadFailed by remember(card.avatarUrl, baseUrl) { mutableStateOf(false) }
         val avatarModel = remember(card.avatarUrl, baseUrl) {
-            prototypeAvatarImageUrl(baseUrl, card.avatarUrl)
+            stAvatarImageUrl(baseUrl, card.avatarUrl)
         }
         if (avatarModel != null && !avatarLoadFailed) {
             AsyncImage(
@@ -815,7 +815,7 @@ private fun CharacterHero(card: PrototypeCharacterCard, baseUrl: String) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 card.tags.ifEmpty { listOf("角色卡") }.forEach { tag ->
-                    PrototypeBadge(
+                    STBadge(
                         label = tag,
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -829,14 +829,14 @@ private fun CharacterHero(card: PrototypeCharacterCard, baseUrl: String) {
 @Composable
 private fun CharacterDetailSections(
     detail: CharacterDetail?,
-    fallback: PrototypeCharacterCard
+    fallback: STCharacterCard
 ) {
-    PrototypeEditSection(title = "基本信息", icon = Icons.Filled.Badge, open = true) {
-        PrototypeFieldRow("角色名", detail?.name ?: fallback.name)
-        PrototypeFieldRow("创作者", detail?.creator?.ifBlank { "未标注" } ?: "未加载")
-        PrototypeFieldRow("版本", detail?.characterVersion?.ifBlank { "未标注" } ?: "未加载")
+    STEditSection(title = "基本信息", icon = Icons.Filled.Badge, open = true) {
+        STFieldRow("角色名", detail?.name ?: fallback.name)
+        STFieldRow("创作者", detail?.creator?.ifBlank { "未标注" } ?: "未加载")
+        STFieldRow("版本", detail?.characterVersion?.ifBlank { "未标注" } ?: "未加载")
     }
-    PrototypeEditSection(title = "角色描述", icon = Icons.Filled.Description, open = true, count = detail?.description?.length) {
+    STEditSection(title = "角色描述", icon = Icons.Filled.Description, open = true, count = detail?.description?.length) {
         Text(
             text = detail?.description?.ifBlank { fallback.subtitle }
                 ?: fallback.subtitle,
@@ -844,10 +844,10 @@ private fun CharacterDetailSections(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
-        PrototypeFieldRow("个性", detail?.personality?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: "未填写")
-        PrototypeFieldRow("场景", detail?.scenario?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: "未填写")
+        STFieldRow("个性", detail?.personality?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: "未填写")
+        STFieldRow("场景", detail?.scenario?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: "未填写")
     }
-    PrototypeEditSection(title = "开场白", icon = Icons.Filled.EmojiPeople, open = true, count = detail?.firstMessage?.length) {
+    STEditSection(title = "开场白", icon = Icons.Filled.EmojiPeople, open = true, count = detail?.firstMessage?.length) {
         Text(
             text = detail?.firstMessage?.takeIf { it.isNotBlank() } ?: "未设置开场白",
             style = MaterialTheme.typography.bodyMedium,
@@ -862,18 +862,18 @@ private fun CharacterDetailSections(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                greetings.forEachIndexed { index, _ -> PrototypeBadge("备选 ${index + 1}") }
+                greetings.forEachIndexed { index, _ -> STBadge("备选 ${index + 1}") }
             }
         }
     }
-    PrototypeEditSection(
+    STEditSection(
         title = "场景 (Scenario)",
         icon = Icons.Filled.Theaters,
         count = detail?.scenario?.length?.takeIf { it > 0 }
     ) {
         DetailBodyText(detail?.scenario, empty = "未填写场景")
     }
-    PrototypeEditSection(
+    STEditSection(
         title = "对话示例",
         icon = Icons.Filled.Forum,
         count = if (detail?.messageExample.isNullOrBlank()) null else "已设置"
@@ -888,7 +888,7 @@ private fun CharacterDetailSections(
             )
         }
     }
-    PrototypeEditSection(
+    STEditSection(
         title = "高级定义",
         icon = Icons.Filled.Tune,
         count = "Prompt 覆盖 · 角色备注 · 健谈度"
@@ -904,21 +904,21 @@ private fun CharacterDetailSections(
                 "assistant" -> "AI"
                 else -> "系统"
             }
-            PrototypeFieldRow("插入深度 / 角色", "@深度 ${detail.depthPromptDepth} · $role")
+            STFieldRow("插入深度 / 角色", "@深度 ${detail.depthPromptDepth} · $role")
         }
         DetailSubHeader("群聊行为")
-        PrototypeFieldRow("健谈度", "${((detail?.talkativeness ?: 0.5) * 100).toInt()}% · 群聊中主动发言倾向")
+        STFieldRow("健谈度", "${((detail?.talkativeness ?: 0.5) * 100).toInt()}% · 群聊中主动发言倾向")
     }
-    PrototypeEditSection(
+    STEditSection(
         title = "绑定世界书",
         icon = Icons.Filled.AutoStories,
         count = detail?.world?.takeIf { it.isNotBlank() }
     ) {
-        PrototypeListItem(
+        STListItem(
             headline = detail?.world?.takeIf { it.isNotBlank() } ?: "未绑定世界书",
             supporting = if (detail?.world.isNullOrBlank()) "新建或导入后可在角色卡中绑定" else "随角色一同加载的设定条目",
             leading = {
-                PrototypeTileIcon(
+                STTileIcon(
                     icon = Icons.Filled.AutoStories,
                     tint = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -926,11 +926,11 @@ private fun CharacterDetailSections(
             }
         )
     }
-    PrototypeEditSection(title = "元数据", icon = Icons.Filled.Badge) {
-        PrototypeFieldRow("创建日期", detail?.createDate?.ifBlank { "未知" } ?: "未知")
-        PrototypeFieldRow("规范格式", "Character Card V2 (chara_card_v2)")
+    STEditSection(title = "元数据", icon = Icons.Filled.Badge) {
+        STFieldRow("创建日期", detail?.createDate?.ifBlank { "未知" } ?: "未知")
+        STFieldRow("规范格式", "Character Card V2 (chara_card_v2)")
         if (!detail?.sourceUrl.isNullOrBlank()) {
-            PrototypeFieldRow("角色源", detail.sourceUrl)
+            STFieldRow("角色源", detail.sourceUrl)
         }
     }
 }
@@ -974,7 +974,7 @@ private fun DetailLabeledBody(label: String, text: String?, empty: String) {
 }
 
 @Composable
-private fun PrototypeEditSection(
+private fun STEditSection(
     title: String,
     icon: ImageVector,
     open: Boolean = false,
@@ -1030,7 +1030,7 @@ private fun PrototypeEditSection(
 }
 
 @Composable
-private fun PrototypeFieldRow(label: String, value: String) {
+private fun STFieldRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1055,8 +1055,8 @@ private fun PrototypeFieldRow(label: String, value: String) {
 }
 
 @Composable
-private fun PrototypeOfflineBlock(onStartService: () -> Unit) {
-    PrototypeInfoBlock(
+private fun STOfflineBlock(onStartService: () -> Unit) {
+    STInfoBlock(
         title = "本地服务未启动",
         body = "启动 SillyTavern 后会加载你的真实角色库。",
         action = {
@@ -1066,7 +1066,7 @@ private fun PrototypeOfflineBlock(onStartService: () -> Unit) {
 }
 
 @Composable
-private fun PrototypeInfoBlock(
+private fun STInfoBlock(
     title: String,
     body: String,
     action: @Composable (() -> Unit)? = null

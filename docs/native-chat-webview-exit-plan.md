@@ -35,7 +35,7 @@
 
 | 已有能力 | 当前代码/文档 | 价值 |
 |---|---|---|
-| 实验开关 | `UpdateManager` / `MainViewModel` / `PrototypeSystemScreens` / `MainActivity` | “原生生成（实验）”默认关闭，打开后注入原生生成路径 |
+| 实验开关 | `UpdateManager` / `MainViewModel` / `STSystemScreens` / `MainActivity` | “原生生成（实验）”默认关闭，打开后注入原生生成路径 |
 | 生成引擎接缝 | `ChatEngine` / `BridgeChatEngine` / `NativeChatEngine` | UI 已经不直接绑定 WebView 发送链路，可按能力选择原生或兜底 |
 | 单聊原生打开 | `NativeChatLoader` | 实验开关下，角色聊天可先经 API 读取角色卡和 JSONL，Compose 不必等 WebView 快照 |
 | 原生 JSONL 与生成 API | `TavernCoreApi.getChatJsonl` / `saveChatJsonl` / `generateChatCompletion*` / `generateTextCompletion*` | 原生侧已经能无损读写聊天文件，并直接调用后端生成 |

@@ -45,11 +45,11 @@ git submodule update --init --recursive
 
 `MainActivity` 托管 `NavHost`，底部导航定义在 `ui/navigation/STNavGraph.kt`（`STRoutes`）。主要标签页：
 
-- **Home** (`chats/home`) — 仪表盘，状态卡片 + 最近聊天/角色 + 快捷操作。位于 `ui/screens/PrototypeHomeScreen.kt`。
+- **Home** (`chats/home`) — 仪表盘，状态卡片 + 最近聊天/角色 + 快捷操作。位于 `ui/screens/STHomeScreen.kt`。
 - **Chat** (`chat`) — `chat/NativeChatScreen`，纯原生 Compose 聊天界面（无 WebView）。
-- **Characters** (`characters`) — 原生 Compose 角色管理：列表、详情、编辑。位于 `ui/screens/PrototypeCharacterScreens.kt`。
+- **Characters** (`characters`) — 原生 Compose 角色管理：列表、详情、编辑。位于 `ui/screens/STCharacterScreens.kt`。
 - **Tools** (`tools`) — 工具页面（世界书、预设、API 连接等）。位于 `ui/screens/` 下。
-- **Settings** (`me`) — 设置页面。位于 `ui/screens/PrototypeSystemScreens.kt`。
+- **Settings** (`me`) — 设置页面。位于 `ui/screens/STSystemScreens.kt`。
 
 ### 原生聊天架构
 

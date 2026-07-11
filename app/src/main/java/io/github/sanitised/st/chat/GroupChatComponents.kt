@@ -58,8 +58,8 @@ import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.chat.engine.GroupReply
 import io.github.sanitised.st.chat.engine.NativeGroupGenerator
 import io.github.sanitised.st.chat.engine.pickGroupSpeaker
-import io.github.sanitised.st.ui.screens.PrototypeAvatar
-import io.github.sanitised.st.ui.screens.prototypeAvatarImageUrl
+import io.github.sanitised.st.ui.screens.STAvatar
+import io.github.sanitised.st.ui.screens.stAvatarImageUrl
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -198,7 +198,7 @@ internal fun GroupAvatarTile(
     modifier: Modifier = Modifier
 ) {
     var imageLoadFailed by remember(member.avatarUrl, baseUrl) { mutableStateOf(false) }
-    val imageModel = remember(member.avatarUrl, baseUrl) { prototypeAvatarImageUrl(baseUrl, member.avatarUrl) }
+    val imageModel = remember(member.avatarUrl, baseUrl) { stAvatarImageUrl(baseUrl, member.avatarUrl) }
     Box(
         modifier = modifier.background(Brush.linearGradient(member.avatarGrad)),
         contentAlignment = Alignment.Center
@@ -229,7 +229,7 @@ internal fun GroupMemberAvatar(
     ringWidth: Dp = 0.dp
 ) {
     var imageLoadFailed by remember(member.avatarUrl, baseUrl) { mutableStateOf(false) }
-    val imageModel = remember(member.avatarUrl, baseUrl) { prototypeAvatarImageUrl(baseUrl, member.avatarUrl) }
+    val imageModel = remember(member.avatarUrl, baseUrl) { stAvatarImageUrl(baseUrl, member.avatarUrl) }
     val shape = CircleShape
     Box(
         modifier = modifier

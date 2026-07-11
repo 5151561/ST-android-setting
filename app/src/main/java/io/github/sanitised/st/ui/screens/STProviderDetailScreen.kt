@@ -144,7 +144,7 @@ import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 
 @Composable
-fun PrototypeProviderDetailScreen(
+fun STProviderDetailScreen(
     status: NodeStatus,
     baseUrl: String,
     providerId: String,
@@ -246,12 +246,12 @@ fun PrototypeProviderDetailScreen(
     
     val displayName = providerDefinition.label
     
-    PrototypeBackRoot(
+    STBackRoot(
         title = "$displayName 配置",
         onBack = onBack,
         modifier = modifier,
         actions = {
-            PrototypeIconButton(
+            STIconButton(
                 icon = Icons.Filled.Save,
                 contentDescription = "保存配置",
                 onClick = {
@@ -383,14 +383,14 @@ fun PrototypeProviderDetailScreen(
             
             PremiumSectionHeader(title = "端点设置")
             
-            PrototypeGlassTextField(
+            STGlassTextField(
                 value = customUrl,
                 onValueChange = { customUrl = it },
                 label = if (providerDefinition.mode == "cc") "反向代理 URL (Reverse Proxy)" else "后端服务器地址",
                 placeholder = if (providerDefinition.mode == "cc") "https://api.openai.com/v1" else "http://127.0.0.1:5000"
             )
             
-            PrototypeGlassTextField(
+            STGlassTextField(
                 value = apiKey,
                 onValueChange = { apiKey = it },
                 label = "API 密钥 (API Key)",
@@ -548,12 +548,12 @@ fun PrototypeProviderDetailScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             } else {
-                PrototypeListSurface(
+                STListSurface(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 ) {
                     modelsList.forEachIndexed { index, model ->
                         val isSelected = model == selectedModel
-                        PrototypeListItem(
+                        STListItem(
                             headline = model,
                             supporting = if (isSelected) "当前选中" else null,
                             leading = {

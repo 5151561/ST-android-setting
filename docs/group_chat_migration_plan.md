@@ -18,7 +18,7 @@
 | 能力 | 状态 | 说明 |
 |---|---|---|
 | 新建群聊（`POST /api/groups/create`） | ✅ 已落地 · 真机验证 | `NewGroupScreen` 读真实角色多选 + strategy 映射；创建落库、列表刷新、成员格式 `default_Seraphina.png` 均已真机确认 |
-| 群聊列表（`POST /api/groups/all`） | ✅ 已落地 | `PrototypeGroupChatScreen` 经 `listGroups()` 渲染，返回列表自动刷新 |
+| 群聊列表（`POST /api/groups/all`） | ✅ 已落地 | `STGroupChatScreen` 经 `listGroups()` 渲染，返回列表自动刷新 |
 | 群聊详情：真实群/成员/历史 | ✅ 已落地 | `GroupChatScreen(groupId, chatId, baseUrl)` 经 `listGroups()` + `listCharacters()` + `getGroupChatJsonl()` 加载 |
 | 群聊详情：用户发送消息 | ✅ 已落地 | 追加 UI + 真实落库（`saveGroupChatJsonl`，群聊 JSONL） |
 | 群聊 AI 回复（原生生成） | ✅ MVP 已落地 | `NativeGroupGenerator`：按 strategy 选发言人（`pickGroupSpeaker`）→ 该成员角色卡 + 群聊历史经 `PromptBuilder`/`TextPromptBuilder` 组装 → 流式生成（含非流式兜底）→ 落库群聊 JSONL。入口：点名 / 重写 / 继续 / 发言人 sheet / 自动接龙。**限制见 §6.5**，需真机验证 |
@@ -232,7 +232,7 @@ GroupComposer.onSend(text)
 
 | 关注点 | 文件 |
 |---|---|
-| 群聊列表 | `ui/screens/PrototypeGroupChatScreen.kt` |
+| 群聊列表 | `ui/screens/STGroupChatScreen.kt` |
 | 新建群聊（真实角色 + 创建） | `chat/NewGroupScreen.kt`、`MainActivity.kt`（`group-chat/new` 路由） |
 | 群聊详情（真实数据 + 发送） | `chat/GroupChatScreen.kt`、`MainActivity.kt`（`GROUP_CHAT_DETAIL` 路由） |
 | 群设置 / 成员（真实数据 + `/api/groups/edit`） | `chat/GroupSettingsScreen.kt`、`chat/GroupMembersScreen.kt` |

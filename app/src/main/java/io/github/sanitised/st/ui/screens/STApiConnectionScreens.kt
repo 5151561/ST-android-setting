@@ -145,7 +145,7 @@ import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrototypeApiConnectionScreen(
+fun STApiConnectionScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -223,7 +223,7 @@ fun PrototypeApiConnectionScreen(
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "API 连接设置",
@@ -237,18 +237,18 @@ fun PrototypeApiConnectionScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                PrototypeIconButton(Icons.AutoMirrored.Filled.Help, "帮助", { onShowMessage("已打开 API 说明书") })
+                STIconButton(Icons.AutoMirrored.Filled.Help, "帮助", { onShowMessage("已打开 API 说明书") })
             }
 
             // Connection Profile Presets row card
-            PrototypeConnectionProfileCard(
+            STConnectionProfileCard(
                 profiles = profiles,
                 selectedProfileName = selectedProfileName,
                 onClick = { showProfileSheet = true }
             )
 
             // Dynamic API Mode Segmented Picker
-            PrototypeModeControl(
+            STModeControl(
                 activeMode = activeMode,
                 onModeChange = { mode ->
                     activeMode = mode
@@ -290,7 +290,7 @@ fun PrototypeApiConnectionScreen(
             )
 
             // Active Connection HUD Card
-            PrototypeActiveConnectionCard(
+            STActiveConnectionCard(
                 activeMode = connectionState.activeMode,
                 activeProvider = connectionState.activeProvider.label,
                 configuredProviderCount = connectionState.configuredProviderCount,
@@ -346,30 +346,30 @@ fun PrototypeApiConnectionScreen(
             // Additional Static Options based on mode
             if (activeMode == "cc") {
                 PremiumSectionHeader(title = "本地与社区反代")
-                PrototypeListItem(
+                STListItem(
                     headline = "自定义 OpenAI 兼容反代 (Reverse Proxy)",
                     supporting = "可自定义 API 根地址，完美适配自建 OneAPI",
-                    leading = { PrototypeTileIcon(Icons.Filled.Code) },
+                    leading = { STTileIcon(Icons.Filled.Code) },
                     onClick = { onShowMessage("自建配置功能开发中，可通过配置详细后端进行调整") }
                 )
-                PrototypeListItem(
+                STListItem(
                     headline = "KoboldAI Horde 共享池",
                     supporting = "使用社区免费志愿贡献者的 GPU 算力",
-                    leading = { PrototypeTileIcon(Icons.Filled.Face) },
+                    leading = { STTileIcon(Icons.Filled.Face) },
                     onClick = { onShowMessage("Horde 配置功能开发中") }
                 )
             } else if (activeMode == "tc") {
                 PremiumSectionHeader(title = "当前后端的指令模版契约")
-                PrototypeListItem(
+                STListItem(
                     headline = "自动匹配 Instruct 模板",
                     supporting = "根据后端模型自动选择指令格式",
-                    leading = { PrototypeTileIcon(Icons.Filled.Code) },
+                    leading = { STTileIcon(Icons.Filled.Code) },
                     onClick = { onShowMessage("指令模板设置请在 AI 采样页中进行") }
                 )
-                PrototypeListItem(
+                STListItem(
                     headline = "上下文拼接模板 (Context Templates)",
                     supporting = "Default — 先行角色设定，后贴入场景描述",
-                    leading = { PrototypeTileIcon(Icons.Filled.Bookmarks) },
+                    leading = { STTileIcon(Icons.Filled.Bookmarks) },
                     onClick = { onShowMessage("上下文模板设置请在 AI 采样页中进行") }
                 )
             }
@@ -408,7 +408,7 @@ fun PrototypeApiConnectionScreen(
 }
 
 @Composable
-private fun PrototypeConnectionProfileCard(
+private fun STConnectionProfileCard(
     profiles: List<ConnectionProfile>,
     selectedProfileName: String,
     onClick: () -> Unit
@@ -455,7 +455,7 @@ private fun PrototypeConnectionProfileCard(
 }
 
 @Composable
-private fun PrototypeModeControl(
+private fun STModeControl(
     activeMode: String,
     onModeChange: (String) -> Unit
 ) {
@@ -520,7 +520,7 @@ private fun PrototypeModeControl(
 }
 
 @Composable
-private fun PrototypeActiveConnectionCard(
+private fun STActiveConnectionCard(
     activeMode: String,
     activeProvider: String,
     configuredProviderCount: Int,
@@ -585,7 +585,7 @@ private fun PrototypeActiveConnectionCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            PrototypeIconButton(Icons.Filled.Settings, "配置详细后端", onConfigure)
+            STIconButton(Icons.Filled.Settings, "配置详细后端", onConfigure)
         }
         Spacer(modifier = Modifier.height(10.dp))
         HorizontalDivider(color = Color(0x0DFFFFFF))
@@ -594,16 +594,16 @@ private fun PrototypeActiveConnectionCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            PrototypeStat(
+            STStat(
                 label = "连接状态", 
                 value = connectionStatusText,
                 tone = if (connectionStatusOk) "ok" else "error"
             )
-            PrototypeStat(
+            STStat(
                 label = "密钥配置",
                 value = activeSecretLabel ?: "${configuredProviderCount} 个已配置"
             )
-            PrototypeStat(
+            STStat(
                 label = "连接验证",
                 value = "尚未测试"
             )
@@ -612,7 +612,7 @@ private fun PrototypeActiveConnectionCard(
 }
 
 @Composable
-private fun RowScope.PrototypeStat(label: String, value: String, tone: String? = null) {
+private fun RowScope.STStat(label: String, value: String, tone: String? = null) {
     Column(modifier = Modifier.weight(1f)) {
         Text(
             text = label, 
@@ -747,7 +747,7 @@ private fun ConnectionProfileBottomSheet(
             Spacer(modifier = Modifier.height(8.dp))
 
             if (apiProfiles.isEmpty()) {
-                PrototypeSystemInfoCard("暂无保存的服务器", "当前使用本地 SillyTavern 服务。")
+                STSystemInfoCard("暂无保存的服务器", "当前使用本地 SillyTavern 服务。")
             } else {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(6.dp),

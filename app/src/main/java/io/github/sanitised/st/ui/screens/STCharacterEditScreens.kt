@@ -93,7 +93,7 @@ private fun commaList(text: String): List<String> =
 
 // ── 07 完整编辑表单 ──────────────────────────────────────────────────────────
 @Composable
-fun PrototypeCharacterFormScreen(
+fun STCharacterFormScreen(
     avatar: String,
     status: NodeStatus,
     baseUrl: String,
@@ -149,7 +149,7 @@ fun PrototypeCharacterFormScreen(
         subtitle = detail?.let { "${it.name} · ${it.characterVersion.ifBlank { "v1" }}" } ?: "",
         onBack = onClose,
         closeIcon = true,
-        actions = { PrototypeIconButton(Icons.Filled.Check, "保存", { save() }) }
+        actions = { STIconButton(Icons.Filled.Check, "保存", { save() }) }
     ) {
         if (!running) { CharOffline(); return@P0Scaffold }
         if (loading) { CharLoading(); return@P0Scaffold }
@@ -159,7 +159,7 @@ fun PrototypeCharacterFormScreen(
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Box {
-                PrototypeAvatar(name.ifBlank { "角色" }, size = 96.dp, square = true, imageUrl = detail?.avatarUrl, baseUrl = baseUrl, gradient = prototypeGradientFor(avatar.hashCode()))
+                STAvatar(name.ifBlank { "角色" }, size = 96.dp, square = true, imageUrl = detail?.avatarUrl, baseUrl = baseUrl, gradient = stGradientFor(avatar.hashCode()))
                 Box(
                     modifier = Modifier.align(Alignment.BottomEnd).size(32.dp).clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primaryContainer).border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
@@ -181,7 +181,7 @@ fun PrototypeCharacterFormScreen(
         P0Field(label = "创作者笔记", value = notes, onValueChange = { notes = it }, multiline = true, minLines = 2, hint = "展示在角色列表里，不进入提示词")
         P0Field(label = "描述", value = description, onValueChange = { description = it }, multiline = true, minLines = 6, hint = "支持 {{char}} / {{user}} 宏")
         P0Field(label = "开场白", value = firstMessage, onValueChange = { firstMessage = it }, multiline = true, minLines = 2)
-        PrototypeListItem(
+        STListItem(
             headline = "备选开场白",
             supporting = "${detail?.alternateGreetings?.size ?: 0} 个 · 新聊天第一条消息的滑动项",
             leading = { CharLead(Icons.Filled.AutoStories) },
@@ -192,14 +192,14 @@ fun PrototypeCharacterFormScreen(
         P0Field(label = "对话示例", value = example, onValueChange = { example = it }, multiline = true, minLines = 5, mono = true, hint = "每段示例以 <START> 开头")
 
         P0SectionHeader("绑定")
-        PrototypeListItem(
+        STListItem(
             headline = "世界书",
             supporting = detail?.world?.ifBlank { "未绑定" } ?: "未绑定",
             leading = { CharLead(Icons.Filled.AutoStories) },
             trailing = { CharChevron() },
             onClick = { onShowMessage("绑定世界书：在世界书页设置") }
         )
-        PrototypeListItem(
+        STListItem(
             headline = "高级定义",
             supporting = "Prompt 覆盖 · 角色备注 · 健谈度",
             leading = { CharLead(Icons.Filled.Tune) },
@@ -207,7 +207,7 @@ fun PrototypeCharacterFormScreen(
             onClick = onOpenAdvanced
         )
         if (!detail?.sourceUrl.isNullOrBlank()) {
-            PrototypeListItem(
+            STListItem(
                 headline = "角色源",
                 supporting = detail?.sourceUrl ?: "",
                 leading = { CharLead(Icons.Filled.Link) },
@@ -220,7 +220,7 @@ fun PrototypeCharacterFormScreen(
 
 // ── 08 备选开场白 ────────────────────────────────────────────────────────────
 @Composable
-fun PrototypeAltGreetingsScreen(
+fun STAltGreetingsScreen(
     avatar: String,
     status: NodeStatus,
     baseUrl: String,
@@ -260,8 +260,8 @@ fun PrototypeAltGreetingsScreen(
         subtitle = detail?.name ?: "",
         onBack = onBack,
         actions = {
-            PrototypeIconButton(Icons.Filled.Add, "添加", { greetings.add("") })
-            PrototypeIconButton(Icons.Filled.Check, "保存", { save() })
+            STIconButton(Icons.Filled.Add, "添加", { greetings.add("") })
+            STIconButton(Icons.Filled.Check, "保存", { save() })
         }
     ) {
         if (!running) { CharOffline(); return@P0Scaffold }
@@ -313,7 +313,7 @@ private fun GreetingEditor(label: String, text: String, onChange: (String) -> Un
 
 // ── 09 高级定义 ──────────────────────────────────────────────────────────────
 @Composable
-fun PrototypeCharacterAdvancedScreen(
+fun STCharacterAdvancedScreen(
     avatar: String,
     status: NodeStatus,
     baseUrl: String,
@@ -371,7 +371,7 @@ fun PrototypeCharacterAdvancedScreen(
         subtitle = detail?.name ?: "",
         onBack = onClose,
         closeIcon = true,
-        actions = { PrototypeIconButton(Icons.Filled.Check, "保存", { save() }) }
+        actions = { STIconButton(Icons.Filled.Check, "保存", { save() }) }
     ) {
         if (!running) { CharOffline(); return@P0Scaffold }
         if (loading) { CharLoading(); return@P0Scaffold }
@@ -409,12 +409,12 @@ fun PrototypeCharacterAdvancedScreen(
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
         P0SectionHeader("元数据")
-        PrototypeListItem(
+        STListItem(
             headline = "创建日期",
             supporting = detail?.createDate?.ifBlank { "未知" } ?: "未知",
             leading = { CharLead(Icons.Filled.Schedule) }
         )
-        PrototypeListItem(
+        STListItem(
             headline = "规范格式",
             supporting = "Character Card V2 (chara_card_v2)",
             leading = { CharLead(Icons.Filled.Fingerprint) }

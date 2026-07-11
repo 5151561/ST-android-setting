@@ -46,7 +46,7 @@ import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 import kotlinx.coroutines.launch
 
 @Composable
-fun PrototypeGroupChatScreen(
+fun STGroupChatScreen(
     status: NodeStatus,
     baseUrl: String,
     onOpenGroupChat: (String, String?) -> Unit,
@@ -120,14 +120,14 @@ private fun GroupListView(
             ) {
                 item {
                     Column(modifier = Modifier.statusBarsPadding()) {
-                        PrototypeTopHeader(
+                        STTopHeader(
                             title = "群聊",
                             leading = {
-                                PrototypeIconButton(Icons.Filled.Menu, "打开抽屉", onOpenDrawer)
+                                STIconButton(Icons.Filled.Menu, "打开抽屉", onOpenDrawer)
                             },
                             actions = {
-                                PrototypeIconButton(Icons.Filled.Refresh, "刷新群聊", onRefresh)
-                                PrototypeIconButton(Icons.Filled.Add, "新建群聊", onCreate)
+                                STIconButton(Icons.Filled.Refresh, "刷新群聊", onRefresh)
+                                STIconButton(Icons.Filled.Add, "新建群聊", onCreate)
                             }
                         )
                     }
@@ -212,15 +212,15 @@ private fun GroupListItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (group.avatarUrl.isNotBlank()) {
-                PrototypeAvatar(
+                STAvatar(
                     label = group.name.ifBlank { "群" },
                     imageUrl = group.avatarUrl,
                     baseUrl = baseUrl,
                     size = 52.dp,
-                    gradient = prototypeGradientFor(group.id.hashCode())
+                    gradient = stGradientFor(group.id.hashCode())
                 )
             } else {
-                PrototypeGroupAvatar(
+                STGroupAvatar(
                     initials = group.members.take(3).map { it.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?" }.ifEmpty { listOf("群") },
                     imageUrls = group.members.take(3),
                     baseUrl = baseUrl,
@@ -244,7 +244,7 @@ private fun GroupListItem(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = prototypeRelativeTimeLabel(group.lastUpdated),
+                        text = stRelativeTimeLabel(group.lastUpdated),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1

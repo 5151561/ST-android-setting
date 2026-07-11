@@ -62,7 +62,7 @@ import coil3.compose.AsyncImage
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-internal fun prototypeAvatarImageUrl(baseUrl: String, imageUrl: String?): String? {
+internal fun stAvatarImageUrl(baseUrl: String, imageUrl: String?): String? {
     val trimmed = imageUrl?.trim()?.takeIf { it.isNotBlank() } ?: return null
     if (
         trimmed.startsWith("http://") ||
@@ -88,7 +88,7 @@ private fun String.urlEncodedPathSegment(): String =
     URLEncoder.encode(this, StandardCharsets.UTF_8.toString()).replace("+", "%20")
 
 @Composable
-fun PrototypeTopHeader(
+fun STTopHeader(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
@@ -138,7 +138,7 @@ fun PrototypeTopHeader(
 }
 
 @Composable
-fun PrototypeIconButton(
+fun STIconButton(
     icon: ImageVector,
     contentDescription: String?,
     onClick: () -> Unit,
@@ -178,7 +178,7 @@ fun PrototypeIconButton(
 }
 
 @Composable
-fun PrototypeAvatar(
+fun STAvatar(
     label: String,
     modifier: Modifier = Modifier,
     imageUrl: String? = null,
@@ -186,13 +186,13 @@ fun PrototypeAvatar(
     size: Dp = 48.dp,
     square: Boolean = false,
     ringColor: Color? = null,
-    gradient: List<Long> = prototypeGradientFor(0)
+    gradient: List<Long> = stGradientFor(0)
 ) {
     val density = LocalDensity.current
     val shape = if (square) RoundedCornerShape((size.value * 0.18f).dp) else CircleShape
     val sizePx = remember(size, density) { with(density) { size.toPx() } }
     var imageLoadFailed by remember(imageUrl, baseUrl) { mutableStateOf(false) }
-    val imageModel = remember(imageUrl, baseUrl) { prototypeAvatarImageUrl(baseUrl, imageUrl) }
+    val imageModel = remember(imageUrl, baseUrl) { stAvatarImageUrl(baseUrl, imageUrl) }
     Box(
         modifier = modifier
             .size(size)
@@ -232,7 +232,7 @@ fun PrototypeAvatar(
 }
 
 @Composable
-fun PrototypeGroupAvatar(
+fun STGroupAvatar(
     initials: List<String>,
     modifier: Modifier = Modifier,
     imageUrls: List<String?> = emptyList(),
@@ -256,9 +256,9 @@ fun PrototypeGroupAvatar(
                 else -> (index * (size.value * 0.22f)).dp
             }
             val yOffsetDp = if (count > 2 && index == 1) (size.value * 0.12f).dp else 0.dp
-            val gradient = prototypeGradientFor(label.hashCode())
+            val gradient = stGradientFor(label.hashCode())
             
-            PrototypeAvatar(
+            STAvatar(
                 label = label,
                 imageUrl = imageUrls.getOrNull(index),
                 baseUrl = baseUrl,
@@ -274,7 +274,7 @@ fun PrototypeGroupAvatar(
 }
 
 @Composable
-fun PrototypeSearchBar(
+fun STSearchBar(
     value: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -332,7 +332,7 @@ fun PrototypeSearchBar(
 }
 
 @Composable
-fun PrototypeChipRow(
+fun STChipRow(
     items: List<String>,
     selectedIndex: Int,
     onSelected: (Int) -> Unit,
@@ -355,7 +355,7 @@ fun PrototypeChipRow(
 }
 
 @Composable
-fun PrototypeSectionHeader(
+fun STSectionHeader(
     title: String,
     modifier: Modifier = Modifier,
     trailing: @Composable RowScope.() -> Unit = {}
@@ -380,7 +380,7 @@ fun PrototypeSectionHeader(
 }
 
 @Composable
-fun PrototypeListSurface(
+fun STListSurface(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -391,7 +391,7 @@ fun PrototypeListSurface(
 }
 
 @Composable
-fun PrototypeListItem(
+fun STListItem(
     headline: String,
     modifier: Modifier = Modifier,
     supporting: String? = null,
@@ -462,7 +462,7 @@ fun PrototypeListItem(
 }
 
 @Composable
-fun PrototypeTileIcon(
+fun STTileIcon(
     icon: ImageVector,
     modifier: Modifier = Modifier,
     tint: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -481,7 +481,7 @@ fun PrototypeTileIcon(
 }
 
 @Composable
-fun PrototypeStatusDot(
+fun STStatusDot(
     color: Color,
     modifier: Modifier = Modifier
 ) {
@@ -494,7 +494,7 @@ fun PrototypeStatusDot(
 }
 
 @Composable
-fun PrototypeBadge(
+fun STBadge(
     label: String,
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -515,7 +515,7 @@ fun PrototypeBadge(
 }
 
 @Composable
-fun PrototypeAssistPill(
+fun STAssistPill(
     text: String,
     icon: ImageVector? = null,
     onClick: () -> Unit,
@@ -546,7 +546,7 @@ fun PrototypeAssistPill(
 }
 
 @Composable
-fun PrototypeStat(
+fun STStat(
     label: String,
     value: String,
     modifier: Modifier = Modifier,

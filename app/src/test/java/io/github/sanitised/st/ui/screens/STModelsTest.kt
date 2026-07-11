@@ -8,9 +8,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PrototypeModelsTest {
+class STModelsTest {
     @Test
-    fun chatSummaryMapsToPrototypeConversationRow() {
+    fun chatSummaryMapsToSTConversationRow() {
         val row = ChatSummary(
             id = "aria/session",
             characterId = "aria.png",
@@ -19,7 +19,7 @@ class PrototypeModelsTest {
             lastMessage = "那我多加了一份饼干哦，别告诉店长。",
             lastUpdated = 1_700_000_000_000L,
             isPinned = true
-        ).toPrototypeChatItem()
+        ).toSTChatItem()
 
         assertEquals("aria/session", row.id)
         assertEquals("aria.png", row.avatarUrl)
@@ -27,7 +27,7 @@ class PrototypeModelsTest {
         assertEquals("那我多加了一份饼干哦，别告诉店长。", row.preview)
         assertEquals("A", row.initial)
         assertTrue(row.favorite)
-        assertEquals(PrototypeChatKind.DIRECT, row.kind)
+        assertEquals(STChatKind.DIRECT, row.kind)
     }
 
     @Test
@@ -37,25 +37,25 @@ class PrototypeModelsTest {
             characterId = "aria.png",
             characterName = "Aria",
             lastUpdated = 0
-        ).toPrototypeChatItem()
+        ).toSTChatItem()
 
         assertEquals("未知时间", row.time)
     }
 
     @Test
-    fun relativeTimeLabelCoversPrototypeListRows() {
+    fun relativeTimeLabelCoversSTListRows() {
         val now = 1_700_000_000_000L
 
-        assertEquals("未知时间", prototypeRelativeTimeLabel(timestampMs = 0L, nowMs = now))
-        assertEquals("刚才", prototypeRelativeTimeLabel(timestampMs = now - 30_000L, nowMs = now))
-        assertEquals("12 分钟前", prototypeRelativeTimeLabel(timestampMs = now - 12 * 60_000L, nowMs = now))
-        assertEquals("今天", prototypeRelativeTimeLabel(timestampMs = now - 2 * 60 * 60_000L, nowMs = now))
-        assertEquals("昨天", prototypeRelativeTimeLabel(timestampMs = now - 25 * 60 * 60_000L, nowMs = now))
-        assertEquals("3 天前", prototypeRelativeTimeLabel(timestampMs = now - 3 * 24 * 60 * 60_000L, nowMs = now))
+        assertEquals("未知时间", stRelativeTimeLabel(timestampMs = 0L, nowMs = now))
+        assertEquals("刚才", stRelativeTimeLabel(timestampMs = now - 30_000L, nowMs = now))
+        assertEquals("12 分钟前", stRelativeTimeLabel(timestampMs = now - 12 * 60_000L, nowMs = now))
+        assertEquals("今天", stRelativeTimeLabel(timestampMs = now - 2 * 60 * 60_000L, nowMs = now))
+        assertEquals("昨天", stRelativeTimeLabel(timestampMs = now - 25 * 60 * 60_000L, nowMs = now))
+        assertEquals("3 天前", stRelativeTimeLabel(timestampMs = now - 3 * 24 * 60 * 60_000L, nowMs = now))
     }
 
     @Test
-    fun characterSummaryMapsToPrototypeCard() {
+    fun characterSummaryMapsToSTCard() {
         val card = CharacterSummary(
             id = "vex.png",
             name = "Captain Vex",
@@ -64,7 +64,7 @@ class PrototypeModelsTest {
             creatorNotes = "银河走私船 Wraith 号船长",
             isFavorite = true,
             chatSize = 89
-        ).toPrototypeCharacterCard(index = 1)
+        ).toSTCharacterCard(index = 1)
 
         assertEquals("vex.png", card.id)
         assertEquals("vex.png", card.avatarUrl)
@@ -82,21 +82,21 @@ class PrototypeModelsTest {
 
         assertEquals(
             "http://127.0.0.1:8000/thumbnail?type=avatar&file=Aria.png",
-            prototypeAvatarImageUrl(baseUrl, "Aria.png")
+            stAvatarImageUrl(baseUrl, "Aria.png")
         )
         assertEquals(
             "http://127.0.0.1:8000/img/ai4.png",
-            prototypeAvatarImageUrl(baseUrl, "img/ai4.png")
+            stAvatarImageUrl(baseUrl, "img/ai4.png")
         )
         assertEquals(
             "file:/tmp/Aria.png",
-            prototypeAvatarImageUrl(baseUrl, "file:/tmp/Aria.png")
+            stAvatarImageUrl(baseUrl, "file:/tmp/Aria.png")
         )
     }
 
     @Test
     fun characterTagFiltersPreferFrequentUserFacingTags() {
-        val filters = prototypeCharacterTagFilters(
+        val filters = stCharacterTagFilters(
             listOf(
                 CharacterSummary(id = "a.png", name = "A", tags = listOf("v2", "科幻", "日常")),
                 CharacterSummary(id = "b.png", name = "B", tags = listOf("not_dead", "科幻", "奇幻")),
@@ -109,7 +109,7 @@ class PrototypeModelsTest {
 
     @Test
     fun drawerStateReflectsNodeStatus() {
-        val state = PrototypeDrawerState.from(
+        val state = STDrawerState.from(
             status = NodeStatus(NodeState.RUNNING, "Running", port = 8000),
             stLabel = "SillyTavern 1.13.0",
             nodeLabel = "Node 23.10"

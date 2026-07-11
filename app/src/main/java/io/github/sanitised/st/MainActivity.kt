@@ -85,41 +85,41 @@ import androidx.navigation.navArgument
 import io.github.sanitised.st.ui.navigation.DrawerNavItem
 import io.github.sanitised.st.ui.navigation.STNavigationScaffold
 import io.github.sanitised.st.ui.navigation.STRoutes
-import io.github.sanitised.st.ui.screens.PrototypeAvatar
-import io.github.sanitised.st.ui.screens.PrototypeStatusDot
-import io.github.sanitised.st.ui.screens.PrototypeAISettingsScreen
-import io.github.sanitised.st.ui.screens.PrototypeApiConnectionScreen
-import io.github.sanitised.st.ui.screens.PrototypeProviderDetailScreen
-import io.github.sanitised.st.ui.screens.PrototypeCharacterCreateScreen
-import io.github.sanitised.st.ui.screens.PrototypeCharacterLibraryScreen
-import io.github.sanitised.st.ui.screens.PrototypeCharacterProfileScreen
-import io.github.sanitised.st.ui.screens.PrototypeChatListScreen
-import io.github.sanitised.st.ui.screens.PrototypePastChatsScreen
-import io.github.sanitised.st.ui.screens.PrototypeDrawerState
-import io.github.sanitised.st.ui.screens.PrototypeMeScreen
-import io.github.sanitised.st.ui.screens.PrototypeMemoryScreen
-import io.github.sanitised.st.ui.screens.PrototypePersonaScreen
-import io.github.sanitised.st.ui.screens.PrototypeStCoreScreen
-import io.github.sanitised.st.ui.screens.PrototypeWorldInfoScreen
-import io.github.sanitised.st.ui.screens.PrototypeSecretsScreen
-import io.github.sanitised.st.ui.screens.PrototypeExtensionsScreen
-import io.github.sanitised.st.ui.screens.PrototypeAuthorNoteCFGScreen
-import io.github.sanitised.st.ui.screens.PrototypeQuickReplyScreen
-import io.github.sanitised.st.ui.screens.PrototypeAppearanceScreen
-import io.github.sanitised.st.ui.screens.PrototypeGroupChatScreen
-import io.github.sanitised.st.ui.screens.PrototypeLoginScreen
-import io.github.sanitised.st.ui.screens.PrototypeOnboardingScreen
-import io.github.sanitised.st.ui.screens.PrototypeAccountScreen
-import io.github.sanitised.st.ui.screens.PrototypeWorldBookManageScreen
-import io.github.sanitised.st.ui.screens.PrototypeLorebookDetailScreen
-import io.github.sanitised.st.ui.screens.PrototypeWorldEntryEditScreen
-import io.github.sanitised.st.ui.screens.PrototypeWIGlobalSettingsScreen
-import io.github.sanitised.st.ui.screens.PrototypeCharacterFormScreen
-import io.github.sanitised.st.ui.screens.PrototypeAltGreetingsScreen
-import io.github.sanitised.st.ui.screens.PrototypeCharacterAdvancedScreen
-import io.github.sanitised.st.ui.screens.PrototypeBackgroundsScreen
-import io.github.sanitised.st.ui.screens.PrototypeThemeScreen
-import io.github.sanitised.st.ui.screens.PrototypeChatBehaviorScreen
+import io.github.sanitised.st.ui.screens.STAvatar
+import io.github.sanitised.st.ui.screens.STStatusDot
+import io.github.sanitised.st.ui.screens.STAISettingsScreen
+import io.github.sanitised.st.ui.screens.STApiConnectionScreen
+import io.github.sanitised.st.ui.screens.STProviderDetailScreen
+import io.github.sanitised.st.ui.screens.STCharacterCreateScreen
+import io.github.sanitised.st.ui.screens.STCharacterLibraryScreen
+import io.github.sanitised.st.ui.screens.STCharacterProfileScreen
+import io.github.sanitised.st.ui.screens.STChatListScreen
+import io.github.sanitised.st.ui.screens.STPastChatsScreen
+import io.github.sanitised.st.ui.screens.STDrawerState
+import io.github.sanitised.st.ui.screens.STMeScreen
+import io.github.sanitised.st.ui.screens.STMemoryScreen
+import io.github.sanitised.st.ui.screens.STPersonaScreen
+import io.github.sanitised.st.ui.screens.STStCoreScreen
+import io.github.sanitised.st.ui.screens.STWorldInfoScreen
+import io.github.sanitised.st.ui.screens.STSecretsScreen
+import io.github.sanitised.st.ui.screens.STExtensionsScreen
+import io.github.sanitised.st.ui.screens.STAuthorNoteCFGScreen
+import io.github.sanitised.st.ui.screens.STQuickReplyScreen
+import io.github.sanitised.st.ui.screens.STAppearanceScreen
+import io.github.sanitised.st.ui.screens.STGroupChatScreen
+import io.github.sanitised.st.ui.screens.STLoginScreen
+import io.github.sanitised.st.ui.screens.STOnboardingScreen
+import io.github.sanitised.st.ui.screens.STAccountScreen
+import io.github.sanitised.st.ui.screens.STWorldBookManageScreen
+import io.github.sanitised.st.ui.screens.STLorebookDetailScreen
+import io.github.sanitised.st.ui.screens.STWorldEntryEditScreen
+import io.github.sanitised.st.ui.screens.STWIGlobalSettingsScreen
+import io.github.sanitised.st.ui.screens.STCharacterFormScreen
+import io.github.sanitised.st.ui.screens.STAltGreetingsScreen
+import io.github.sanitised.st.ui.screens.STCharacterAdvancedScreen
+import io.github.sanitised.st.ui.screens.STBackgroundsScreen
+import io.github.sanitised.st.ui.screens.STThemeScreen
+import io.github.sanitised.st.ui.screens.STChatBehaviorScreen
 import io.github.sanitised.st.ui.screens.configuredApiConnectionProviderCount
 import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
 import io.github.sanitised.st.ui.components.STConfirmDialog
@@ -166,7 +166,7 @@ private fun STAppDrawerHeader(
     status: NodeStatus
 ) {
     val colors = MaterialTheme.colorScheme
-    val drawerState = PrototypeDrawerState.from(
+    val drawerState = STDrawerState.from(
         status = status,
         stLabel = stLabel,
         nodeLabel = nodeLabel
@@ -180,7 +180,7 @@ private fun STAppDrawerHeader(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PrototypeAvatar(
+                STAvatar(
                     label = "我",
                     size = 56.dp,
                     ringColor = colors.primary
@@ -242,7 +242,7 @@ private fun STAppDrawerHeader(
                             maxLines = 1
                         )
                     }
-                    PrototypeStatusDot(color = if (drawerState.connected) colors.tertiary else colors.outline)
+                    STStatusDot(color = if (drawerState.connected) colors.tertiary else colors.outline)
                 }
             }
         }
@@ -710,7 +710,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             composable(STRoutes.HOME) {
                                 // Replaces the old STAndroidApp dashboard with the prototype ChatListScreen.
-                                PrototypeChatListScreen(
+                                STChatListScreen(
                                     status = statusState.value,
                                     onStart = { startNode() },
                                     onStop = { stopNode() },
@@ -760,7 +760,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.CHARACTERS) {
                                 // The visible route uses the prototype character library surface.
-                                PrototypeCharacterLibraryScreen(
+                                STCharacterLibraryScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onStartService = { startNode() },
@@ -779,7 +779,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.CHARACTER_NEW) {
                                 // CharacterEditScreen remains available for advanced edit routes; creation now uses the prototype CharEdit surface.
-                                PrototypeCharacterCreateScreen(
+                                STCharacterCreateScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onStartService = { startNode() },
@@ -799,7 +799,7 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
                                 if (avatar != null) {
-                                    PrototypeCharacterProfileScreen(
+                                    STCharacterProfileScreen(
                                         status = statusState.value,
                                         baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                         avatar = avatar,
@@ -825,7 +825,7 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
                                 if (avatar != null) {
-                                    PrototypeCharacterProfileScreen(
+                                    STCharacterProfileScreen(
                                         status = statusState.value,
                                         baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                         avatar = avatar,
@@ -851,7 +851,7 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
                                 if (avatar != null) {
-                                    PrototypePastChatsScreen(
+                                    STPastChatsScreen(
                                         status = statusState.value,
                                         baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                         avatar = avatar,
@@ -883,7 +883,7 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
                                 val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }.orEmpty()
-                                PrototypeCharacterFormScreen(
+                                STCharacterFormScreen(
                                     avatar = avatar,
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
@@ -900,7 +900,7 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
                                 val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }.orEmpty()
-                                PrototypeAltGreetingsScreen(
+                                STAltGreetingsScreen(
                                     avatar = avatar,
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
@@ -915,7 +915,7 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
                                 val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }.orEmpty()
-                                PrototypeCharacterAdvancedScreen(
+                                STCharacterAdvancedScreen(
                                     avatar = avatar,
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
@@ -926,7 +926,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.WORLD_INFO) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeWorldInfoScreen(
+                                STWorldInfoScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onStartService = { startNode() },
@@ -939,7 +939,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.WORLD_INFO_MANAGE) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeWorldBookManageScreen(
+                                STWorldBookManageScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -955,7 +955,7 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
                                 val name = backStackEntry.arguments?.getString("name").orEmpty()
-                                PrototypeLorebookDetailScreen(
+                                STLorebookDetailScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     bookName = name,
@@ -973,7 +973,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             ) { backStackEntry ->
                                 BackHandler { navController.popBackStack() }
-                                PrototypeWorldEntryEditScreen(
+                                STWorldEntryEditScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     entryUid = backStackEntry.arguments?.getInt("uid") ?: -1,
@@ -985,7 +985,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.WORLD_INFO_GLOBAL) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeWIGlobalSettingsScreen(
+                                STWIGlobalSettingsScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -995,7 +995,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.PERSONA) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypePersonaScreen(
+                                STPersonaScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -1005,7 +1005,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.PRESETS) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeAISettingsScreen(
+                                STAISettingsScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -1016,7 +1016,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.CONNECTIONS) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeApiConnectionScreen(
+                                STApiConnectionScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -1035,7 +1035,7 @@ class MainActivity : ComponentActivity() {
                             ) { backStackEntry ->
                                 val providerId = backStackEntry.arguments?.getString("providerId")?.let { Uri.decode(it) } ?: "anthropic"
                                 BackHandler { navController.popBackStack() }
-                                PrototypeProviderDetailScreen(
+                                STProviderDetailScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     providerId = providerId,
@@ -1047,7 +1047,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.CHAT_BACKUPS) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeMemoryScreen(
+                                STMemoryScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -1061,7 +1061,7 @@ class MainActivity : ComponentActivity() {
                                         navigateMainTab(STRoutes.HOME)
                                     }
                                 }
-                                PrototypeGroupChatScreen(
+                                STGroupChatScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onOpenGroupChat = openGroupChat,
@@ -1167,7 +1167,7 @@ class MainActivity : ComponentActivity() {
                             }
 
                             composable(STRoutes.SETTINGS) {
-                                PrototypeMeScreen(
+                                STMeScreen(
                                     autoCheckEnabled = viewModel.autoCheckForUpdates.value,
                                     onAutoCheckChanged = { enabled -> viewModel.setAutoCheckForUpdates(enabled) },
                                     autoOpenBrowserEnabled = viewModel.autoOpenBrowserWhenReady.value,
@@ -1213,7 +1213,7 @@ class MainActivity : ComponentActivity() {
                             }
 
                             composable(STRoutes.LOGIN) {
-                                PrototypeLoginScreen(
+                                STLoginScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onClose = { if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME) },
@@ -1234,12 +1234,12 @@ class MainActivity : ComponentActivity() {
                                         launchSingleTop = true
                                     }
                                 }
-                                PrototypeOnboardingScreen(onFinish = goHome, onSkip = goHome)
+                                STOnboardingScreen(onFinish = goHome, onSkip = goHome)
                             }
 
                             composable(STRoutes.ACCOUNT) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeAccountScreen(
+                                STAccountScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -1254,7 +1254,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.BACKGROUNDS) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeBackgroundsScreen(
+                                STBackgroundsScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -1264,7 +1264,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.THEME) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeThemeScreen(
+                                STThemeScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -1274,7 +1274,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.CHAT_BEHAVIOR) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeChatBehaviorScreen(
+                                STChatBehaviorScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -1284,7 +1284,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.SECRETS) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeSecretsScreen(
+                                STSecretsScreen(
                                     status = statusState.value,
                                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                                     onBack = { navController.popBackStack() },
@@ -1294,7 +1294,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.EXTENSIONS) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeExtensionsScreen(
+                                STExtensionsScreen(
                                     onBack = { navController.popBackStack() },
                                     onOpenQuickReplies = { navController.navigate(STRoutes.QUICK_REPLIES) },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
@@ -1303,7 +1303,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.AUTHOR_NOTE) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeAuthorNoteCFGScreen(
+                                STAuthorNoteCFGScreen(
                                     onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
@@ -1311,7 +1311,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.QUICK_REPLIES) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeQuickReplyScreen(
+                                STQuickReplyScreen(
                                     onBack = { navController.popBackStack() },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
@@ -1319,7 +1319,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.APPEARANCE) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeAppearanceScreen(
+                                STAppearanceScreen(
                                     fontSize = viewModel.fontSize.value,
                                     onFontSizeChanged = { size -> viewModel.setFontSize(size) },
                                     reduceMotion = viewModel.reduceMotion.value,
@@ -1384,7 +1384,7 @@ class MainActivity : ComponentActivity() {
 
                             composable(STRoutes.MANAGE_ST) {
                                 BackHandler { navController.popBackStack() }
-                                PrototypeStCoreScreen(
+                                STStCoreScreen(
                                     onBack = { navController.popBackStack() },
                                     status = statusState.value,
                                     stLabel = currentStLabel,

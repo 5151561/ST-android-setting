@@ -225,7 +225,7 @@ private fun LoginHeader(subtitle: String, markSize: androidx.compose.ui.unit.Dp 
 private enum class LoginStage { Select, Password, Recovery }
 
 @Composable
-fun PrototypeLoginScreen(
+fun STLoginScreen(
     status: NodeStatus,
     baseUrl: String,
     onClose: () -> Unit,
@@ -382,7 +382,7 @@ private fun UserRow(u: StUserView, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        PrototypeAvatar(u.name.ifBlank { u.handle }, size = 48.dp, imageUrl = u.avatar, gradient = prototypeGradientFor(u.handle.hashCode()))
+        STAvatar(u.name.ifBlank { u.handle }, size = 48.dp, imageUrl = u.avatar, gradient = stGradientFor(u.handle.hashCode()))
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(u.name.ifBlank { u.handle }, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
@@ -410,11 +410,11 @@ private fun ColumnScope.LoginPassword(
     var password by remember { mutableStateOf("") }
     Spacer(Modifier.height(48.dp))
     Row(Modifier.fillMaxWidth()) {
-        PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+        STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
     }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(12.dp))
-        PrototypeAvatar(user?.name?.ifBlank { user.handle } ?: "用户", size = 88.dp, imageUrl = user?.avatar, gradient = prototypeGradientFor((user?.handle ?: "").hashCode()))
+        STAvatar(user?.name?.ifBlank { user.handle } ?: "用户", size = 88.dp, imageUrl = user?.avatar, gradient = stGradientFor((user?.handle ?: "").hashCode()))
         Spacer(Modifier.height(18.dp))
         Text(user?.name?.ifBlank { user.handle } ?: "用户", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.height(4.dp))
@@ -455,7 +455,7 @@ private fun ColumnScope.LoginRecovery(
     }
     Spacer(Modifier.height(48.dp))
     Row(Modifier.fillMaxWidth()) {
-        PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onCancel)
+        STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onCancel)
     }
     Spacer(Modifier.height(12.dp))
     Icon(Icons.Filled.Key, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
@@ -482,7 +482,7 @@ private fun ColumnScope.LoginRecovery(
 
 // ── 04 初次引导（保持原型：本地引导，不写后端）────────────────────────────────
 @Composable
-fun PrototypeOnboardingScreen(onFinish: () -> Unit, onSkip: () -> Unit) {
+fun STOnboardingScreen(onFinish: () -> Unit, onSkip: () -> Unit) {
     BackHandler(onBack = onSkip)
     var personaName by remember { mutableStateOf("我") }
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -499,7 +499,7 @@ fun PrototypeOnboardingScreen(onFinish: () -> Unit, onSkip: () -> Unit) {
             OnbCard(step = "1", title = "界面语言") { P0Selectish(label = "UI 语言", value = "简体中文") }
             OnbCard(step = "2", title = "你叫什么？", sub = "这会成为你的默认 Persona — 角色眼中的「你」。") {
                 P0TextField(label = "名字", value = personaName, onValueChange = { personaName = it }, trailing = {
-                    PrototypeAvatar(personaName.ifBlank { "我" }, size = 30.dp, gradient = listOf(0xFFFFB871, 0xFF6B3B05))
+                    STAvatar(personaName.ifBlank { "我" }, size = 30.dp, gradient = listOf(0xFFFFB871, 0xFF6B3B05))
                 })
             }
             OnbCard(step = "3", title = "去哪找角色？", sub = "导入 .png / .json 角色卡，或先用内置示例逛逛。") {
@@ -557,7 +557,7 @@ private fun P0Selectish(label: String, value: String) {
 // ── 05–06 账户资料 + 修改密码 ────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrototypeAccountScreen(
+fun STAccountScreen(
     status: NodeStatus,
     baseUrl: String,
     onBack: () -> Unit,
@@ -587,9 +587,9 @@ fun PrototypeAccountScreen(
             modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)
         ) {
             Row(modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                PrototypeIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                 Text("账户", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f).padding(start = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                PrototypeIconButton(Icons.AutoMirrored.Filled.Logout, "退出登录", {
+                STIconButton(Icons.AutoMirrored.Filled.Logout, "退出登录", {
                     // 先向后端注销并清本地会话 cookie，再回登录页（避免沿用旧账户会话）。
                     scope.launch {
                         if (running) runCatching { TavernCoreClient(baseUrl).logoutUser() }
@@ -599,7 +599,7 @@ fun PrototypeAccountScreen(
             }
             Row(modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box {
-                    PrototypeAvatar(name, size = 76.dp, imageUrl = user?.avatar, gradient = prototypeGradientFor(handle.hashCode()))
+                    STAvatar(name, size = 76.dp, imageUrl = user?.avatar, gradient = stGradientFor(handle.hashCode()))
                     Box(
                         modifier = Modifier.align(Alignment.BottomEnd).size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer).border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
                         contentAlignment = Alignment.Center
@@ -624,21 +624,21 @@ fun PrototypeAccountScreen(
                 AccountStatCard("数据目录", "data/$handle", Modifier.weight(1f))
             }
 
-            PrototypeSectionHeader("资料")
-            PrototypeListItem(headline = "显示名", supporting = name, leading = { AccountLead(Icons.Filled.Badge) }, trailing = { Chevron() }, divider = true, onClick = { onShowMessage("修改显示名（后续）") })
-            PrototypeListItem(headline = "Handle", supporting = "@$handle · 登录与数据目录标识，不可改", leading = { AccountLead(Icons.Filled.AlternateEmail) }, divider = true)
-            PrototypeListItem(headline = "修改密码", supporting = "通过恢复码或当前密码修改", leading = { AccountLead(Icons.Filled.Password) }, trailing = { Chevron() }, onClick = { if (running) showPasswordSheet = true else onShowMessage("请先启动服务") })
+            STSectionHeader("资料")
+            STListItem(headline = "显示名", supporting = name, leading = { AccountLead(Icons.Filled.Badge) }, trailing = { Chevron() }, divider = true, onClick = { onShowMessage("修改显示名（后续）") })
+            STListItem(headline = "Handle", supporting = "@$handle · 登录与数据目录标识，不可改", leading = { AccountLead(Icons.Filled.AlternateEmail) }, divider = true)
+            STListItem(headline = "修改密码", supporting = "通过恢复码或当前密码修改", leading = { AccountLead(Icons.Filled.Password) }, trailing = { Chevron() }, onClick = { if (running) showPasswordSheet = true else onShowMessage("请先启动服务") })
 
-            PrototypeSectionHeader("数据")
-            PrototypeListItem(headline = "下载账户备份", supporting = "角色、聊天、设置打包为 .zip", leading = { AccountLead(Icons.Filled.Archive) }, trailing = { Chevron() }, divider = true, onClick = { onShowMessage("账户备份：/api/users/backup（在桌面端下载）") })
-            PrototypeListItem(
+            STSectionHeader("数据")
+            STListItem(headline = "下载账户备份", supporting = "角色、聊天、设置打包为 .zip", leading = { AccountLead(Icons.Filled.Archive) }, trailing = { Chevron() }, divider = true, onClick = { onShowMessage("账户备份：/api/users/backup（在桌面端下载）") })
+            STListItem(
                 headline = "保存设置快照",
                 supporting = "把当前设置存一份快照",
                 leading = { AccountLead(Icons.Filled.SettingsBackupRestore) },
                 trailing = { Chevron() },
                 divider = true,
                 onClick = {
-                    if (!running) { onShowMessage("请先启动服务"); return@PrototypeListItem }
+                    if (!running) { onShowMessage("请先启动服务"); return@STListItem }
                     scope.launch {
                         runCatching { TavernCoreClient(baseUrl).makeSettingsSnapshot() }
                             .onSuccess { onShowMessage("已保存设置快照") }
@@ -646,7 +646,7 @@ fun PrototypeAccountScreen(
                     }
                 }
             )
-            PrototypeListItem(headline = "重置设置", supporting = "恢复出厂设置，角色与聊天保留", leading = { AccountLead(Icons.Filled.RestartAlt, tint = MaterialTheme.colorScheme.error) }, trailing = { Chevron() }, onClick = { onShowMessage("重置设置：/api/users/reset-settings（需二次确认，后续）") })
+            STListItem(headline = "重置设置", supporting = "恢复出厂设置，角色与聊天保留", leading = { AccountLead(Icons.Filled.RestartAlt, tint = MaterialTheme.colorScheme.error) }, trailing = { Chevron() }, onClick = { onShowMessage("重置设置：/api/users/reset-settings（需二次确认，后续）") })
         }
     }
 

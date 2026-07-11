@@ -150,9 +150,9 @@ import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoSummary
-import io.github.sanitised.st.ui.screens.PrototypeAssistPill
-import io.github.sanitised.st.ui.screens.PrototypeAvatar
-import io.github.sanitised.st.ui.screens.PrototypeGroupAvatar
+import io.github.sanitised.st.ui.screens.STAssistPill
+import io.github.sanitised.st.ui.screens.STAvatar
+import io.github.sanitised.st.ui.screens.STGroupAvatar
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -202,14 +202,14 @@ internal fun ChatHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (isGroupMode) {
-                    PrototypeGroupAvatar(
+                    STGroupAvatar(
                         initials = characterName.take(2).map { it.uppercase() }.ifEmpty { listOf("群") },
                         imageUrls = listOf(avatarUrl),
                         baseUrl = baseUrl,
                         size = 36.dp
                     )
                 } else {
-                    PrototypeAvatar(
+                    STAvatar(
                         label = characterName.ifBlank { "?" },
                         imageUrl = avatarUrl,
                         baseUrl = baseUrl,
@@ -481,7 +481,7 @@ internal fun MessageBubble(
         } else {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 val messageAvatarUrl = message.extra.optString("force_avatar").ifBlank { assistantAvatarUrl }
-                PrototypeAvatar(
+                STAvatar(
                     label = message.name.ifBlank { characterName },
                     imageUrl = messageAvatarUrl,
                     baseUrl = baseUrl,
@@ -1023,7 +1023,7 @@ internal fun MessageEditBubble(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 val messageAvatarUrl = message.extra.optString("force_avatar").ifBlank { assistantAvatarUrl }
-                PrototypeAvatar(
+                STAvatar(
                     label = message.name.ifBlank { characterName },
                     imageUrl = messageAvatarUrl,
                     baseUrl = baseUrl,

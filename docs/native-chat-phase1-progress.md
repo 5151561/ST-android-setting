@@ -220,7 +220,7 @@ Kotlin: listChatNamesSkipsNativeBackupFiles / savePrunesOldNativeBackupsForTheSa
 ```text
 chat_runtime_adapter_contract.test.mjs
   group regenerate stop is not blocked behind a long running queued group generation
-PrototypePastChatsScreenTest.filtersNativeBackupsFromVisiblePastChats
+STPastChatsScreenTest.filtersNativeBackupsFromVisiblePastChats
 ```
 
 红：
@@ -234,7 +234,7 @@ Kotlin: Unresolved reference: filterVisibleCharacterChats
 
 1. `handleRegenerate` 的群聊分支改为和单聊分支一致：`regenerateGroup()` 启动后用 Promise 回调上报结果，不再 `await` 整轮群聊生成，因此不会占住命令队列。
 2. `NativeChatRuntime` 的备份名判断从 private 放宽为 module-internal，供 UI 复用。
-3. `PrototypePastChatsScreen.refreshList` 通过 `filterVisibleCharacterChats` 过滤新旧原生备份名，避免备份副本出现在用户可见的历史对话列表。
+3. `STPastChatsScreen.refreshList` 通过 `filterVisibleCharacterChats` 过滤新旧原生备份名，避免备份副本出现在用户可见的历史对话列表。
 
 重构：`no op`。
 
@@ -277,7 +277,7 @@ JS: ctx.chatMetadata.note_prompt undefined（adapter 仍写 authors_note）
 | 原生 ChatSession / Repository 边界 | `NativeChatRuntime` + `NativeChatRepository` + `NativeChatDataSource` | `NativeChatRuntimeTest` |
 | `/api/chats` 读写封装 | `TavernNativeChatDataSource` 包装 `TavernCoreApi` get/save/rename/delete/import/export | `NativeChatRuntime.kt` |
 | 单一写者护栏 | 仍走 Bridge 的写操作前 `reloadChat()` 对齐；adapter 等 reload 完成后再处理后续写命令；fallback message ops 也对齐；单聊/群聊 stop 不被长生成阻塞 | `NativeChatEnginePhase1ContractTest`, `NativeBridgeAlignmentTest`, `chat_runtime_adapter_contract.test.mjs` |
-| 写前 integrity + 退避备份 + 串行化 | `NativeChatRepository.save` 统一负责；生成路径也复用 Repository；备份固定前缀、Repository 命名和过往聊天 UI 过滤、默认保留最近 5 份 | `NativeChatRepositorySafetyTest`, `NativeChatEnginePhase1ContractTest`, `PrototypePastChatsScreenTest` |
+| 写前 integrity + 退避备份 + 串行化 | `NativeChatRepository.save` 统一负责；生成路径也复用 Repository；备份固定前缀、Repository 命名和过往聊天 UI 过滤、默认保留最近 5 份 | `NativeChatRepositorySafetyTest`, `NativeChatEnginePhase1ContractTest`, `STPastChatsScreenTest` |
 | MessageOps | `NativeChatJsonOps` 编辑、删除、隐藏、移动、reasoning、附件/媒体 | `NativeChatJsonOpsTest` |
 | SwipeManager | `NativeChatJsonOps` swipe previous/next/create/delete | `NativeChatJsonOpsTest` |
 | UI 优先原生 runtime | `NativeChatScreen.nativeChatRuntime` 单聊优先，Bridge 仅兜底 | `NativeChatUiRoutingTest`, `NativeChatRuntimeTest` |
@@ -288,7 +288,7 @@ JS: ctx.chatMetadata.note_prompt undefined（adapter 仍写 authors_note）
 ## 4. 验证命令
 
 ```bash
-./gradlew testDebugUnitTest --tests "io.github.sanitised.st.chat.NativeChatJsonOpsTest" --tests "io.github.sanitised.st.chat.NativeChatRuntimeTest" --tests "io.github.sanitised.st.chat.NativeChatRepositorySafetyTest" --tests "io.github.sanitised.st.chat.NativeChatUiRoutingTest" --tests "io.github.sanitised.st.chat.engine.NativeChatEnginePhase1ContractTest" --tests "io.github.sanitised.st.ui.screens.PrototypePastChatsScreenTest"
+./gradlew testDebugUnitTest --tests "io.github.sanitised.st.chat.NativeChatJsonOpsTest" --tests "io.github.sanitised.st.chat.NativeChatRuntimeTest" --tests "io.github.sanitised.st.chat.NativeChatRepositorySafetyTest" --tests "io.github.sanitised.st.chat.NativeChatUiRoutingTest" --tests "io.github.sanitised.st.chat.engine.NativeChatEnginePhase1ContractTest" --tests "io.github.sanitised.st.ui.screens.STPastChatsScreenTest"
 /Users/changlepan/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test app/src/test/js/chat_runtime_adapter_contract.test.mjs
 ```
 

@@ -16,8 +16,8 @@ class ChatInterfaceAuditRegressionTest {
     }
 
     @Test
-    fun prototypeCharacterDetailDoesNotUseFakeFallbackBiography() {
-        val source = File("src/main/java/io/github/sanitised/st/ui/screens/PrototypeCharacterScreens.kt").readText()
+    fun stCharacterDetailDoesNotUseFakeFallbackBiography() {
+        val source = File("src/main/java/io/github/sanitised/st/ui/screens/STCharacterScreens.kt").readText()
 
         listOf(
             "原型演示",
@@ -34,7 +34,7 @@ class ChatInterfaceAuditRegressionTest {
     }
 
     @Test
-    fun drawerBadgesAreComputedInsteadOfStaticPrototypeNumbers() {
+    fun drawerBadgesAreComputedInsteadOfStaticSTNumbers() {
         val source = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
 
         assertFalse(source.contains("badgeText = \"23\""))
@@ -47,7 +47,7 @@ class ChatInterfaceAuditRegressionTest {
 
     @Test
     fun chatListFiltersDoNotClassifyRealChatsByIdSubstring() {
-        val source = File("src/main/java/io/github/sanitised/st/ui/screens/PrototypeHomeScreen.kt").readText()
+        val source = File("src/main/java/io/github/sanitised/st/ui/screens/STHomeScreen.kt").readText()
 
         assertFalse(source.contains("id.contains(\"group\")"))
         assertFalse(source.contains("id.contains(\"checkpoint\")"))
@@ -55,47 +55,47 @@ class ChatInterfaceAuditRegressionTest {
     }
 
     @Test
-    fun prototypeFallbackFactoriesStayRemoved() {
-        val source = File("src/main/java/io/github/sanitised/st/ui/screens/PrototypeModels.kt").readText()
+    fun stFallbackFactoriesStayRemoved() {
+        val source = File("src/main/java/io/github/sanitised/st/ui/screens/STModels.kt").readText()
 
-        assertFalse(source.contains("fun prototypeFallbackChats"))
-        assertFalse(source.contains("fun prototypeFallbackCharacters"))
+        assertFalse(source.contains("fun stFallbackChats"))
+        assertFalse(source.contains("fun stFallbackCharacters"))
     }
 
     @Test
     fun characterLibraryUsesRealTagsAndGuardsOfflineReader() {
-        val source = File("src/main/java/io/github/sanitised/st/ui/screens/PrototypeCharacterScreens.kt").readText()
+        val source = File("src/main/java/io/github/sanitised/st/ui/screens/STCharacterScreens.kt").readText()
 
-        assertTrue(source.contains("prototypeCharacterTagFilters(characters)"))
+        assertTrue(source.contains("stCharacterTagFilters(characters)"))
         assertTrue(source.contains("runCatching { reader.listCharacters() }"))
         assertFalse(source.contains("listOf(\"全部\", \"收藏\", \"最近\", \"日常\", \"奇幻\", \"科幻\", \"历史\")"))
     }
 
     @Test
     fun characterSearchUsesInlineSearchBarInsteadOfDialog() {
-        val characterSource = File("src/main/java/io/github/sanitised/st/ui/screens/PrototypeCharacterScreens.kt").readText()
-        val componentSource = File("src/main/java/io/github/sanitised/st/ui/screens/PrototypeComponents.kt").readText()
+        val characterSource = File("src/main/java/io/github/sanitised/st/ui/screens/STCharacterScreens.kt").readText()
+        val componentSource = File("src/main/java/io/github/sanitised/st/ui/screens/STComponents.kt").readText()
 
         assertFalse(characterSource.contains("searchDialogOpen"))
         assertFalse(characterSource.contains("title = { Text(\"搜索角色\") }"))
-        assertTrue(characterSource.contains("PrototypeSearchBar("))
+        assertTrue(characterSource.contains("STSearchBar("))
         assertTrue(characterSource.contains("onValueChange = { searchQuery = it }"))
-        assertTrue(componentSource.contains("fun PrototypeSearchBar("))
+        assertTrue(componentSource.contains("fun STSearchBar("))
         assertTrue(componentSource.contains("onValueChange: (String) -> Unit"))
     }
 
     @Test
     fun offlineCharacterLibraryCanRenderLocalCharacters() {
-        val source = File("src/main/java/io/github/sanitised/st/ui/screens/PrototypeCharacterScreens.kt").readText()
+        val source = File("src/main/java/io/github/sanitised/st/ui/screens/STCharacterScreens.kt").readText()
 
-        assertFalse(source.contains("!serverRunning -> PrototypeOfflineBlock"))
-        assertTrue(source.contains("!serverRunning && characters.isEmpty() -> PrototypeOfflineBlock"))
+        assertFalse(source.contains("!serverRunning -> STOfflineBlock"))
+        assertTrue(source.contains("!serverRunning && characters.isEmpty() -> STOfflineBlock"))
         assertTrue(source.indexOf("loading ->") < source.indexOf("!serverRunning && characters.isEmpty()"))
     }
 
     @Test
     fun chatListDoesNotRenderUnavailableStreamingOrUnreadState() {
-        val source = File("src/main/java/io/github/sanitised/st/ui/screens/PrototypeHomeScreen.kt").readText()
+        val source = File("src/main/java/io/github/sanitised/st/ui/screens/STHomeScreen.kt").readText()
 
         assertFalse(source.contains("item.streaming"))
         assertFalse(source.contains("item.unread"))
@@ -104,7 +104,7 @@ class ChatInterfaceAuditRegressionTest {
 
     @Test
     fun groupListUsesDedicatedNewGroupRouteWithoutLegacyInlineCreateView() {
-        val source = File("src/main/java/io/github/sanitised/st/ui/screens/PrototypeGroupChatScreen.kt").readText()
+        val source = File("src/main/java/io/github/sanitised/st/ui/screens/STGroupChatScreen.kt").readText()
 
         assertFalse(source.contains("GroupCreateView"))
         assertFalse(source.contains("isCreating"))
@@ -118,11 +118,11 @@ class ChatInterfaceAuditRegressionTest {
         val groupRouteBlock = mainActivity
             .substringAfter("composable(STRoutes.GROUP_CHAT) {")
             .substringBefore("route = STRoutes.GROUP_CHAT_DETAIL")
-        val groupListSource = File("src/main/java/io/github/sanitised/st/ui/screens/PrototypeGroupChatScreen.kt").readText()
+        val groupListSource = File("src/main/java/io/github/sanitised/st/ui/screens/STGroupChatScreen.kt").readText()
 
-        assertTrue(groupRouteBlock.contains("PrototypeGroupChatScreen("))
+        assertTrue(groupRouteBlock.contains("STGroupChatScreen("))
         assertTrue(groupRouteBlock.contains("onOpenGroupChat = openGroupChat"))
-        assertFalse(Regex("""(?<!Prototype)GroupChatScreen\(""").containsMatchIn(groupRouteBlock))
+        assertFalse(Regex("""(?<!ST)GroupChatScreen\(""").containsMatchIn(groupRouteBlock))
         assertTrue(groupListSource.contains("onOpenGroupChat(group.id, group.chatId.takeIf { it.isNotBlank() })"))
     }
 

@@ -149,9 +149,9 @@ import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoSummary
-import io.github.sanitised.st.ui.screens.PrototypeAssistPill
-import io.github.sanitised.st.ui.screens.PrototypeAvatar
-import io.github.sanitised.st.ui.screens.PrototypeGroupAvatar
+import io.github.sanitised.st.ui.screens.STAssistPill
+import io.github.sanitised.st.ui.screens.STAvatar
+import io.github.sanitised.st.ui.screens.STGroupAvatar
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -186,7 +186,7 @@ internal fun ChatQuickStrip(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         actions.forEach { item ->
-            PrototypeAssistPill(
+            STAssistPill(
                 text = item.text,
                 icon = item.icon,
                 onClick = item.onClick,

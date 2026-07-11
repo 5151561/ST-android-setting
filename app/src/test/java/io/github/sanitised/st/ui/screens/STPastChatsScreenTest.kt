@@ -4,7 +4,7 @@ import io.github.sanitised.st.api.CharacterChatSummary
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class PrototypePastChatsScreenTest {
+class STPastChatsScreenTest {
 
     @Test
     fun filtersNativeBackupsFromVisiblePastChats() {

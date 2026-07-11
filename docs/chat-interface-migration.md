@@ -278,10 +278,10 @@ P0 snapshot 尽量小，先服务原生 Chat UI：
 | 导航入口 | `app/src/main/java/io/github/sanitised/st/MainActivity.kt` | Chat tab 从 WebView 页面切到原生 Chat screen；`webViewTargetSaver()` 支持 `rememberSaveable` 跨配置恢复 |
 | Chat UI 辅助 | `app/src/main/java/io/github/sanitised/st/chat/ChatUiState.kt` | 消息过滤（`visibleChatMessages`）、日期标签、滚动目标、消息 key、目标命令 key |
 | WebView 目标 | `app/src/main/java/io/github/sanitised/st/ui/webview/WebViewNavigator.kt` | `WebViewTarget` sealed class：`CHAT`、`CharacterChat(avatar, chatFile?)`、`GroupChat(groupId, chatId?)` |
-| 原型首页 | `app/src/main/java/io/github/sanitised/st/ui/screens/PrototypeHomeScreen.kt` | 对话列表（置顶/全部过滤）、服务状态内联卡片 |
-| 原型群聊 | `app/src/main/java/io/github/sanitised/st/ui/screens/PrototypeGroupChatScreen.kt` | 群聊列表、创建群聊（含 activationStrategy/allowSelfResponses）、打开群聊 |
-| 原型组件 | `app/src/main/java/io/github/sanitised/st/ui/screens/PrototypeComponents.kt` | 可复用 UI 组件：`PrototypeSearchBar`、`PrototypeAvatar`、`PrototypeChipRow` 等 |
-| 原型模型 | `app/src/main/java/io/github/sanitised/st/ui/screens/PrototypeModels.kt` | 数据映射（`ChatSummary.toPrototypeChatItem`、`CharacterSummary.toPrototypeCharacterCard`）、标签过滤 |
+| 原型首页 | `app/src/main/java/io/github/sanitised/st/ui/screens/STHomeScreen.kt` | 对话列表（置顶/全部过滤）、服务状态内联卡片 |
+| 原型群聊 | `app/src/main/java/io/github/sanitised/st/ui/screens/STGroupChatScreen.kt` | 群聊列表、创建群聊（含 activationStrategy/allowSelfResponses）、打开群聊 |
+| 原型组件 | `app/src/main/java/io/github/sanitised/st/ui/screens/STComponents.kt` | 可复用 UI 组件：`STSearchBar`、`STAvatar`、`STChipRow` 等 |
+| 原型模型 | `app/src/main/java/io/github/sanitised/st/ui/screens/STModels.kt` | 数据映射（`ChatSummary.toSTChatItem`、`CharacterSummary.toSTCharacterCard`）、标签过滤 |
 
 ## 6. Chat 界面入口迁移
 
@@ -313,8 +313,8 @@ Web 端角色入口主要在右侧角色面板：
 
 原生端建议拆成：
 
-1. `PrototypeCharacterLibraryScreen`：复用当前原生角色库入口。
-2. `PrototypeCharacterProfileScreen`：历史聊天列表可从这里进入 Chat。
+1. `STCharacterLibraryScreen`：复用当前原生角色库入口。
+2. `STCharacterProfileScreen`：历史聊天列表可从这里进入 Chat。
 3. `NativeChatScreen`：当前角色聊天。
 4. `ChatRuntimeWebViewHost`：不可作为主要视觉 UI，只负责保持 ST runtime。
 
@@ -666,7 +666,7 @@ P1 起，编辑和删除也应通过 Bridge 调用 ST 前端函数，确保：
 ### P1：常规聊天体验 — 🔶 基本可用
 
 1. ✅ Streaming delta 增量更新（`stream.token` 80ms 节流回传，已实现）。
-2. ✅ 新建聊天（`ChatRuntimeBridge.newChat()` Bridge 已通）、聊天文件列表和切换历史聊天（`PrototypePastChatsScreen` 已实现，含搜索、重命名、导出、删除操作）。
+2. ✅ 新建聊天（`ChatRuntimeBridge.newChat()` Bridge 已通）、聊天文件列表和切换历史聊天（`STPastChatsScreen` 已实现，含搜索、重命名、导出、删除操作）。
 3. ✅ 重生成、继续生成（`ChatRuntimeBridge.regenerate()` / `continueGeneration()` 已实现）。
 4. ✅ 消息复制、编辑、删除（长按消息弹出操作 sheet，内联编辑模式，通过 Bridge `message.edit` / `message.delete` 命令同步 ST runtime；删除优先走 ST `deleteMessage()`）。
 5. 🔶 保存 integrity 错误处理（`runtime.save` 可手动触发保存；`save.error` 只能捕获 wrapper 级失败，ST 内部保存失败仍为 best-effort）。
@@ -676,7 +676,7 @@ P1 起，编辑和删除也应通过 Bridge 调用 ST 前端函数，确保：
 ### P2：接近 SillyTavern 核心体验 — 🔶 核心能力已落地
 
 1. 🔶 群聊打开、发送、停止、历史切换。
-   - ✅ 群聊列表和创建（`PrototypeGroupChatScreen` + `TavernCoreClient.createGroup` 含 `activationStrategy`/`allowSelfResponses`/`generationMode`）
+   - ✅ 群聊列表和创建（`STGroupChatScreen` + `TavernCoreClient.createGroup` 含 `activationStrategy`/`allowSelfResponses`/`generationMode`）
    - ✅ 打开群聊导航（`WebViewTarget.GroupChat` + `ChatRuntimeBridge.openGroup()`）
    - ✅ 群聊 NativeChatScreen 中消息按 `message.name` 区分成员；发送/停止复用同一 Bridge 通道；regenerate 分流 `regenerateGroup()`
    - 🔶 群聊长链路仍需真机验证
@@ -912,7 +912,7 @@ bridge 架构反复出现「运行时内存状态 vs 原生/磁盘状态」不�
 | `chat/NativeChatScreen.kt` | 走 `engine`、`settingsDirty` 重载、移除内置 WebView 宿主 |
 | `ui/webview/ChatWebViewScreen.kt` | `enableBackHandler`/`onRuntimeError`，作为常驻隐藏宿主 |
 | `MainActivity.kt` | 常驻运行时宿主、引擎注入（按开关）、`runtimeSettingsDirty`、配置页 `onSettingsChanged` |
-| `UpdateManager.kt`/`MainViewModel.kt`/`PrototypeSystemScreens.kt` | 「原生生成（实验）」开关持久化 + UI |
+| `UpdateManager.kt`/`MainViewModel.kt`/`STSystemScreens.kt` | 「原生生成（实验）」开关持久化 + UI |
 | `test/.../PromptBuilderTest.kt`、`WorldInfoScannerTest.kt`（新） | 提示词组装 + 世界书扫描单测 |
 
 ### v0.12 P3 阶段 C：Itemized Prompts + Data Bank（logprobs 阻塞）（2026-05-31）
@@ -1136,7 +1136,7 @@ bridge 架构反复出现「运行时内存状态 vs 原生/磁盘状态」不�
 send/stop 复用相同 Bridge 通道（`handleSend` 使用 DOM 元素 `send_textarea` + `send_but`，`handleStop` 使用 `ctx.stopGeneration()`），群聊模式下无需特殊处理。regenerate 分流到 `regenerateGroup()`（见上方修正 5）。
 
 UI 增强：
-- `ChatHeader` 新增 `isGroupMode` 参数，群聊模式显示 `PrototypeGroupAvatar` 和"群聊"badge（tertiaryContainer 色）
+- `ChatHeader` 新增 `isGroupMode` 参数，群聊模式显示 `STGroupAvatar` 和"群聊"badge（tertiaryContainer 色）
 - 消息列表中每条消息已通过 `message.name` 显示不同角色名（群聊各角色）
 
 #### C2: 群聊历史聊天切换 ✅
@@ -1212,7 +1212,7 @@ UI 增强：
 
 ### v0.6 历史对话页面（2026-05-29）
 
-实现阶段 B 第一项：聊天文件列表和历史聊天切换 UI（`PrototypePastChatsScreen`）。
+实现阶段 B 第一项：聊天文件列表和历史聊天切换 UI（`STPastChatsScreen`）。
 
 #### 功能
 
@@ -1230,10 +1230,10 @@ UI 增强：
 
 | 文件 | 变更类型 | 说明 |
 |---|---|---|
-| `ui/screens/PrototypePastChatsScreen.kt` | **新增** | 历史对话列表页面（搜索、操作 sheet、重命名/删除对话框、导出分享） |
+| `ui/screens/STPastChatsScreen.kt` | **新增** | 历史对话列表页面（搜索、操作 sheet、重命名/删除对话框、导出分享） |
 | `ui/navigation/STNavGraph.kt` | 修改 | 新增 `PAST_CHATS` 路由和 `pastChats()` 辅助函数 |
 | `MainActivity.kt` | 修改 | 注册 PAST_CHATS 路由、角色详情页传入 `onOpenPastChats` 导航 |
-| `ui/screens/PrototypeCharacterScreens.kt` | 修改 | 角色详情页新增"历史对话"入口卡片 |
+| `ui/screens/STCharacterScreens.kt` | 修改 | 角色详情页新增"历史对话"入口卡片 |
 | `res/xml/file_provider_paths.xml` | 修改 | 新增 `cache-path` 用于聊天导出文件分享 |
 
 #### 消息复制、编辑、删除（2026-05-29）
@@ -1272,7 +1272,7 @@ UI 增强：
 
 ### v0.5 界面审计收口（2026-05-29）
 
-对 Chat 相关的所有原生屏幕（NativeChatScreen、PrototypeHomeScreen、PrototypeCharacterScreens、PrototypeGroupChatScreen 及其二级入口）进行了 4 轮系统性审计，从 22 个问题逐轮收敛到 0 个功能性 bug。
+对 Chat 相关的所有原生屏幕（NativeChatScreen、STHomeScreen、STCharacterScreens、STGroupChatScreen 及其二级入口）进行了 4 轮系统性审计，从 22 个问题逐轮收敛到 0 个功能性 bug。
 
 #### 第一轮（22 个问题）— 假数据和核心导航
 
@@ -1281,21 +1281,21 @@ UI 增强：
 - **FAB 行为修正**：首页 FAB 从"打开第一个聊天"改为"新建对话"（`onNewChat`）
 - **`pendingWebViewTarget` 可持久化**：使用 `rememberSaveable(stateSaver = webViewTargetSaver())` 跨配置变更恢复，saver 基于 `Uri.encode` 和 `|` 分隔符
 - **返回时重置聊天状态**：`navigateMainTab` 和 `onBackToHome` 中调用 `chatStore.reset()`
-- **群聊入口接通**：`PrototypeGroupChatScreen` 的 `onOpenGroupChat` 连接到 `WebViewTarget.GroupChat` 导航
+- **群聊入口接通**：`STGroupChatScreen` 的 `onOpenGroupChat` 连接到 `WebViewTarget.GroupChat` 导航
 
 #### 第二轮（14 个问题）— 模型映射和 API 一致性
 
-- **删除死代码**：`prototypeFallbackChats()` 和 `prototypeFallbackCharacters()` 从 PrototypeModels 中移除
-- **标签从真实数据派生**：新增 `prototypeCharacterTagFilters()` 按频率排序 + 黑名单过滤（排除 `v2`、`not_dead`、`内部:` 前缀、空白标签等）
+- **删除死代码**：`stFallbackChats()` 和 `stFallbackCharacters()` 从 STModels 中移除
+- **标签从真实数据派生**：新增 `stCharacterTagFilters()` 按频率排序 + 黑名单过滤（排除 `v2`、`not_dead`、`内部:` 前缀、空白标签等）
 - **群聊创建增强**：`GroupCreateRequest` 携带 `allowSelfResponses`、`activationStrategy`、`generationMode`；`chatId` 仅在非空时发送
-- **删除无数据支撑的 UI**：`PrototypeChatItem` 移除 `streaming` 和 `unread` 字段及其过滤逻辑
+- **删除无数据支撑的 UI**：`STChatItem` 移除 `streaming` 和 `unread` 字段及其过滤逻辑
 - **置顶语义统一**：`isPinned` 映射为 `favorite`，UI 文案从"收藏"改为"置顶"
 - **CHAT 目标匹配修正**：`WebViewTarget.CHAT` 的 `targetMatchesStore` 从 `true` 改为 `store.chatFile.isNotBlank() || store.characterName.isNotBlank() || store.messages.isNotEmpty()`
 - **GroupChat 目标匹配**：检查 `store.mode == "group"` 且 `identifiersMatch(target.groupId, store.avatarUrl)`
 
 #### 第三轮（8 个问题）— 离线和状态一致性
 
-- **离线角色渲染修复（P1 功能 bug）**：`PrototypeCharacterScreens` 的 `when` 分支重排 — `loading` 优先、然后 `!serverRunning && characters.isEmpty()` 才显示离线提示，有本地数据时正常显示角色网格
+- **离线角色渲染修复（P1 功能 bug）**：`STCharacterScreens` 的 `when` 分支重排 — `loading` 优先、然后 `!serverRunning && characters.isEmpty()` 才显示离线提示，有本地数据时正常显示角色网格
 - **离线数据保护**：`runCatching { reader.listCharacters() }` 保护文件读取异常
 - **标签越界防护**：`LaunchedEffect(filterChips.size, selectedFilter)` 在标签减少时重置 `selectedFilter`
 - **群聊排序**：新建群聊置顶 `listOf(created) + groups.filterNot { it.id == created.id }`
@@ -1304,15 +1304,15 @@ UI 增强：
 
 #### 第四轮（2 个问题）— 最终收尾
 
-- **标签过滤质量**：`prototypeCharacterTagFilters` 增加 trim 后 blank 检查和 `hiddenPrototypeTagFilters` 黑名单
-- **搜索栏 UI 优化**：角色搜索从弹窗 (`AlertDialog`) 迁移到内联 `PrototypeSearchBar` 组件
+- **标签过滤质量**：`stCharacterTagFilters` 增加 trim 后 blank 检查和 `hiddenSTTagFilters` 黑名单
+- **搜索栏 UI 优化**：角色搜索从弹窗 (`AlertDialog`) 迁移到内联 `STSearchBar` 组件
 
 #### 回归测试
 
 新增 15 个回归测试覆盖审计修复：
 
 - `ChatInterfaceAuditRegressionTest`（10 个）：源码扫描确保无硬编码假数据、无死代码复活、过滤逻辑正确、群聊行为符合预期、导航状态清理正确、CHAT 目标匹配不再过宽
-- `PrototypeModelsTest`（5 个）：逻辑测试覆盖 `ChatSummary`/`CharacterSummary` 映射、零时间戳处理、标签频率排序和黑名单过滤、DrawerState 连接状态
+- `STModelsTest`（5 个）：逻辑测试覆盖 `ChatSummary`/`CharacterSummary` 映射、零时间戳处理、标签频率排序和黑名单过滤、DrawerState 连接状态
 
 #### 新增/变更文件汇总
 
@@ -1322,15 +1322,15 @@ UI 增强：
 | `chat/NativeChatScreen.kt` | 修改 | 清除假数据、swipe 控件、快捷操作栏（含不可用反馈）、CHAT/GroupChat 目标匹配修正 |
 | `chat/ChatStore.kt` | 修改 | 新增 `mode` 字段，`applySnapshot` 设置 mode，`reset()` 重置 mode |
 | `chat/ChatRuntimeBridge.kt` | 修改 | 新增 `openGroup(groupId, chatId?)`、`swipePrevious(messageId)`、`swipeNext(messageId)` |
-| `ui/screens/PrototypeModels.kt` | 修改 | 删除 fallback 工厂、新增 `prototypeCharacterTagFilters()`、移除 streaming/unread、置顶语义 |
-| `ui/screens/PrototypeHomeScreen.kt` | 修改 | 移除 streaming/unread UI、过滤只保留"全部"/"置顶" |
-| `ui/screens/PrototypeCharacterScreens.kt` | 修改 | 离线分支重排、真实标签、内联搜索栏、`runCatching` 保护 |
-| `ui/screens/PrototypeGroupChatScreen.kt` | 修改 | toggle 互斥、API 参数完整、排序修正、刷新按钮 |
-| `ui/screens/PrototypeComponents.kt` | 修改 | 新增 `PrototypeSearchBar` 组件 |
+| `ui/screens/STModels.kt` | 修改 | 删除 fallback 工厂、新增 `stCharacterTagFilters()`、移除 streaming/unread、置顶语义 |
+| `ui/screens/STHomeScreen.kt` | 修改 | 移除 streaming/unread UI、过滤只保留"全部"/"置顶" |
+| `ui/screens/STCharacterScreens.kt` | 修改 | 离线分支重排、真实标签、内联搜索栏、`runCatching` 保护 |
+| `ui/screens/STGroupChatScreen.kt` | 修改 | toggle 互斥、API 参数完整、排序修正、刷新按钮 |
+| `ui/screens/STComponents.kt` | 修改 | 新增 `STSearchBar` 组件 |
 | `ui/webview/WebViewNavigator.kt` | 修改 | `WebViewTarget.GroupChat` sealed variant |
 | `MainActivity.kt` | 修改 | `webViewTargetSaver()`、`chatStore.reset()`、`openGroupChat` 导航、动态 drawer badge |
 | `test/.../ChatInterfaceAuditRegressionTest.kt` | **新增** | 10 个源码扫描回归测试 |
-| `test/.../PrototypeModelsTest.kt` | **新增** | 5 个逻辑回归测试 |
+| `test/.../STModelsTest.kt` | **新增** | 5 个逻辑回归测试 |
 
 ### v0.4b 收口（空屏和 runtime 恢复修复）
 
@@ -1341,7 +1341,7 @@ UI 增强：
 3. **WebView reload/dispose 会重置原生 runtime 状态**：`ChatWebViewScreen` 增加 `onRuntimeReset`、`onWebViewDisposed` 回调；页面重载、服务停止、WebView 销毁时，`ChatStore` 会回到 `NOT_READY`，输入栏随之禁用。
 4. **Bridge 命令不再静默丢失**：Kotlin 侧 dispatch 会检测 `window.STAndroidChatRuntime` 是否已挂载；未挂载时回到“正在重新连接”状态。JS 侧 `bridge.error` 也会进入 `ChatStore.runtimeError`。
 5. **消息同步去重**：`ChatStore.addMessage()` 改为按 message id upsert，避免 `message.added` 与 `chat.loaded` snapshot 交错时重复显示消息。
-6. **角色库直达聊天重新接通**：当前界面已迁到 `PrototypeCharacterLibraryScreen` / `PrototypeCharacterProfileScreen`，角色卡和详情页都会进入同一条 `WebViewTarget.CharacterChat` ready 后重放链路。
+6. **角色库直达聊天重新接通**：当前界面已迁到 `STCharacterLibraryScreen` / `STCharacterProfileScreen`，角色卡和详情页都会进入同一条 `WebViewTarget.CharacterChat` ready 后重放链路。
 7. **JS adapter 打开角色/聊天改为 await**：`chat.openCharacter` 会等待 `selectCharacterById()` 和 `openCharacterChat()` 完成后再发 snapshot/result；同时监听 `CHAT_LOADED` 事件并在 send/stop/reload 后主动刷新 snapshot。
 8. **真机反馈后的可见性修复**：最近聊天在 API 暂未实现时回落到本地聊天历史；打开聊天不再保留 demo 分支；Chat 页面切目标时隐藏旧消息并显示正在打开的目标/错误；输入法弹出时输入栏使用 IME inset 抬起，消息列表随键盘出现滚到底部。
 9. **生成状态误判修复**：不再用 `ctx.streamingProcessor` 或 `#mes_stop` 可见性判断是否生成中，改为读取 ST 自己维护的 `body[data-generating]`；如果 ST 处于 `no_connection`，原生发送/继续/重写会显示“还没有连接模型 API”，不会把原生 UI 卡在生成中。
@@ -1357,7 +1357,7 @@ UI 增强：
    - `chat.openCharacter`：从 `ctx.selectCharacterById || window.selectCharacterById` 改为仅 `ctx.selectCharacterById`；`openCharacterChat` 同理
    - `chat.new`：`doNewChat` 是 ES module export 但不在 `getContext()` 上，通过 `import('./script.js').doNewChat()` 动态导入直接调用（v0.7 修正，之前的 DOM 点击方式会触发确认弹窗阻塞）
    - `chat.reload`：**新增实现**，调用 `ctx.reloadCurrentChat()`（返回 Promise，完成后发送 snapshot）
-3. **角色列表直接进入 Chat**：角色库入口新增 `onOpenChat` 回调，点击后直接导航到 Chat 页并打开该角色。v0.4b 后对应实现位于 `PrototypeCharacterLibraryScreen` 的角色卡对话按钮，`MainActivity` 将此回调连接到 `openCharacterChatFromCharacterManagement`。
+3. **角色列表直接进入 Chat**：角色库入口新增 `onOpenChat` 回调，点击后直接导航到 Chat 页并打开该角色。v0.4b 后对应实现位于 `STCharacterLibraryScreen` 的角色卡对话按钮，`MainActivity` 将此回调连接到 `openCharacterChatFromCharacterManagement`。
 
 Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 
@@ -1386,11 +1386,11 @@ Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 | `WebViewNavigator.kt` | 新增 `injectChatRuntimeAdapter()` 从 assets 加载 JS adapter，`resetInjectionState()` 处理页面重载；新增 `WebViewTarget.GroupChat` sealed variant |
 | `ChatWebViewScreen.kt` | 新增 `chatEventHandler` 和 `onWebViewReady` 参数；`onPageFinished` 中注入 adapter；页面 start/dispose 时重置注入状态 |
 | `MainActivity.kt` | Chat tab 替换为 `NativeChatScreen`；创建共享 `ChatStore` 和 `ChatRuntimeBridge`；角色/群聊进入聊天时记录 `WebViewTarget`，等待 runtime ready 后统一重放；`webViewTargetSaver()` 跨配置恢复；`chatStore.reset()` 导航时清理状态 |
-| `PrototypeCharacterScreens.kt` | 角色卡与详情页接入 `onOpenChat`；离线分支重排；真实标签过滤；内联搜索栏 |
-| `PrototypeGroupChatScreen.kt` | 群聊列表和创建（`activationStrategy`/`allowSelfResponses`）、`onOpenGroupChat` 导航、toggle 互斥、排序修正 |
-| `PrototypeModels.kt` | 删除 fallback 工厂、新增 `prototypeCharacterTagFilters()`、移除 streaming/unread、置顶语义修正 |
-| `PrototypeHomeScreen.kt` | 移除 streaming/unread UI 路径、过滤只保留"全部"/"置顶" |
-| `PrototypeComponents.kt` | 新增 `PrototypeSearchBar` 组件 |
+| `STCharacterScreens.kt` | 角色卡与详情页接入 `onOpenChat`；离线分支重排；真实标签过滤；内联搜索栏 |
+| `STGroupChatScreen.kt` | 群聊列表和创建（`activationStrategy`/`allowSelfResponses`）、`onOpenGroupChat` 导航、toggle 互斥、排序修正 |
+| `STModels.kt` | 删除 fallback 工厂、新增 `stCharacterTagFilters()`、移除 streaming/unread、置顶语义修正 |
+| `STHomeScreen.kt` | 移除 streaming/unread UI 路径、过滤只保留"全部"/"置顶" |
+| `STComponents.kt` | 新增 `STSearchBar` 组件 |
 
 #### P0 验收清单对照
 
@@ -1415,7 +1415,7 @@ Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 - **`generation.ended` 后自动刷新 snapshot**：确保生成结束后原生端拿到完整的最终消息
 - **Swipe 控件**（P1）：`ChatRuntimeBridge.swipePrevious(messageId)` / `swipeNext(messageId)` Bridge 命令已通，NativeChatScreen 已有 swipe 按钮 UI
 - **群聊打开**（P2）：`ChatRuntimeBridge.openGroup(groupId, chatId?)` 已实现；`WebViewTarget.GroupChat` 导航和 `webViewTargetSaver` 序列化已通
-- **群聊列表和创建**（P2）：`PrototypeGroupChatScreen` 完整的群聊管理 UI（列表、创建、行为选项）
+- **群聊列表和创建**（P2）：`STGroupChatScreen` 完整的群聊管理 UI（列表、创建、行为选项）
 - **ChatStore 模式支持**（P2）：`mode` 字段区分 `"character"` 和 `"group"`，`applySnapshot` 从 runtime 同步模式
 - **回归测试**：Kotlin 单元测试覆盖 UI 状态关键路径；JS 契约测试覆盖 adapter 删除事件、保存重试和文档保存语义，防止回退
 
@@ -1454,7 +1454,7 @@ Kotlin 侧对应变更：`ChatRuntimeBridge` 新增 `reloadChat()` 方法。
 
 #### 阶段 B：P1 收口
 
-1. ~~聊天文件列表和历史聊天切换 UI~~ ✅ (`PrototypePastChatsScreen`)
+1. ~~聊天文件列表和历史聊天切换 UI~~ ✅ (`STPastChatsScreen`)
 2. ~~消息复制、编辑、删除~~ ✅（长按消息操作 sheet + 内联编辑 + 删除确认）
 3. 保存 integrity 错误处理和用户提示 🔶（`runtime.save` + `SaveErrorBanner` 已有入口；ST 内部保存失败不会抛出，`save.error` 只能 best-effort）
 4. ~~Bridge 超时处理（命令超时提示和重试机制）~~ ✅（`pendingCommands` 超时追踪，按命令类型分级超时）

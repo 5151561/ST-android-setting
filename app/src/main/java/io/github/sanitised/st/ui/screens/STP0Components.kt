@@ -91,7 +91,7 @@ fun P0Scaffold(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (onBack != null) {
-                    PrototypeIconButton(
+                    STIconButton(
                         if (closeIcon) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
                         "返回", onBack
                     )

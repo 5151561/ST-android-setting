@@ -373,13 +373,13 @@ UI 唯一入口，保留四个动作：
 
 | 路由 | 文件 |
 |------|------|
-| `chats/home` | `ui/screens/PrototypeHomeScreen.kt` |
+| `chats/home` | `ui/screens/STHomeScreen.kt` |
 | `chat` | `chat/NativeChatScreen.kt` |
-| `characters` | `ui/screens/PrototypeCharacterScreens.kt` |
-| `tools` | `ui/screens/PrototypeAdvancedScreens.kt` |
-| `me` | `ui/screens/PrototypeSystemScreens.kt` |
+| `characters` | `ui/screens/STCharacterScreens.kt` |
+| `tools` | `ui/screens/STAdvancedScreens.kt` |
+| `me` | `ui/screens/STSystemScreens.kt` |
 | 群聊相关 | `chat/GroupChatScreen.kt`、`chat/GroupSettingsScreen.kt` 等 |
-| 群聊列表 | `ui/screens/PrototypeGroupChatScreen.kt` |
+| 群聊列表 | `ui/screens/STGroupChatScreen.kt` |
 
 ### 主题系统
 
@@ -468,14 +468,14 @@ app/src/main/
 │       │   └── STBottomBar.kt   # 底部导航栏
 │       │
 │       ├── prototype/           # M3 原型界面（迁移中）
-│       │   ├── PrototypeHomeScreen.kt       # 首页
-│       │   ├── PrototypeCharacterScreens.kt # 角色管理
-│       │   ├── PrototypeAdvancedScreens.kt  # 工具页面
-│       │   ├── PrototypeSystemScreens.kt    # 设置页面
-│       │   ├── PrototypeGroupChatScreen.kt  # 群聊列表
-│       │   ├── PrototypePastChatsScreen.kt  # 历史聊天
-│       │   ├── PrototypeComponents.kt       # 通用组件
-│       │   ├── PrototypeModels.kt           # 原型数据模型
+│       │   ├── STHomeScreen.kt       # 首页
+│       │   ├── STCharacterScreens.kt # 角色管理
+│       │   ├── STAdvancedScreens.kt  # 工具页面
+│       │   ├── STSystemScreens.kt    # 设置页面
+│       │   ├── STGroupChatScreen.kt  # 群聊列表
+│       │   ├── STPastChatsScreen.kt  # 历史聊天
+│       │   ├── STComponents.kt       # 通用组件
+│       │   ├── STModels.kt           # 原型数据模型
 │       │   ├── ApiConnectionState.kt        # API 连接状态
 │       │   └── SecretsUiState.kt            # 密钥管理状态
 │       │
