@@ -585,3 +585,81 @@ internal fun ConversationRow(c: DemoConversation, onClick: () -> Unit) {
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────
+// GroupMessageActionSheet — 长按消息的操作面板(复制/编辑/删除)
+// ─────────────────────────────────────────────────────────────
+@Composable
+internal fun GroupMessageActionSheet(
+    message: ChatMessage,
+    onDismiss: () -> Unit,
+    onCopy: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+            Text(
+                "消息操作",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+            Text(
+                text = message.mes.take(80),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                ActionGridItem(icon = Icons.Filled.ContentCopy, label = "复制", onClick = onCopy)
+                ActionGridItem(icon = Icons.Filled.Edit, label = "编辑", onClick = onEdit)
+                ActionGridItem(icon = Icons.Filled.Delete, label = "删除", onClick = onDelete)
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// GroupMessageEditDialog — 编辑消息正文
+// ─────────────────────────────────────────────────────────────
+@Composable
+internal fun GroupMessageEditDialog(
+    initialText: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var draft by remember(initialText) { mutableStateOf(initialText) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("编辑消息") },
+        text = {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3,
+                maxLines = 8
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(draft) },
+                enabled = draft.isNotBlank()
+            ) { Text("保存") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
+}

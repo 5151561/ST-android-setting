@@ -38,6 +38,9 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import android.content.ClipData
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -180,6 +183,10 @@ fun GroupChatScreen(
     var autoSecondsLeft by remember { mutableStateOf(groupState.value.autoDelay) }
     var showSpeakerSheet by remember { mutableStateOf(false) }
     var showConversationSwitcher by remember { mutableStateOf(false) }
+    var actionMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var editingMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var deletingMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    val clipboard = LocalClipboard.current
 
     // 下一位发言者：取第一位未静音成员（自然顺序近似）
     val autoNextSpeaker = membersList.firstOrNull { !it.muted } ?: membersList.firstOrNull()
@@ -299,13 +306,8 @@ fun GroupChatScreen(
         }
     }
 
-    // swipe 切换：更新显示文本并把 swipe_id + mes 落库（按消息序号定位 JSONL 行）。
-    fun applySwipe(uiIndex: Int, newSwipeId: Int) {
-        val msg = threadMessages.getOrNull(uiIndex) ?: return
-        val texts = msg.swipes
-        if (newSwipeId !in texts.indices) return
-        val newText = texts[newSwipeId]
-        threadMessages[uiIndex] = msg.copy(swipeId = newSwipeId, mes = newText)
+    // 按消息序号定位 JSONL 行并原位修改后落库;mutate 返回 false 表示删除该行。
+    fun mutateMessageLine(uiIndex: Int, description: String, mutate: (LinkedHashMap<String, Any?>) -> Boolean) {
         scope.launch {
             runCatching {
                 saveMutex.withLock {
@@ -319,16 +321,59 @@ fun GroupChatScreen(
                         if (seen == uiIndex) {
                             val updated = LinkedHashMap<String, Any?>()
                             line.forEach { (k, v) -> updated[k.toString()] = v }
-                            updated["swipe_id"] = newSwipeId
-                            updated["mes"] = newText
-                            chat[j] = updated
+                            if (mutate(updated)) chat[j] = updated else chat.removeAt(j)
                             break
                         }
                     }
                     client.saveGroupChatJsonl(activeChatId, chat)
                 }
-            }.onFailure { onShowMessage(it.message ?: "保存 swipe 失败") }
+            }.onFailure { onShowMessage(it.message ?: "${description}失败") }
         }
+    }
+
+    // swipe 切换：更新显示文本并把 swipe_id + mes 落库（按消息序号定位 JSONL 行）。
+    fun applySwipe(uiIndex: Int, newSwipeId: Int) {
+        val msg = threadMessages.getOrNull(uiIndex) ?: return
+        val texts = msg.swipes
+        if (newSwipeId !in texts.indices) return
+        val newText = texts[newSwipeId]
+        threadMessages[uiIndex] = msg.copy(swipeId = newSwipeId, mes = newText)
+        mutateMessageLine(uiIndex, "保存 swipe ") { updated ->
+            updated["swipe_id"] = newSwipeId
+            updated["mes"] = newText
+            true
+        }
+    }
+
+    // 编辑消息正文:同步更新当前 swipe 版本(若有),与上游编辑语义一致。
+    fun applyEdit(uiIndex: Int, newText: String) {
+        val msg = threadMessages.getOrNull(uiIndex) ?: return
+        val updatedSwipes = if (msg.swipes.isNotEmpty() && msg.swipeId in msg.swipes.indices) {
+            msg.swipes.toMutableList().also { it[msg.swipeId] = newText }
+        } else {
+            msg.swipes
+        }
+        threadMessages[uiIndex] = msg.copy(mes = newText, swipes = updatedSwipes)
+        mutateMessageLine(uiIndex, "保存编辑") { updated ->
+            updated["mes"] = newText
+            val swipes = (updated["swipes"] as? List<*>)?.toMutableList()
+            val sid = (updated["swipe_id"] as? Number)?.toInt() ?: 0
+            if (swipes != null && sid in swipes.indices) {
+                swipes[sid] = newText
+                updated["swipes"] = swipes
+            }
+            true
+        }
+    }
+
+    // 删除消息:本地移除并重排 id(id 始终等于 JSONL 内的消息序号)。
+    fun deleteMessageAt(uiIndex: Int) {
+        if (uiIndex !in threadMessages.indices) return
+        threadMessages.removeAt(uiIndex)
+        for (k in uiIndex until threadMessages.size) {
+            threadMessages[k] = threadMessages[k].copy(id = k)
+        }
+        mutateMessageLine(uiIndex, "删除消息") { false }
     }
 
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -369,8 +414,12 @@ fun GroupChatScreen(
                     }
                     itemsIndexed(threadMessages) { idx, msg ->
                         val isLast = idx == threadMessages.lastIndex
+                        val onBubbleLongPress = {
+                            if (isGenerating) onShowMessage("正在生成回复，请稍候")
+                            else actionMessage = msg
+                        }
                         if (msg.isUser) {
-                            GroupMesUser(msg = msg)
+                            GroupMesUser(msg = msg, onLongPress = onBubbleLongPress)
                         } else {
                             val member = findGroupSpeaker(msg, membersList)
                             if (member != null) {
@@ -391,7 +440,8 @@ fun GroupChatScreen(
                                     },
                                     onRegenerate = { requestGroupReply(member.id) },
                                     onContinue = { requestGroupReply(member.id) },
-                                    onMore = { showSpeakerSheet = true }
+                                    onMore = { showSpeakerSheet = true },
+                                    onLongPress = onBubbleLongPress
                                 )
                             }
                         }
@@ -506,6 +556,51 @@ fun GroupChatScreen(
                     }
                 },
                 onManageAll = { showConversationSwitcher = false }
+            )
+        }
+
+        // 8. 消息长按操作(复制/编辑/删除)
+        actionMessage?.let { msg ->
+            GroupMessageActionSheet(
+                message = msg,
+                onDismiss = { actionMessage = null },
+                onCopy = {
+                    actionMessage = null
+                    scope.launch {
+                        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("消息", msg.mes)))
+                        onShowMessage("已复制到剪贴板")
+                    }
+                },
+                onEdit = {
+                    actionMessage = null
+                    editingMessage = msg
+                },
+                onDelete = {
+                    actionMessage = null
+                    deletingMessage = msg
+                }
+            )
+        }
+        editingMessage?.let { msg ->
+            GroupMessageEditDialog(
+                initialText = msg.mes,
+                onDismiss = { editingMessage = null },
+                onSave = { newText ->
+                    editingMessage = null
+                    val index = threadMessages.indexOfFirst { it.id == msg.id }
+                    if (index >= 0) applyEdit(index, newText)
+                }
+            )
+        }
+        deletingMessage?.let { msg ->
+            DeleteMessageDialog(
+                messageName = msg.name,
+                onConfirm = {
+                    deletingMessage = null
+                    val index = threadMessages.indexOfFirst { it.id == msg.id }
+                    if (index >= 0) deleteMessageAt(index)
+                },
+                onDismiss = { deletingMessage = null }
             )
         }
     }

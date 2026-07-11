@@ -88,7 +88,8 @@ fun GroupMesAssistant(
     onSwipeRight: () -> Unit,
     onRegenerate: () -> Unit,
     onContinue: () -> Unit,
-    onMore: () -> Unit
+    onMore: () -> Unit,
+    onLongPress: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -132,7 +133,8 @@ fun GroupMesAssistant(
             ChatBubbleSurface(
                 isUser = false,
                 maxWidth = (LocalConfiguration.current.screenWidthDp * 0.92f).dp,
-                accent = member.accent
+                accent = member.accent,
+                onLongPress = onLongPress
             ) {
                 // applySwipe 与流式生成都会同步更新 mes,直接渲染即可。
                 ChatRichText(text = msg.mes)
@@ -159,7 +161,7 @@ fun GroupMesAssistant(
 // GroupMesUser — 消息气泡 (用户版)
 // ─────────────────────────────────────────────────────────────
 @Composable
-fun GroupMesUser(msg: ChatMessage) {
+fun GroupMesUser(msg: ChatMessage, onLongPress: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -176,7 +178,7 @@ fun GroupMesUser(msg: ChatMessage) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp)
             )
-            ChatBubbleSurface(isUser = true) {
+            ChatBubbleSurface(isUser = true, onLongPress = onLongPress) {
                 ChatRichText(
                     text = msg.mes,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
