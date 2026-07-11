@@ -60,6 +60,7 @@ import io.github.sanitised.st.chat.engine.NativeGroupGenerator
 import io.github.sanitised.st.chat.engine.pickGroupSpeaker
 import io.github.sanitised.st.chat.ui.AssistantMessageControls
 import io.github.sanitised.st.chat.ui.ChatBubbleSurface
+import io.github.sanitised.st.chat.ui.ChatRichText
 import io.github.sanitised.st.ui.screens.STAvatar
 import io.github.sanitised.st.ui.screens.stAvatarImageUrl
 import coil3.compose.AsyncImage
@@ -72,67 +73,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
-
-// ─────────────────────────────────────────────────────────────
-// 富文本渲染：行内格式转换函数 (*斜体* -> 灰色斜体, "说话" -> Primary色)
-// ─────────────────────────────────────────────────────────────
-fun gfmt(line: String, primaryColor: Color, outlineColor: Color): AnnotatedString {
-    return buildAnnotatedString {
-        var i = 0
-        while (i < line.length) {
-            val ch = line[i]
-            if (ch == '*') {
-                val close = line.indexOf('*', i + 1)
-                if (close > i) {
-                    withStyle(
-                        style = SpanStyle(
-                            color = outlineColor.copy(alpha = 0.85f),
-                            fontStyle = FontStyle.Italic
-                        )
-                    ) {
-                        append(line.substring(i + 1, close))
-                    }
-                    i = close + 1
-                    continue
-                }
-            }
-            if (ch == '"' || ch == '“' || ch == '”') {
-                val close = line.indexOf(if (ch == '“') '”' else ch, i + 1)
-                if (close > i) {
-                    withStyle(style = SpanStyle(color = primaryColor, fontWeight = FontWeight.Medium)) {
-                        append(line.substring(i, close + 1))
-                    }
-                    i = close + 1
-                    continue
-                }
-            }
-            
-            // 普通文本
-            var nextSpecial = i
-            while (nextSpecial < line.length && line[nextSpecial] != '*' && line[nextSpecial] != '"' && line[nextSpecial] != '“') {
-                nextSpecial++
-            }
-            append(line.substring(i, nextSpecial))
-            i = nextSpecial
-        }
-    }
-}
-
-@Composable
-fun GText(text: String) {
-    val primary = MaterialTheme.colorScheme.primary
-    val outline = MaterialTheme.colorScheme.onSurfaceVariant
-    Column {
-        text.split('\n').forEachIndexed { index, line ->
-            if (index > 0) Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = gfmt(line, primary, outline),
-                style = MaterialTheme.typography.bodyMedium,
-                lineHeight = 22.sp
-            )
-        }
-    }
-}
 
 // ─────────────────────────────────────────────────────────────
 // GroupMesAssistant — 消息气泡 (AI 角色版)
@@ -195,7 +135,7 @@ fun GroupMesAssistant(
                 accent = member.accent
             ) {
                 // applySwipe 与流式生成都会同步更新 mes,直接渲染即可。
-                GText(text = msg.mes)
+                ChatRichText(text = msg.mes)
             }
 
             // 最后一发操作行(swipe 切换 + 重写/继续/更多),与单聊共用同一组件
@@ -237,11 +177,9 @@ fun GroupMesUser(msg: ChatMessage) {
                 modifier = Modifier.padding(bottom = 4.dp)
             )
             ChatBubbleSurface(isUser = true) {
-                Text(
+                ChatRichText(
                     text = msg.mes,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    lineHeight = 22.sp
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
         }

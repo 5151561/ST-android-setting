@@ -30,12 +30,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * 单聊与群聊共享的日期/分段分隔条(取代原 DateChip 与 DateChipG)。
@@ -188,6 +195,74 @@ fun AssistantMessageControls(
                 modifier = Modifier.size(18.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+/**
+ * 消息正文的富文本渲染,单聊群聊共用(原群聊 GText/gfmt):
+ * "对话" 高亮为 primary 色、*动作* 转为弱化斜体,其余文本用 [color]。
+ */
+@Composable
+fun ChatRichText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(modifier = modifier) {
+        text.split('\n').forEachIndexed { index, line ->
+            if (index > 0) Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = chatRichLine(line, primary, muted),
+                style = MaterialTheme.typography.bodyMedium,
+                color = color,
+                lineHeight = 22.sp
+            )
+        }
+    }
+}
+
+/** 单行的行内格式转换:*斜体* -> 弱化斜体,"引号对话" -> primary 色。 */
+private fun chatRichLine(line: String, primaryColor: Color, mutedColor: Color): AnnotatedString {
+    return buildAnnotatedString {
+        var i = 0
+        while (i < line.length) {
+            val ch = line[i]
+            if (ch == '*') {
+                val close = line.indexOf('*', i + 1)
+                if (close > i) {
+                    withStyle(
+                        style = SpanStyle(
+                            color = mutedColor.copy(alpha = 0.85f),
+                            fontStyle = FontStyle.Italic
+                        )
+                    ) {
+                        append(line.substring(i + 1, close))
+                    }
+                    i = close + 1
+                    continue
+                }
+            }
+            if (ch == '"' || ch == '“' || ch == '”') {
+                val close = line.indexOf(if (ch == '“') '”' else ch, i + 1)
+                if (close > i) {
+                    withStyle(style = SpanStyle(color = primaryColor, fontWeight = FontWeight.Medium)) {
+                        append(line.substring(i, close + 1))
+                    }
+                    i = close + 1
+                    continue
+                }
+            }
+
+            // 普通文本
+            var nextSpecial = i
+            while (nextSpecial < line.length && line[nextSpecial] != '*' && line[nextSpecial] != '"' && line[nextSpecial] != '“') {
+                nextSpecial++
+            }
+            append(line.substring(i, nextSpecial))
+            i = nextSpecial
         }
     }
 }

@@ -148,6 +148,7 @@ import io.github.sanitised.st.chat.engine.ChatEngine
 import io.github.sanitised.st.chat.ui.AssistantMessageControls
 import io.github.sanitised.st.chat.ui.ChatBubbleSurface
 import io.github.sanitised.st.chat.ui.ChatDateChip
+import io.github.sanitised.st.chat.ui.ChatRichText
 import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
@@ -459,7 +460,7 @@ internal fun MessageBubble(
                 if (showHiddenStyle) {
                     HiddenMessageBadge(modifier = Modifier.padding(bottom = 4.dp))
                 }
-                Text(text = message.mes, style = MaterialTheme.typography.bodyMedium, color = textColor)
+                ChatRichText(text = message.mes, color = textColor)
                 MessageAttachments(
                     media = message.mediaAttachments,
                     files = message.fileAttachments,
@@ -508,7 +509,7 @@ internal fun MessageBubble(
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
                             }
-                            Text(text = message.mes, style = MaterialTheme.typography.bodyMedium, color = textColor)
+                            ChatRichText(text = message.mes, color = textColor)
                         }
                         MessageAttachments(
                             media = message.mediaAttachments,
