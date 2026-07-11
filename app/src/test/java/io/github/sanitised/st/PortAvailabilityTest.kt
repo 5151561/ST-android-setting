@@ -17,4 +17,16 @@ class PortAvailabilityTest {
 
         assertTrue(PortAvailability.isTcpPortAvailable(port))
     }
+
+    @Test
+    fun tcpPortAcceptingReflectsListeningAndClosedPorts() {
+        val socket = ServerSocket(0)
+        val port = socket.localPort
+
+        assertTrue(PortAvailability.isTcpPortAccepting(port))
+
+        socket.close()
+
+        assertFalse(PortAvailability.isTcpPortAccepting(port))
+    }
 }

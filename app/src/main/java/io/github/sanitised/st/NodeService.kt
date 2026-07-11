@@ -27,6 +27,8 @@ class NodeService : Service() {
         private const val CHANNEL_ID = "node_service_v2"
         private const val NOTIFICATION_ID = 1001
         private const val MAX_LOG_BYTES = 10L * 1024L * 1024L
+        private const val SERVER_READY_TIMEOUT_MS = 180_000L
+        private const val SERVER_READY_POLL_INTERVAL_MS = 500L
     }
 
     inner class LocalBinder : Binder() {
@@ -179,8 +181,8 @@ class NodeService : Service() {
             val startedProcess = builder.start()
             process = startedProcess
 
-            updateStatus(NodeState.RUNNING, getString(R.string.node_status_running))
             waitForExitAsync(startedProcess)
+            awaitServerReady(startedProcess, layout.logsDir)
         } catch (e: Exception) {
             appendServiceLog(layout.logsDir, "start failed: ${e.message ?: "unknown error"}")
             updateStatus(NodeState.ERROR, e.message ?: getString(R.string.node_status_start_failed))
@@ -260,6 +262,25 @@ class NodeService : Service() {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
+    }
+
+    /**
+     * SillyTavern 在设备上启动(模块加载、数据迁移)需要数十秒,进程拉起不等于 HTTP 可用。
+     * 轮询到端口真正接受连接后才对外报告 RUNNING,期间对上层保持 STARTING。
+     */
+    private fun awaitServerReady(startedProcess: Process, logsDir: File) {
+        val deadline = System.currentTimeMillis() + SERVER_READY_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            if (stopRequested || process !== startedProcess || !startedProcess.isAlive) return
+            if (PortAvailability.isTcpPortAccepting(status.port)) {
+                updateStatus(NodeState.RUNNING, getString(R.string.node_status_running))
+                return
+            }
+            Thread.sleep(SERVER_READY_POLL_INTERVAL_MS)
+        }
+        if (stopRequested || process !== startedProcess || !startedProcess.isAlive) return
+        appendServiceLog(logsDir, "server readiness probe timed out; reporting RUNNING anyway")
+        updateStatus(NodeState.RUNNING, getString(R.string.node_status_running))
     }
 
     private fun waitForExitAsync(startedProcess: Process) {

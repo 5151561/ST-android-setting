@@ -117,6 +117,10 @@ class ChatStore {
         runtimeError = message
     }
 
+    fun clearRuntimeError() {
+        runtimeError = null
+    }
+
     fun recordSaveError(message: String) {
         saveError = message
     }

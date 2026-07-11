@@ -214,6 +214,9 @@ fun NativeChatScreen(
     LaunchedEffect(status.state) {
         if (status.state != NodeState.RUNNING) {
             store.markRuntimeUnavailable("服务未运行")
+        } else if (store.runtimeState == RuntimeState.NOT_READY) {
+            // 服务就绪后清掉滞留的"服务未运行",否则该错误会永远占据副标题和加载页。
+            store.clearRuntimeError()
         }
     }
 
@@ -225,11 +228,17 @@ fun NativeChatScreen(
     LaunchedEffect(nativeTargetKey) {
         if (nativeTargetKey == null) return@LaunchedEffect
         if (target is ChatTarget.CharacterChat) {
-            runCatching {
-                nativeChatLoader?.openCharacter(target.avatar, target.chatFile) ?: false
-            }.onFailure { error ->
-                store.recordCommandError(error.message ?: "原生加载聊天失败")
-            }.getOrDefault(false)
+            // 服务刚上报就绪时首个请求仍可能瞬时失败,重试兜底,避免一次失败后永久卡住。
+            var lastError: Throwable? = null
+            repeat(3) { attempt ->
+                val result = runCatching {
+                    nativeChatLoader?.openCharacter(target.avatar, target.chatFile) ?: false
+                }
+                if (result.isSuccess) return@LaunchedEffect
+                lastError = result.exceptionOrNull()
+                delay(1000L * (attempt + 1))
+            }
+            store.recordCommandError(lastError?.message ?: "原生加载聊天失败")
         }
     }
 
