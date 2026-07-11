@@ -6,6 +6,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GroupChatMigrationContractTest {
+    // 群聊界面已按职责拆分为多文件(GroupChatScreen + Components/Messages/Sheets/Data),
+    // 契约标记散落其中,守卫读取拆分后的全部群聊源文件。
+    private fun groupChatSources(): String = listOf(
+        "GroupChatScreen.kt",
+        "GroupChatComponents.kt",
+        "GroupChatMessages.kt",
+        "GroupChatSheets.kt",
+        "GroupChatData.kt"
+    ).joinToString("\n") { name ->
+        File("src/main/java/io/github/sanitised/st/chat/$name").readText()
+    }
+
     @Test
     fun migrationPlanUsesRealSillyTavernGroupStrategyValues() {
         val plan = File("../docs/group_chat_migration_plan.md").readText()
@@ -51,7 +63,7 @@ class GroupChatMigrationContractTest {
 
     @Test
     fun nextSpeakerBarReflectsTheSelectedStrategy() {
-        val source = File("src/main/java/io/github/sanitised/st/chat/GroupChatScreen.kt").readText()
+        val source = groupChatSources()
 
         assertFalse(source.contains("if (strategy == \"manual\") \"由你点名\" else \"自动 · 自然顺序\""))
         assertTrue(source.contains("getStrategyActionLabel(strategy)"))
@@ -118,7 +130,7 @@ class GroupChatMigrationContractTest {
 
     @Test
     fun conversationSwitcherListsRealGroupChatsNotDemoArchives() {
-        val screen = File("src/main/java/io/github/sanitised/st/chat/GroupChatScreen.kt").readText()
+        val screen = groupChatSources()
 
         // The switcher is fed real chats and can switch / start a new conversation.
         assertTrue(screen.contains("conversations: List<DemoConversation>"))
