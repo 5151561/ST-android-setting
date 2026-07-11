@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 val fallbackVersionName = "0.4.0"
@@ -122,6 +123,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.yaml:snakeyaml:2.6")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("io.coil-kt.coil3:coil-compose:3.5.0")
     // Coil 3 默认不带网络层,加载 http(s) 图片必须显式引入 OkHttp 网络组件。
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")

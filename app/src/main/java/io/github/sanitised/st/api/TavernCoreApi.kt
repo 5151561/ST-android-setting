@@ -18,7 +18,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
-import org.yaml.snakeyaml.Yaml
 
 
 class TavernCoreClient(
@@ -26,7 +25,6 @@ class TavernCoreClient(
     private val httpClient: OkHttpClient = defaultHttpClient
 ) : TavernCoreApi {
     private val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
-    private val yaml = Yaml()
     private var csrfToken: String? = null
 
     // Generations (streaming or a slow non-stream reply) can run far longer than the
@@ -61,7 +59,7 @@ class TavernCoreClient(
     override suspend fun listCharacters(): List<CharacterSummary> {
         return withContext(Dispatchers.IO) {
             val body = postJson("api/characters/all", "{}")
-            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            val items = StJson.parse(body) as? List<*> ?: emptyList<Any?>()
             items.mapNotNull { item ->
                 val map = item as? Map<*, *> ?: return@mapNotNull null
                 map.toCharacterSummary()
@@ -75,7 +73,7 @@ class TavernCoreClient(
                 path = "api/characters/get",
                 json = jsonObject("avatar_url" to avatar)
             )
-            val map = yaml.load<Any?>(body) as? Map<*, *>
+            val map = StJson.parse(body) as? Map<*, *>
                 ?: throw IllegalStateException("Invalid character response")
             map.toCharacterDetail(fallbackAvatar = avatar)
         }
@@ -128,8 +126,8 @@ class TavernCoreClient(
     override suspend fun getTagSettings(): STTagSettings {
         return withContext(Dispatchers.IO) {
             val body = postJson("api/settings/get", "{}")
-            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
-            val rawSettings = (yaml.load<Any?>(map.stringValue("settings")) as? Map<*, *>)
+            val map = StJson.parse(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val rawSettings = (StJson.parse(map.stringValue("settings")) as? Map<*, *>)
                 ?.toStringKeyMap()
                 ?: emptyMap()
             STTagSettings(
@@ -164,7 +162,7 @@ class TavernCoreClient(
     override suspend fun listSettingsSnapshots(): List<SettingsSnapshot> {
         return withContext(Dispatchers.IO) {
             val body = postJson("api/settings/get-snapshots", "{}")
-            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            val items = StJson.parse(body) as? List<*> ?: emptyList<Any?>()
             items.mapNotNull { item ->
                 val map = item as? Map<*, *> ?: return@mapNotNull null
                 SettingsSnapshot(
@@ -203,7 +201,7 @@ class TavernCoreClient(
     override suspend fun listWorldInfos(): List<WorldInfoSummary> {
         return withContext(Dispatchers.IO) {
             val body = postJson("api/worldinfo/list", "{}")
-            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            val items = StJson.parse(body) as? List<*> ?: emptyList<Any?>()
             items.mapNotNull { item ->
                 val map = item as? Map<*, *> ?: return@mapNotNull null
                 WorldInfoSummary(
@@ -221,7 +219,7 @@ class TavernCoreClient(
                 path = "api/worldinfo/get",
                 json = jsonObject("name" to name)
             )
-            val map = (yaml.load<Any?>(body) as? Map<*, *>)
+            val map = (StJson.parse(body) as? Map<*, *>)
                 ?.toStringKeyMap()
                 ?: emptyMap()
             // 传入的 name 即 file_id（文件名）；记到 fileId 上，保存/删除时按它定位文件。
@@ -256,7 +254,7 @@ class TavernCoreClient(
                 path = "api/files/upload",
                 json = jsonObject("name" to name, "data" to base64Data)
             )
-            val map = (yaml.load<Any?>(body) as? Map<*, *>) ?: emptyMap<Any?, Any?>()
+            val map = (StJson.parse(body) as? Map<*, *>) ?: emptyMap<Any?, Any?>()
             map.stringValue("path")
                 .ifBlank { map.stringValue("url") }
                 .ifBlank { map.stringValue("file") }
@@ -275,7 +273,7 @@ class TavernCoreClient(
     override suspend fun listBackgrounds(): List<String> {
         return withContext(Dispatchers.IO) {
             val body = postJson("api/backgrounds/all", "{}")
-            val loaded = yaml.load<Any?>(body)
+            val loaded = StJson.parse(body)
             val images = when (loaded) {
                 is Map<*, *> -> loaded["images"] as? List<*>
                 is List<*> -> loaded
@@ -306,7 +304,7 @@ class TavernCoreClient(
     override suspend fun listUsers(): List<StUserView> {
         return withContext(Dispatchers.IO) {
             val body = postJson("api/users/list", "{}")
-            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            val items = StJson.parse(body) as? List<*> ?: emptyList<Any?>()
             items.mapNotNull { item ->
                 val m = item as? Map<*, *> ?: return@mapNotNull null
                 StUserView(
@@ -323,7 +321,7 @@ class TavernCoreClient(
     override suspend fun loginUser(handle: String, password: String): String {
         return withContext(Dispatchers.IO) {
             val body = postJson("api/users/login", jsonObject("handle" to handle, "password" to password))
-            (yaml.load<Any?>(body) as? Map<*, *>)?.stringValue("handle")?.ifBlank { handle } ?: handle
+            (StJson.parse(body) as? Map<*, *>)?.stringValue("handle")?.ifBlank { handle } ?: handle
         }
     }
 
@@ -342,7 +340,7 @@ class TavernCoreClient(
     override suspend fun getCurrentUser(): StCurrentUser {
         return withContext(Dispatchers.IO) {
             val body = getJson("api/users/me")
-            val m = (yaml.load<Any?>(body) as? Map<*, *>) ?: emptyMap<Any?, Any?>()
+            val m = (StJson.parse(body) as? Map<*, *>) ?: emptyMap<Any?, Any?>()
             StCurrentUser(
                 handle = m.stringValue("handle"),
                 name = m.stringValue("name").ifBlank { m.stringValue("handle") },
@@ -371,7 +369,7 @@ class TavernCoreClient(
     override suspend fun listPersonas(): List<PersonaProfile> {
         return withContext(Dispatchers.IO) {
             val avatarBody = postJson("api/avatars/get", "{}")
-            val avatars = (yaml.load<Any?>(avatarBody) as? List<*>)
+            val avatars = (StJson.parse(avatarBody) as? List<*>)
                 ?.mapNotNull { it as? String }
                 ?: emptyList()
             val settings = fetchSettings()
@@ -429,7 +427,7 @@ class TavernCoreClient(
                 }
                 .build()
             val responseBody = postMultipart("api/avatars/upload", body)
-            val map = yaml.load<Any?>(responseBody) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val map = StJson.parse(responseBody) as? Map<*, *> ?: emptyMap<Any, Any>()
             map.stringValue("path").ifBlank { overwriteName.orEmpty() }
         }
     }
@@ -464,7 +462,7 @@ class TavernCoreClient(
     override suspend fun listSecrets(): List<SecretProviderState> {
         return withContext(Dispatchers.IO) {
             val body = postJson("api/secrets/read", "{}")
-            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val map = StJson.parse(body) as? Map<*, *> ?: emptyMap<Any, Any>()
             val keys = (secretProviderLabels.keys + map.keys.map { it.toString() }).distinct()
             keys.map { key ->
                 val entries = (map[key] as? List<*>)
@@ -497,7 +495,7 @@ class TavernCoreClient(
                     "label" to label
                 )
             )
-            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val map = StJson.parse(body) as? Map<*, *> ?: emptyMap<Any, Any>()
             map.stringValue("id")
         }
     }
@@ -554,7 +552,7 @@ class TavernCoreClient(
         return withContext(Dispatchers.IO) {
             try {
                 val body = postStatusCheck(mode, sourceValue, apiServer)
-                val parsed = yaml.load<Any?>(body)
+                val parsed = StJson.parse(body)
                 val hasError = parsed is Map<*, *> && parsed["error"] == true
                 if (hasError) {
                     val msg = parsed["message"]?.toString()
@@ -610,7 +608,7 @@ class TavernCoreClient(
     }
 
     private fun parseModelList(responseBody: String): List<String> {
-        val parsed = yaml.load<Any?>(responseBody)
+        val parsed = StJson.parse(responseBody)
         val list = when (parsed) {
             is List<*> -> parsed
             is Map<*, *> -> parsed["data"] as? List<*> ?: emptyList<Any?>()
@@ -673,7 +671,7 @@ class TavernCoreClient(
 
     override suspend fun savePreset(apiId: String, name: String, presetJson: String) {
         withContext(Dispatchers.IO) {
-            val preset = yaml.load<Any?>(presetJson) ?: emptyMap<String, Any?>()
+            val preset = StJson.parse(presetJson) ?: emptyMap<String, Any?>()
             postJson(
                 path = "api/presets/save",
                 json = jsonObject(
@@ -783,7 +781,7 @@ class TavernCoreClient(
     override suspend fun listChatBackups(): List<ChatBackupSummary> {
         return withContext(Dispatchers.IO) {
             val body = postJson("api/backups/chat/get", "{}")
-            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            val items = StJson.parse(body) as? List<*> ?: emptyList<Any?>()
             items.mapNotNull { item ->
                 val map = item as? Map<*, *> ?: return@mapNotNull null
                 ChatBackupSummary(
@@ -829,7 +827,7 @@ class TavernCoreClient(
                     "new_name" to newName
                 )
             )
-            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val map = StJson.parse(body) as? Map<*, *> ?: emptyMap<Any, Any>()
             map.stringValue("avatar")
         }
     }
@@ -840,7 +838,7 @@ class TavernCoreClient(
                 path = "api/characters/duplicate",
                 json = jsonObject("avatar_url" to avatar)
             )
-            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val map = StJson.parse(body) as? Map<*, *> ?: emptyMap<Any, Any>()
             map.stringValue("path")
         }
     }
@@ -866,7 +864,7 @@ class TavernCoreClient(
                     "metadata" to true
                 )
             )
-            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            val items = StJson.parse(body) as? List<*> ?: emptyList<Any?>()
             items.mapNotNull { item ->
                 val map = item as? Map<*, *> ?: return@mapNotNull null
                 map.toCharacterChatSummary()
@@ -892,7 +890,7 @@ class TavernCoreClient(
                 }
                 .build()
             val responseBody = postMultipart("api/characters/import", body)
-            val map = yaml.load<Any?>(responseBody) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val map = StJson.parse(responseBody) as? Map<*, *> ?: emptyMap<Any, Any>()
             if (map.booleanValue("error")) {
                 throw IllegalStateException("SillyTavern failed to import character")
             }
@@ -953,7 +951,7 @@ class TavernCoreClient(
                     "is_group" to false
                 )
             )
-            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val map = StJson.parse(body) as? Map<*, *> ?: emptyMap<Any, Any>()
             map.stringValue("sanitizedFileName").ifBlank { renamedFile.removeSuffix(".jsonl") }
         }
     }
@@ -990,7 +988,7 @@ class TavernCoreClient(
                 .addFormDataPart("user_name", "User")
                 .build()
             val responseBody = postMultipart("api/chats/import", body)
-            val map = yaml.load<Any?>(responseBody) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val map = StJson.parse(responseBody) as? Map<*, *> ?: emptyMap<Any, Any>()
             if (map.booleanValue("error")) {
                 throw IllegalStateException("SillyTavern failed to import chat")
             }
@@ -1014,7 +1012,7 @@ class TavernCoreClient(
                     "is_group" to false
                 )
             )
-            val map = yaml.load<Any?>(body) as? Map<*, *> ?: emptyMap<Any, Any>()
+            val map = StJson.parse(body) as? Map<*, *> ?: emptyMap<Any, Any>()
             val fileName = chatFile.removeSuffix(".jsonl") + "." + format.fileExtension
             CharacterExportFile(
                 fileName = fileName,
@@ -1032,7 +1030,7 @@ class TavernCoreClient(
     override suspend fun listGroups(): List<GroupSummary> {
         return withContext(Dispatchers.IO) {
             val body = postJson("api/groups/all", "{}")
-            val items = yaml.load<Any?>(body) as? List<*> ?: emptyList<Any?>()
+            val items = StJson.parse(body) as? List<*> ?: emptyList<Any?>()
             items.mapNotNull { item ->
                 val map = item as? Map<*, *> ?: return@mapNotNull null
                 map.toGroupSummary()
@@ -1061,7 +1059,7 @@ class TavernCoreClient(
                 path = "api/groups/create",
                 json = jsonValue(payload)
             )
-            val map = yaml.load<Any?>(body) as? Map<*, *>
+            val map = StJson.parse(body) as? Map<*, *>
                 ?: throw IllegalStateException("Invalid group response")
             map.toGroupSummary()
         }
@@ -1114,7 +1112,7 @@ class TavernCoreClient(
                 )
             )
             // Found chats return a JSON array [header, ...messages]; a missing file returns {}.
-            when (val parsed = yaml.load<Any?>(body)) {
+            when (val parsed = StJson.parse(body)) {
                 is List<*> -> parsed.map { normalizeJsonValue(it) }.toMutableList()
                 else -> mutableListOf()
             }
@@ -1141,7 +1139,7 @@ class TavernCoreClient(
                 jsonObject("id" to chatId.removeSuffix(".jsonl"))
             )
             // Found chats return a JSON array [header, ...messages]; a missing file returns {} or [].
-            when (val parsed = yaml.load<Any?>(body)) {
+            when (val parsed = StJson.parse(body)) {
                 is List<*> -> parsed.map { normalizeJsonValue(it) }.toMutableList()
                 else -> mutableListOf()
             }
@@ -1163,7 +1161,7 @@ class TavernCoreClient(
     override suspend fun generateChatCompletion(payload: Map<String, Any?>): String =
         withContext(Dispatchers.IO) {
             val body = postJsonForGeneration("api/backends/chat-completions/generate", jsonValue(payload))
-            val map = yaml.load<Any?>(body) as? Map<*, *>
+            val map = StJson.parse(body) as? Map<*, *>
                 ?: throw IllegalStateException("生成响应无法解析")
             map["error"]?.takeIf { it != false }?.let {
                 val message = (it as? Map<*, *>)?.get("message")?.toString()
@@ -1223,7 +1221,7 @@ class TavernCoreClient(
         }
 
     private fun extractTextCompletionResponse(body: String): String {
-        val map = yaml.load<Any?>(body) as? Map<*, *>
+        val map = StJson.parse(body) as? Map<*, *>
             ?: throw IllegalStateException("生成响应无法解析")
         map["error"]?.takeIf { it != false }?.let { error ->
             val message = (error as? Map<*, *>)?.get("message")?.toString()
@@ -1424,7 +1422,7 @@ class TavernCoreClient(
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@runCatching ""
                 val body = response.body.string().orEmpty()
-                val token = (yaml.load<Any?>(body) as? Map<*, *>)
+                val token = (StJson.parse(body) as? Map<*, *>)
                     ?.stringValue("token")
                     .orEmpty()
                 csrfToken = token
@@ -1440,10 +1438,10 @@ class TavernCoreClient(
 
     private fun fetchSettings(): SettingsPayload {
         val body = postJson("api/settings/get", "{}")
-        val response = (yaml.load<Any?>(body) as? Map<*, *>)
+        val response = (StJson.parse(body) as? Map<*, *>)
             ?.toStringKeyMap()
             ?: emptyMap()
-        val settings = (yaml.load<Any?>(response.stringAnyValue("settings")) as? Map<*, *>)
+        val settings = (StJson.parse(response.stringAnyValue("settings")) as? Map<*, *>)
             ?.toStringKeyMap()
             ?: emptyMap()
         return SettingsPayload(response = response, settings = settings)
@@ -1822,38 +1820,10 @@ class TavernCoreClient(
     }
 
     private fun jsonObject(vararg pairs: Pair<String, Any?>): String =
-        pairs.joinToString(separator = ",", prefix = "{", postfix = "}") { (key, value) ->
-            "${quoteJson(key)}:${jsonValue(value)}"
-        }
+        StJson.encodeObject(*pairs)
 
     private fun jsonValue(value: Any?): String =
-        when (value) {
-            null -> "null"
-            is Boolean -> value.toString()
-            is Number -> value.toString()
-            is String -> quoteJson(value)
-            is List<*> -> value.joinToString(separator = ",", prefix = "[", postfix = "]") { jsonValue(it) }
-            is Map<*, *> -> value.entries.joinToString(separator = ",", prefix = "{", postfix = "}") { entry ->
-                "${quoteJson(entry.key.toString())}:${jsonValue(entry.value)}"
-            }
-            else -> quoteJson(value.toString())
-        }
-
-    private fun quoteJson(value: String): String {
-        val escaped = buildString {
-            value.forEach { char ->
-                when (char) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
-                    else -> append(char)
-                }
-            }
-        }
-        return "\"$escaped\""
-    }
+        StJson.encode(value)
 }
 
 private class InMemoryCookieJar : CookieJar {
