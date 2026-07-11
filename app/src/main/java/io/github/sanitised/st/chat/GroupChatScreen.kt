@@ -64,7 +64,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -101,16 +100,6 @@ data class DemoGroupMember(
     val initial: String
 )
 
-data class DemoGroupMessage(
-    val role: String,
-    val speaker: String?, // null if user
-    val mesId: Int,
-    val time: String,
-    val text: String,
-    val swipes: Pair<Int, Int>? = null, // (current_index, total)
-    val swipeTexts: List<String>? = null // 各 swipe 版本文本，与 swipes.first 对应
-)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupChatScreen(
@@ -127,9 +116,10 @@ fun GroupChatScreen(
     val scope = rememberCoroutineScope()
 
     // Real group state, loaded from the local SillyTavern API by [groupId]/[chatId].
+    // 消息与单聊共用 ChatMessage 模型(对齐上游:群聊消息就是带 original_avatar 的普通消息)。
     val groupState = remember { mutableStateOf(emptyDemoGroup(groupId)) }
     val membersList = remember { mutableStateListOf<DemoGroupMember>() }
-    val threadMessages = remember { mutableStateListOf<DemoGroupMessage>() }
+    val threadMessages = remember { mutableStateListOf<ChatMessage>() }
     var activeChatId by remember { mutableStateOf(chatId?.takeIf { it.isNotBlank() } ?: "") }
     var userName by remember { mutableStateOf("User") }
     var loading by remember { mutableStateOf(true) }
@@ -165,26 +155,13 @@ fun GroupChatScreen(
                 initial = memberInitial(name)
             )
         }
-        val nameToId = members.associate { it.name to it.id }
         val jsonl = runCatching { client.getGroupChatJsonl(chatToLoad) }.getOrDefault(mutableListOf())
-        val messages = jsonl.mapNotNull { raw ->
-            val map = raw as? Map<*, *> ?: return@mapNotNull null
-            if (!map.containsKey("mes")) return@mapNotNull null // skip the JSONL header line
-            val isUser = map["is_user"] == true
-            val name = map["name"]?.toString() ?: ""
-            val swipeTexts = (map["swipes"] as? List<*>)?.map { it?.toString() ?: "" }
-            val swipeId = (map["swipe_id"] as? Number)?.toInt() ?: 0
-            val hasSwipes = swipeTexts != null && swipeTexts.size > 1
-            DemoGroupMessage(
-                role = if (isUser) "user" else "assistant",
-                speaker = if (isUser) null else (nameToId[name] ?: name),
-                mesId = 0,
-                time = formatGroupTime(map["send_date"]?.toString()),
-                text = map["mes"]?.toString() ?: "",
-                swipes = if (hasSwipes) Pair(swipeId.coerceIn(0, swipeTexts.size - 1), swipeTexts.size) else null,
-                swipeTexts = if (hasSwipes) swipeTexts else null
-            )
-        }.mapIndexed { index, message -> message.copy(mesId = index) }
+        val messages = jsonl
+            .mapNotNull { raw ->
+                // skip the JSONL header line
+                (raw as? Map<*, *>)?.takeIf { it.containsKey("mes") }
+            }
+            .mapIndexed { index, map -> map.toNativeChatMessage(index) }
 
         groupState.value = group.toDemoGroup()
         membersList.clear(); membersList.addAll(members)
@@ -227,15 +204,7 @@ fun GroupChatScreen(
             return
         }
         val date = groupSendDate()
-        threadMessages.add(
-            DemoGroupMessage(
-                role = "user",
-                speaker = null,
-                mesId = threadMessages.size,
-                time = formatGroupTime(date),
-                text = trimmed
-            )
-        )
+        threadMessages.add(groupUserChatMessage(threadMessages.size, userName, trimmed, date))
         pendingUserSave = scope.launch {
             runCatching {
                 saveMutex.withLock {
@@ -255,7 +224,8 @@ fun GroupChatScreen(
         if (isGenerating || activeChatId.isBlank()) return
         val strategyInt = activationStrategyId(groupState.value.strategy)
         val disabled = membersList.filter { it.muted }.map { it.id }.toSet()
-        val lastSpeaker = threadMessages.lastOrNull { it.role == "assistant" }?.speaker
+        val lastSpeaker = threadMessages.lastOrNull { !it.isUser }
+            ?.let { findGroupSpeaker(it, membersList)?.id }
         val speakerAvatar = memberId
             ?: pickGroupSpeaker(
                 memberAvatars = membersList.map { it.id },
@@ -274,32 +244,12 @@ fun GroupChatScreen(
             return
         }
 
-        // 提示词历史：把当前线程映射为 ChatMessage（assistant 用成员真实名）。
-        val promptHistory = threadMessages.map { m ->
-            val name = if (m.role == "user") userName
-            else membersList.find { it.id == m.speaker }?.name ?: (m.speaker ?: "")
-            ChatMessage(
-                id = m.mesId,
-                name = name,
-                mes = m.text,
-                isUser = m.role == "user",
-                isSystem = false,
-                sendDate = "",
-                swipeId = 0,
-                swipes = emptyList(),
-                extra = JSONObject()
-            )
-        }
+        // 提示词历史:线程消息已经是 ChatMessage,直接快照即可。
+        val promptHistory = threadMessages.toList()
 
         // 乐观空气泡（流式期间输入被禁用，占位始终保持在末尾）。
         threadMessages.add(
-            DemoGroupMessage(
-                role = "assistant",
-                speaker = member.id,
-                mesId = threadMessages.size,
-                time = formatGroupTime(groupSendDate()),
-                text = ""
-            )
+            groupPendingAssistantChatMessage(threadMessages.size, member, groupSendDate())
         )
         isGenerating = true
         scope.launch {
@@ -315,14 +265,14 @@ fun GroupChatScreen(
                     worldInfoName = "",
                     onToken = { cumulative ->
                         val idx = threadMessages.lastIndex
-                        if (idx >= 0 && threadMessages[idx].role == "assistant") {
-                            threadMessages[idx] = threadMessages[idx].copy(text = cumulative)
+                        if (idx >= 0 && !threadMessages[idx].isUser) {
+                            threadMessages[idx] = threadMessages[idx].copy(mes = cumulative)
                         }
                     }
                 )
                 if (reply.text.isBlank()) {
                     val idx = threadMessages.lastIndex
-                    if (idx >= 0 && threadMessages[idx].role == "assistant" && threadMessages[idx].text.isBlank()) {
+                    if (idx >= 0 && !threadMessages[idx].isUser && threadMessages[idx].mes.isBlank()) {
                         threadMessages.removeAt(idx)
                     }
                 } else {
@@ -339,7 +289,7 @@ fun GroupChatScreen(
                 throw e
             } catch (e: Exception) {
                 val idx = threadMessages.lastIndex
-                if (idx >= 0 && threadMessages[idx].role == "assistant" && threadMessages[idx].text.isBlank()) {
+                if (idx >= 0 && !threadMessages[idx].isUser && threadMessages[idx].mes.isBlank()) {
                     threadMessages.removeAt(idx)
                 }
                 onShowMessage(e.message ?: "群聊生成失败")
@@ -352,10 +302,10 @@ fun GroupChatScreen(
     // swipe 切换：更新显示文本并把 swipe_id + mes 落库（按消息序号定位 JSONL 行）。
     fun applySwipe(uiIndex: Int, newSwipeId: Int) {
         val msg = threadMessages.getOrNull(uiIndex) ?: return
-        val texts = msg.swipeTexts ?: return
+        val texts = msg.swipes
         if (newSwipeId !in texts.indices) return
         val newText = texts[newSwipeId]
-        threadMessages[uiIndex] = msg.copy(swipes = Pair(newSwipeId, texts.size), text = newText)
+        threadMessages[uiIndex] = msg.copy(swipeId = newSwipeId, mes = newText)
         scope.launch {
             runCatching {
                 saveMutex.withLock {
@@ -419,10 +369,10 @@ fun GroupChatScreen(
                     }
                     itemsIndexed(threadMessages) { idx, msg ->
                         val isLast = idx == threadMessages.lastIndex
-                        if (msg.role == "user") {
+                        if (msg.isUser) {
                             GroupMesUser(msg = msg)
                         } else {
-                            val member = membersList.find { it.id == msg.speaker }
+                            val member = findGroupSpeaker(msg, membersList)
                             if (member != null) {
                                 GroupMesAssistant(
                                     msg = msg,
@@ -431,15 +381,12 @@ fun GroupChatScreen(
                                     isLast = isLast,
                                     onSwipeLeft = {
                                         val i = threadMessages.indexOf(msg)
-                                        val sw = msg.swipes
-                                        if (i >= 0 && sw != null && sw.first > 0) applySwipe(i, sw.first - 1)
+                                        if (i >= 0 && msg.swipeId > 0) applySwipe(i, msg.swipeId - 1)
                                     },
                                     onSwipeRight = {
                                         val i = threadMessages.indexOf(msg)
-                                        val sw = msg.swipes
-                                        if (i >= 0 && sw != null && sw.first < sw.second - 1) applySwipe(i, sw.first + 1)
+                                        if (i >= 0 && msg.swipeId < msg.swipes.size - 1) applySwipe(i, msg.swipeId + 1)
                                     },
-                                    // 重写 / 继续：交给原生群聊生成（下一阶段接入）
                                     onRegenerate = { requestGroupReply(member.id) },
                                     onContinue = { requestGroupReply(member.id) },
                                     onMore = { showSpeakerSheet = true }

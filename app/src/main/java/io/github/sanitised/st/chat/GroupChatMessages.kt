@@ -138,7 +138,7 @@ fun GText(text: String) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun GroupMesAssistant(
-    msg: DemoGroupMessage,
+    msg: ChatMessage,
     member: DemoGroupMember,
     baseUrl: String,
     isLast: Boolean,
@@ -180,7 +180,7 @@ fun GroupMesAssistant(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = msg.time,
+                    text = formatGroupTime(msg.sendDate),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -203,14 +203,15 @@ fun GroupMesAssistant(
                         .background(member.accent)
                 )
                 Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    val displayText = msg.swipeTexts?.getOrNull(msg.swipes?.first ?: 0) ?: msg.text
-                    GText(text = displayText)
+                    // applySwipe 与流式生成都会同步更新 mes,直接渲染即可。
+                    GText(text = msg.mes)
                 }
             }
             
             // 最后一发 Swipes 动作面板
-            if (isLast && msg.swipes != null) {
-                val (idx, total) = msg.swipes
+            if (isLast && msg.swipes.size > 1) {
+                val idx = msg.swipeId
+                val total = msg.swipes.size
                 Row(
                     modifier = Modifier
                         .padding(top = 6.dp)
@@ -251,7 +252,7 @@ fun GroupMesAssistant(
 // GroupMesUser — 消息气泡 (用户版)
 // ─────────────────────────────────────────────────────────────
 @Composable
-fun GroupMesUser(msg: DemoGroupMessage) {
+fun GroupMesUser(msg: ChatMessage) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -263,7 +264,7 @@ fun GroupMesUser(msg: DemoGroupMessage) {
             horizontalAlignment = Alignment.End
         ) {
             Text(
-                text = "你 · ${msg.time}",
+                text = "你 · ${formatGroupTime(msg.sendDate)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp)
@@ -275,7 +276,7 @@ fun GroupMesUser(msg: DemoGroupMessage) {
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 Text(
-                    text = msg.text,
+                    text = msg.mes,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     lineHeight = 22.sp

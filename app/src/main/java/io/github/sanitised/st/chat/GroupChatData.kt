@@ -155,8 +155,52 @@ internal fun groupAssistantMessageMap(reply: GroupReply, date: String): Map<Stri
         "is_user" to false,
         "is_system" to false,
         "send_date" to date,
+        // 上游群聊消息在顶层携带发言人身份:original_avatar 是 avatar 文件名,
+        // force_avatar 是头像缩略图 URL(web 端渲染直接用它)。
+        "original_avatar" to reply.speakerAvatar,
+        "force_avatar" to groupAvatarThumbnailUrl(reply.speakerAvatar),
         "mes" to reply.text,
         "swipes" to listOf(reply.text),
         "swipe_id" to 0,
         "extra" to linkedMapOf<String, Any?>("api" to reply.api, "model" to reply.model)
+    )
+
+internal fun groupAvatarThumbnailUrl(avatar: String): String =
+    "/thumbnail?type=avatar&file=${java.net.URLEncoder.encode(avatar, Charsets.UTF_8.name())}"
+
+/** 从群聊消息定位发言成员:优先上游 original_avatar 字段,退回按显示名匹配。 */
+internal fun findGroupSpeaker(message: ChatMessage, members: List<DemoGroupMember>): DemoGroupMember? {
+    val avatarId = message.extra.optString("original_avatar")
+    if (avatarId.isNotBlank()) {
+        members.firstOrNull { it.id == avatarId }?.let { return it }
+    }
+    return members.firstOrNull { it.name == message.name }
+}
+
+/** 本地乐观追加的用户消息(与 [groupUserMessageMap] 的落库字段一致)。 */
+internal fun groupUserChatMessage(id: Int, userName: String, text: String, date: String): ChatMessage =
+    ChatMessage(
+        id = id,
+        name = userName,
+        mes = text,
+        isUser = true,
+        isSystem = false,
+        sendDate = date,
+        swipeId = 0,
+        swipes = emptyList(),
+        extra = JSONObject(),
+    )
+
+/** 流式生成期间的乐观占位消息,extra 带 original_avatar 供渲染层定位成员。 */
+internal fun groupPendingAssistantChatMessage(id: Int, member: DemoGroupMember, date: String): ChatMessage =
+    ChatMessage(
+        id = id,
+        name = member.name,
+        mes = "",
+        isUser = false,
+        isSystem = false,
+        sendDate = date,
+        swipeId = 0,
+        swipes = emptyList(),
+        extra = JSONObject().put("original_avatar", member.id),
     )

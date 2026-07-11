@@ -50,7 +50,7 @@ internal fun buildNativeCharacterChatSnapshot(
         chatFile = chatFile,
         isGenerating = false,
         messages = messageRows.mapIndexedNotNull { index, row ->
-            row.asMap()?.toChatMessage(index)
+            row.asMap()?.toNativeChatMessage(index)
         },
         metadata = metadata,
     )
@@ -82,7 +82,8 @@ private fun Map<*, *>?.toSnapshotMetadata(): JSONObject {
         }
 }
 
-private fun Map<*, *>.toChatMessage(id: Int): ChatMessage =
+/** 把 chat JSONL 的一行(宽松 Map 形态)转成 [ChatMessage];单聊与群聊共用。 */
+internal fun Map<*, *>.toNativeChatMessage(id: Int): ChatMessage =
     ChatMessage(
         id = id,
         name = this["name"].asString(),
@@ -92,7 +93,14 @@ private fun Map<*, *>.toChatMessage(id: Int): ChatMessage =
         sendDate = this["send_date"].asString(),
         swipeId = this["swipe_id"].asInt(),
         swipes = this["swipes"].asStringList(),
-        extra = this["extra"].asMap().toJsonObject(),
+        extra = this["extra"].asMap().toJsonObject().apply {
+            // 上游把 original_avatar / force_avatar 存在消息顶层(群聊成员与旁白消息
+            // 靠它们携带说话人身份),ChatMessage 没有对应字段,合并进 extra 供渲染层取用。
+            for (key in listOf("original_avatar", "force_avatar")) {
+                val value = this@toNativeChatMessage[key].asString()
+                if (value.isNotBlank() && !has(key)) put(key, value)
+            }
+        },
     )
 
 private fun Any?.asMap(): Map<*, *>? = this as? Map<*, *>

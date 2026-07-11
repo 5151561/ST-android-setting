@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.takeWhile
 /** A single member's generated reply, ready to persist into the group JSONL. */
 data class GroupReply(
     val speakerName: String,
+    /** 发言成员的 avatar 文件名,对应上游群聊消息的 original_avatar 字段。 */
+    val speakerAvatar: String,
     val text: String,
     val model: String,
     val api: String,
@@ -107,7 +109,13 @@ class NativeGroupGenerator(
             model = model,
             onToken = onToken,
         )
-        return GroupReply(speakerName = character.name, text = reply, model = model, api = api)
+        return GroupReply(
+            speakerName = character.name,
+            speakerAvatar = speakerAvatar,
+            text = reply,
+            model = model,
+            api = api,
+        )
     }
 
     private suspend fun stream(
