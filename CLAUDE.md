@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-ST-android 是一个第三方 SillyTavern Android 客户端。它在设备上通过 foreground service 运行嵌入式 Node.js + SillyTavern 服务端，并用 Jetpack Compose 构建原生 UI 外壳。聊天界面已基本完成从 WebView 到原生 Compose 的迁移：采用 JS Bridge 架构，隐藏 WebView 仅作运行时容器复用 SillyTavern 的聊天语义（提示词组装、世界书、流式生成等），用户可见的聊天 UI 全部由原生 Compose 渲染。P0/P1/P2 + P3 阶段 A/B/C 已落地（详见 `docs/chat-interface-migration.md`），剩余 logprobs（上游阻塞）、TTS/翻译/生图（后续专项）等少量高级能力。
+ST-android 是一个第三方 SillyTavern Android 客户端。它在设备上通过 foreground service 运行嵌入式 Node.js + SillyTavern 服务端（core），并用 Jetpack Compose 构建原生 UI。聊天界面已完成从 WebView 到原生 Compose 的迁移并**退出了 WebView 运行时**（2026-06-24，详见 `docs/native-chat-runtime-exit-status.md`）：提示词组装、世界书扫描、instruct 模板、流式生成等聊天语义全部由原生 Kotlin 实现，直接调用本地 ST 服务端 HTTP API。剩余能力缺口：logprobs（上游阻塞）、TTS/翻译/生图（后续专项）、slash command 与第三方前端扩展（原生架构下不支持）。
 
 ## Build & Test
 
@@ -28,11 +28,11 @@ git submodule update --init --recursive
 
 仅有本地 JVM 单元测试（`app/src/test/`），无 instrumented test。无自定义 lint 配置。
 
-`gradle.properties` 中的 `org.gradle.java.home` 是开发机专用路径，不要在提交中修改。
+`gradle.properties` 中的 `org.gradle.java.home` 是开发机专用路径（当前指向 VSCode redhat.java 扩展自带的 JDK 21，扩展升级后路径会失效，需同步更新该行和 `GradleJavaHomeTest`）。
 
 ## Architecture
 
-**单模块 Gradle 项目**（`app/`）。包名：`io.github.sanitised.st`。
+**单模块 Gradle 项目**（`app/`）。包名：`io.github.sanitised.st`。当前架构详版见 `docs/architecture.md`。
 
 ### 核心运行时
 
@@ -46,26 +46,23 @@ git submodule update --init --recursive
 `MainActivity` 托管 `NavHost`，底部导航定义在 `ui/navigation/STNavGraph.kt`（`STRoutes`）。主要标签页：
 
 - **Home** (`chats/home`) — 仪表盘，状态卡片 + 最近聊天/角色 + 快捷操作。位于 `ui/prototype/PrototypeHomeScreen.kt`。
-- **Chat** (`chat`) — 双层架构：
-  - `ui/webview/ChatWebViewScreen` — WebView 加载 SillyTavern 前端，同时作为聊天运行时容器。
-  - `chat/NativeChatScreen` — 原生 Compose 聊天界面，通过 JS Bridge 与 WebView 运行时通信。
+- **Chat** (`chat`) — `chat/NativeChatScreen`，纯原生 Compose 聊天界面（无 WebView）。
 - **Characters** (`characters`) — 原生 Compose 角色管理：列表、详情、编辑。位于 `ui/prototype/PrototypeCharacterScreens.kt`。
 - **Tools** (`tools`) — 工具页面（世界书、预设、API 连接等）。位于 `ui/prototype/` 下。
 - **Settings** (`me`) — 设置页面。位于 `ui/prototype/PrototypeSystemScreens.kt`。
 
-### Chat 迁移架构（当前进行中）
+### 原生聊天架构
 
-聊天界面正在从纯 WebView 迁移到原生 Compose。核心设计：
+聊天生成完全在原生侧完成，不再依赖 SillyTavern Web 前端：
 
-- **运行时复用**：SillyTavern Web 前端仍在隐藏 WebView 中运行，负责聊天生成语义（提示词组装、世界书、流式生成、扩展注入等）。原生端不直接调用 `/api/backends/*/generate`。
-- **JS Bridge**：`STAndroidBridge`（注入为 `window.STAndroid`）+ `chat_runtime_adapter.js`（assets 中）构成双向通信通道。
-- **chat 包结构**：
-  - `ChatRuntimeBridge` — 管理 WebView 运行时连接，发送命令（生成/停止/swipe 等），接收事件。
-  - `ChatStore` — 聊天状态容器（`RuntimeState`、消息列表、生成状态等），Compose state 驱动。
-  - `ChatBridgeModels` — Bridge 消息协议（`BridgeEvent`、`ChatMessage`、`ChatSnapshot`）。
-  - `NativeChatScreen` — 1v1 聊天原生 UI。
-  - `GroupChatScreen`、`GroupMembersScreen`、`GroupSettingsScreen`、`NewGroupScreen` — 群聊相关。
-- **WebViewTarget** — `ui/webview/WebViewNavigator.kt` 中定义，表示 WebView 导航目标：`CHAT`、`CharacterChat`、`GroupChat`。
+- **`chat/engine/`**：
+  - `NativeChatEngine` — 唯一 `ChatEngine` 实现：设备端组装 prompt，经 `TavernCoreClient` 调 `/api/backends/*/generate`（SSE 流式，含非流式 fallback）。
+  - `NativeGenerationRouter` — 连接页 provider 到 chat/text completion 路由的映射。
+  - `NativeGroupGenerator` — 群聊多角色轮流生成。
+- **`chat/prompt/`**：原生重实现的 ST 生成语义 — `PromptBuilder`（chat completion）、`TextPromptBuilder`（text completion）、`WorldInfoScanner`（世界书扫描）、`InstructTemplate`、`RegexEngine`、`StopStringBuilder`、`ExtensionPromptRegistry`。**这些语义以契约测试对照上游**（`app/src/test/` 下的 `ContractFixtures` 与各 `*ContractTest`），上游升级流程见 `docs/upstream-upgrade.md`。
+- **chat 包其他**：`ChatStore`（Compose state 驱动的聊天状态容器）、`ChatModels`（消息/附件/提示词数据结构）、`NativeChatRuntime`、`QuickReplyRuntime`（slash command 明确不支持）、`DataBankRepository`、`ItemizedPromptStore`。
+- **群聊 UI**：`GroupChatScreen`、`GroupMembersScreen`、`GroupSettingsScreen`、`NewGroupScreen`。
+- **架构守卫**：`NativeRuntimeExitArchitectureTest` 禁止 WebView 运行时代码回流，改聊天架构前先看它。
 
 ### 数据访问 — 双路径
 
@@ -84,8 +81,9 @@ git submodule update --init --recursive
 ## Key Conventions
 
 - UI 语言是中文。字符串资源在 `res/values/strings.xml` 和 `res/values-zh/strings.xml`。
-- Compose + Material 3（`androidx.compose.material3`）。Compose 编译器扩展版本 `1.5.14`，无 Compose compiler plugin。
-- `TavernCoreClient` 中 JSON 构造是手写的，不依赖 JSON 序列化库。Bridge 层使用 `org.json.JSONObject`。
+- Compose + Material 3（`androidx.compose.material3`）。AGP 9（built-in Kotlin，不再应用 `org.jetbrains.kotlin.android` 插件），Compose 编译器由 `org.jetbrains.kotlin.plugin.compose` 插件提供，版本需与 AGP 内嵌的 Kotlin Gradle Plugin 一致（根 `build.gradle.kts` 有注释说明）。
+- `TavernCoreClient` 中 JSON 构造是手写的，不依赖 JSON 序列化库。chat 层 JSON 操作使用 `org.json.JSONObject`。
+- 图片加载用 Coil 3（`coil3.compose.AsyncImage`），网络图片依赖 `coil-network-okhttp` 组件。
 - Debug 变体使用 applicationId 后缀 `.dev`，应用名 "ST dev"。
-- `minSdk = 26`（Android 8.0），`targetSdk = 36`，`compileSdk = 36`。
-- `ui/prototype/` 包含正在迁移的 M3 原型界面（首页、角色、工具、设置等 Compose 屏幕）。
+- `minSdk = 26`（Android 8.0），`targetSdk = 36`，`compileSdk = 37`。
+- `ui/prototype/` 是历史包名，里面是正式的 M3 原生界面（首页、角色、工具、设置等 Compose 屏幕）。

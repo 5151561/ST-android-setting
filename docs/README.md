@@ -27,6 +27,7 @@
 | Chat Phase 进度 | [native-chat-phase0-audit.md](native-chat-phase0-audit.md)、[native-chat-phase1-progress.md](native-chat-phase1-progress.md)、[native-chat-phase2-progress.md](native-chat-phase2-progress.md) | 用于追溯 TDD 和阶段验收记录 |
 | 角色管理迁移 | [M2-character-management-migration.md](M2-character-management-migration.md) | [wiki/Milestone-M2-Characters.md](../wiki/Milestone-M2-Characters.md) 是摘要版 |
 | 群聊迁移 | [group_chat_migration_plan.md](group_chat_migration_plan.md) | 当前作为群聊 REST 和原生生成路线记录 |
+| 上游 SillyTavern 升级流程 | [upstream-upgrade.md](upstream-upgrade.md) | 升级 `SillyTavern/` submodule 时的契约测试与验收清单 |
 | M3 稳定性与源码迁移 | [M3-sillytavern-source-migration-plan.md](M3-sillytavern-source-migration-plan.md) | [wiki/Milestone-M3-Core-Stability.md](../wiki/Milestone-M3-Core-Stability.md) 是摘要版 |
 | 产品范围和早期 PRD | [PRD-native-settings.md](PRD-native-settings.md) | 保留为产品定位、原生页面策略和里程碑源材料 |
 | P3 UI 规格 | [P3-ui-design-spec.md](P3-ui-design-spec.md) | 用于 Reasoning、Tool Calls、Quick Replies 等 UI 细节追溯 |
