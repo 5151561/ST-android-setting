@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Extension
@@ -80,7 +79,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import io.github.sanitised.st.ui.navigation.BottomNavItem
 import io.github.sanitised.st.ui.navigation.DrawerNavItem
 import io.github.sanitised.st.ui.navigation.STNavigationScaffold
 import io.github.sanitised.st.ui.navigation.STRoutes
@@ -139,13 +137,6 @@ import java.io.File
 import java.nio.file.Files
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-
-private val bottomNavItems = listOf(
-    BottomNavItem(STRoutes.HOME, "对话", Icons.AutoMirrored.Filled.Chat),
-    BottomNavItem(STRoutes.CHARACTERS, "角色", Icons.Filled.Groups),
-    BottomNavItem(STRoutes.WORLD_INFO, "世界书", Icons.Filled.Book),
-    BottomNavItem(STRoutes.SETTINGS, "我的", Icons.Filled.AccountCircle)
-)
 
 private val drawerNavItems = listOf(
     DrawerNavItem(STRoutes.HOME, "对话", Icons.AutoMirrored.Filled.Chat),
@@ -303,7 +294,8 @@ class MainActivity : ComponentActivity() {
             val navController = rememberNavController()
             val navBackStackEntry by navController.currentBackStackEntryAsState()
             val currentRoute = navBackStackEntry?.destination?.route
-            val bottomBarSelectedRoute = when (currentRoute) {
+            // 子页面路由折叠到抽屉里对应的父条目,保证抽屉高亮正确。
+            val drawerSelectedRoute = when (currentRoute) {
                 STRoutes.CHAT -> STRoutes.HOME
                 STRoutes.CHARACTER_NEW,
                 STRoutes.CHARACTER_DETAIL,
@@ -311,31 +303,20 @@ class MainActivity : ComponentActivity() {
                 STRoutes.CHAR_FORM,
                 STRoutes.CHAR_GREETINGS,
                 STRoutes.CHAR_ADVANCED -> STRoutes.CHARACTERS
-                STRoutes.WORLD_INFO,
                 STRoutes.WORLD_INFO_MANAGE,
                 STRoutes.WORLD_INFO_BOOK,
                 STRoutes.WORLD_INFO_ENTRY,
                 STRoutes.WORLD_INFO_GLOBAL -> STRoutes.WORLD_INFO
-                STRoutes.PERSONA,
-                STRoutes.PRESETS,
-                STRoutes.CONNECTIONS,
-                STRoutes.CHAT_BACKUPS,
-                STRoutes.GROUP_CHAT,
-                STRoutes.GROUP_CHAT_DETAIL -> STRoutes.SETTINGS
-                STRoutes.LOGS,
-                STRoutes.CONFIG,
-                STRoutes.LEGAL,
-                STRoutes.LICENSE,
-                STRoutes.MANAGE_ST -> STRoutes.SETTINGS
-                STRoutes.SECRETS,
-                STRoutes.EXTENSIONS,
-                STRoutes.AUTHOR_NOTE,
-                STRoutes.QUICK_REPLIES,
-                STRoutes.ACCOUNT,
+                STRoutes.GROUP_CHAT_DETAIL -> STRoutes.GROUP_CHAT
+                STRoutes.SECRETS -> STRoutes.CONNECTIONS
+                STRoutes.QUICK_REPLIES -> STRoutes.EXTENSIONS
                 STRoutes.BACKGROUNDS,
                 STRoutes.THEME,
-                STRoutes.CHAT_BEHAVIOR,
-                STRoutes.APPEARANCE -> STRoutes.SETTINGS
+                STRoutes.CHAT_BEHAVIOR -> STRoutes.APPEARANCE
+                STRoutes.LOGS,
+                STRoutes.CONFIG -> STRoutes.MANAGE_ST
+                STRoutes.LICENSE -> STRoutes.LEGAL
+                STRoutes.ACCOUNT -> STRoutes.SETTINGS
                 else -> currentRoute
             }
             val showNavigationChrome = currentRoute != STRoutes.CHAT &&
@@ -692,9 +673,8 @@ class MainActivity : ComponentActivity() {
 
             STAppTheme(useDarkTheme = useDarkTheme, colorSource = themeColorSource) {
                 STNavigationScaffold(
-                    items = bottomNavItems,
                     drawerItems = dynamicDrawerItems,
-                    currentRoute = bottomBarSelectedRoute,
+                    currentRoute = drawerSelectedRoute,
                     onNavigate = navigateMainTab,
                     showNavigation = showNavigationChrome,
                     snackbarHost = {

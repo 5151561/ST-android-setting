@@ -42,22 +42,24 @@ class Material3NativeUiContractTest {
     }
 
     @Test
-    fun mainNavigationUsesMaterial3BarAndRail() {
-        val bottomBarFile = File("src/main/java/io/github/sanitised/st/ui/navigation/STBottomBar.kt").readText()
+    fun mainNavigationIsDrawerOnlyWithoutBottomBar() {
+        // 底部导航栏与抽屉路由重复,已整体移除;守卫防止回流。
+        val scaffoldFile = File("src/main/java/io/github/sanitised/st/ui/navigation/STNavigationScaffold.kt").readText()
 
-        assertTrue(bottomBarFile.contains("NavigationBar("))
-        assertTrue(bottomBarFile.contains("NavigationBarItem("))
-        assertTrue(bottomBarFile.contains("NavigationRail("))
-        assertTrue(bottomBarFile.contains("NavigationRailItem("))
-        assertFalse(bottomBarFile.contains("clickable { onNavigate"))
+        assertTrue(scaffoldFile.contains("ModalNavigationDrawer("))
+        assertTrue(scaffoldFile.contains("ModalDrawerSheet("))
+        assertFalse(scaffoldFile.contains("NavigationBar("))
+        assertFalse(scaffoldFile.contains("NavigationRail("))
+        assertFalse(scaffoldFile.contains("BottomNavItem"))
+        assertFalse(File("src/main/java/io/github/sanitised/st/ui/navigation/STBottomBar.kt").exists())
     }
 
     @Test
     fun hiddenNavigationDisablesDrawerGestures() {
-        val bottomBarFile = File("src/main/java/io/github/sanitised/st/ui/navigation/STBottomBar.kt").readText()
+        val scaffoldFile = File("src/main/java/io/github/sanitised/st/ui/navigation/STNavigationScaffold.kt").readText()
 
-        assertTrue(bottomBarFile.contains("ModalNavigationDrawer("))
-        assertTrue(bottomBarFile.contains("gesturesEnabled = showNavigation"))
+        assertTrue(scaffoldFile.contains("ModalNavigationDrawer("))
+        assertTrue(scaffoldFile.contains("gesturesEnabled = showNavigation"))
     }
 
     @Test

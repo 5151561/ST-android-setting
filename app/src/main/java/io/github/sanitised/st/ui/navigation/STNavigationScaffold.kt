@@ -21,12 +21,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -44,15 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
-private const val NAVIGATION_RAIL_MIN_WIDTH_DP = 600
-
 val LocalSTOpenDrawer = staticCompositionLocalOf<() -> Unit> { {} }
-
-data class BottomNavItem(
-    val route: String,
-    val label: String,
-    val icon: ImageVector
-)
 
 data class DrawerNavItem(
     val route: String,
@@ -64,9 +50,12 @@ data class DrawerNavItem(
     val danger: Boolean = false
 )
 
+/**
+ * 应用唯一的导航外壳:侧边抽屉(ModalNavigationDrawer)。
+ * 底部导航栏已移除 —— 它与抽屉路由完全重复(见 drawerNavItems),保留两套只会分裂入口心智。
+ */
 @Composable
 fun STNavigationScaffold(
-    items: List<BottomNavItem>,
     drawerItems: List<DrawerNavItem> = emptyList(),
     currentRoute: String?,
     onNavigate: (String) -> Unit,
@@ -75,68 +64,32 @@ fun STNavigationScaffold(
     drawerHeader: @Composable (() -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit
 ) {
-    val useRail = LocalConfiguration.current.screenWidthDp >= NAVIGATION_RAIL_MIN_WIDTH_DP
-    if (useRail && showNavigation) {
-        CompositionLocalProvider(LocalSTOpenDrawer provides {}) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                STNavigationRail(
-                    items = items,
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
+    val closeAndNavigate: (String) -> Unit = { route ->
+        scope.launch { drawerState.close() }
+        onNavigate(route)
+    }
+
+    CompositionLocalProvider(LocalSTOpenDrawer provides openDrawer) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            gesturesEnabled = showNavigation,
+            drawerContent = {
+                STDrawerSheet(
+                    drawerItems = drawerItems,
                     currentRoute = currentRoute,
-                    onNavigate = onNavigate
-                )
-                Scaffold(
-                    modifier = Modifier.weight(1f),
-                    snackbarHost = snackbarHost,
-                    containerColor = MaterialTheme.colorScheme.background,
-                    content = content
+                    onNavigate = closeAndNavigate,
+                    header = drawerHeader
                 )
             }
-        }
-    } else if (useRail) {
-        CompositionLocalProvider(LocalSTOpenDrawer provides {}) {
+        ) {
             Scaffold(
                 snackbarHost = snackbarHost,
                 containerColor = MaterialTheme.colorScheme.background,
                 content = content
             )
-        }
-    } else {
-        val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-        val scope = rememberCoroutineScope()
-        val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
-        val closeAndNavigate: (String) -> Unit = { route ->
-            scope.launch { drawerState.close() }
-            onNavigate(route)
-        }
-
-        CompositionLocalProvider(LocalSTOpenDrawer provides openDrawer) {
-            ModalNavigationDrawer(
-                drawerState = drawerState,
-                gesturesEnabled = showNavigation,
-                drawerContent = {
-                    STDrawerSheet(
-                        drawerItems = drawerItems,
-                        currentRoute = currentRoute,
-                        onNavigate = closeAndNavigate,
-                        header = drawerHeader
-                    )
-                }
-            ) {
-                Scaffold(
-                    bottomBar = {
-                        if (showNavigation) {
-                            STBottomBar(
-                                items = items,
-                                currentRoute = currentRoute,
-                                onNavigate = onNavigate
-                            )
-                        }
-                    },
-                    snackbarHost = snackbarHost,
-                    containerColor = MaterialTheme.colorScheme.background,
-                    content = content
-                )
-            }
         }
     }
 }
@@ -231,77 +184,6 @@ private fun STDrawerItem(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-        }
-    }
-}
-
-@Composable
-fun STBottomBar(
-    items: List<BottomNavItem>,
-    currentRoute: String?,
-    onNavigate: (String) -> Unit
-) {
-    NavigationBar(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(80.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 3.dp
-    ) {
-        items.forEach { item ->
-            val selected = currentRoute == item.route
-            NavigationBarItem(
-                selected = selected,
-                onClick = { onNavigate(item.route) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                    indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                ),
-                icon = {
-                    Icon(
-                        imageVector = item.icon,
-                        contentDescription = item.label
-                    )
-                },
-                label = { Text(text = item.label) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun STNavigationRail(
-    items: List<BottomNavItem>,
-    currentRoute: String?,
-    onNavigate: (String) -> Unit
-) {
-    NavigationRail(
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
-    ) {
-        items.forEach { item ->
-            val selected = currentRoute == item.route
-            NavigationRailItem(
-                modifier = Modifier.padding(vertical = 4.dp),
-                selected = selected,
-                onClick = { onNavigate(item.route) },
-                colors = NavigationRailItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                    indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                ),
-                icon = {
-                    Icon(
-                        imageVector = item.icon,
-                        contentDescription = item.label
-                    )
-                },
-                label = { Text(text = item.label) }
-            )
         }
     }
 }
