@@ -145,6 +145,8 @@ import coil3.compose.AsyncImage
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.chat.engine.ChatEngine
+import io.github.sanitised.st.chat.ui.AssistantMessageControls
+import io.github.sanitised.st.chat.ui.ChatBubbleSurface
 import io.github.sanitised.st.chat.ui.ChatDateChip
 import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.TavernCoreClient
@@ -442,30 +444,17 @@ internal fun MessageBubble(
 ) {
     val isUser = message.isUser
     val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
-    val bubbleColor = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
     val textColor = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-    val shape = RoundedCornerShape(
-        topStart = if (isUser) 18.dp else 4.dp,
-        topEnd = if (isUser) 4.dp else 18.dp,
-        bottomStart = 18.dp,
-        bottomEnd = 18.dp
-    )
     val isToolMessage = message.toolInvocations.isNotEmpty()
     val showHiddenStyle = message.isSystem && !isToolMessage
     val hiddenAlpha = if (showHiddenStyle) 0.5f else 1f
 
     Box(modifier = modifier.fillMaxWidth().alpha(hiddenAlpha), contentAlignment = alignment) {
         if (isUser) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = maxWidth)
-                    .clip(shape)
-                    .combinedClickable(
-                        onClick = {},
-                        onLongClick = onLongPress
-                    )
-                    .background(bubbleColor)
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ChatBubbleSurface(
+                isUser = true,
+                maxWidth = maxWidth,
+                onLongPress = onLongPress
             ) {
                 if (showHiddenStyle) {
                     HiddenMessageBadge(modifier = Modifier.padding(bottom = 4.dp))
@@ -505,16 +494,10 @@ internal fun MessageBubble(
                             HiddenMessageBadge()
                         }
                     }
-                    Column(
-                        modifier = Modifier
-                            .widthIn(max = maxWidth)
-                            .clip(shape)
-                            .combinedClickable(
-                                onClick = {},
-                                onLongClick = onLongPress
-                            )
-                            .background(bubbleColor)
-                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                    ChatBubbleSurface(
+                        isUser = false,
+                        maxWidth = maxWidth,
+                        onLongPress = onLongPress
                     ) {
                         if (isToolMessage) {
                             ToolCallGroup(tools = message.toolInvocations)
@@ -848,68 +831,6 @@ internal fun ToolCallCard(
     }
 }
 
-@Composable
-internal fun AssistantMessageControls(
-    messageId: Int,
-    swipeIndex: Int,
-    swipeCount: Int,
-    onSwipePrevious: (Int) -> Unit,
-    onSwipeNext: (Int) -> Unit,
-    onRegenerate: () -> Unit,
-    onContinue: () -> Unit,
-    onMore: () -> Unit
-) {
-    Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { onSwipePrevious(messageId) }, modifier = Modifier.size(32.dp)) {
-            Icon(
-                Icons.Filled.ChevronLeft,
-                contentDescription = "上一个回复",
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Text(
-            text = "${swipeIndex + 1}/$swipeCount",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.widthIn(min = 30.dp)
-        )
-        IconButton(onClick = { onSwipeNext(messageId) }, modifier = Modifier.size(32.dp)) {
-            Icon(
-                Icons.Filled.ChevronRight,
-                contentDescription = "下一个回复",
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(modifier = Modifier.weight(1f))
-        IconButton(onClick = onRegenerate, modifier = Modifier.size(32.dp)) {
-            Icon(
-                Icons.Filled.Refresh,
-                contentDescription = "重写",
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        IconButton(onClick = onContinue, modifier = Modifier.size(32.dp)) {
-            Icon(
-                Icons.Filled.PlayArrow,
-                contentDescription = "继续",
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        IconButton(onClick = onMore, modifier = Modifier.size(32.dp)) {
-            Icon(
-                Icons.Filled.MoreHoriz,
-                contentDescription = "更多消息操作",
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
 
 @Composable
 internal fun MessageEditBubble(

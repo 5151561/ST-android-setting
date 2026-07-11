@@ -378,7 +378,9 @@ fun GroupChatScreen(
                                     msg = msg,
                                     member = member,
                                     baseUrl = baseUrl,
-                                    isLast = isLast,
+                                    // 与单聊一致:最后一条 AI 消息始终展示操作行(重写/继续也
+                                    // 因此对无 swipe 的消息可用),流式生成期间隐藏。
+                                    showControls = isLast && !isGenerating,
                                     onSwipeLeft = {
                                         val i = threadMessages.indexOf(msg)
                                         if (i >= 0 && msg.swipeId > 0) applySwipe(i, msg.swipeId - 1)

@@ -1,15 +1,39 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package io.github.sanitised.st.chat.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -42,6 +66,127 @@ fun ChatDateChip(
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 fontWeight = if (bold) FontWeight.Bold else null
+            )
+        }
+    }
+}
+
+/**
+ * 单聊与群聊共享的消息气泡外壳:圆角方向、配色、内边距完全一致,
+ * 差异全部收敛为参数——群聊 AI 气泡传 [accent] 得到左侧成员色竖条,
+ * 单聊传 [onLongPress] 得到长按消息操作。
+ */
+@Composable
+fun ChatBubbleSurface(
+    isUser: Boolean,
+    modifier: Modifier = Modifier,
+    maxWidth: Dp = Dp.Unspecified,
+    accent: Color? = null,
+    onLongPress: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(
+        topStart = if (isUser) 18.dp else 4.dp,
+        topEnd = if (isUser) 4.dp else 18.dp,
+        bottomStart = 18.dp,
+        bottomEnd = 18.dp
+    )
+    val background = if (isUser) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+    Box(
+        modifier = modifier
+            .then(if (maxWidth != Dp.Unspecified) Modifier.widthIn(max = maxWidth) else Modifier)
+            .clip(shape)
+            .then(
+                if (onLongPress != null) {
+                    Modifier.combinedClickable(onClick = {}, onLongClick = onLongPress)
+                } else {
+                    Modifier
+                }
+            )
+            .background(background)
+    ) {
+        if (accent != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(2.dp)
+                    .fillMaxHeight()
+                    .background(accent)
+            )
+        }
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            content = content
+        )
+    }
+}
+
+/**
+ * 最后一条 AI 消息下方的操作行(swipe 切换 + 重写/继续/更多),单聊群聊共用。
+ * [swipeIndex]/[swipeCount] 从 0 计数;swipe 回调收到 [messageId] 便于直接落库。
+ */
+@Composable
+fun AssistantMessageControls(
+    messageId: Int,
+    swipeIndex: Int,
+    swipeCount: Int,
+    onSwipePrevious: (Int) -> Unit,
+    onSwipeNext: (Int) -> Unit,
+    onRegenerate: () -> Unit,
+    onContinue: () -> Unit,
+    onMore: () -> Unit
+) {
+    Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { onSwipePrevious(messageId) }, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Filled.ChevronLeft,
+                contentDescription = "上一个回复",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Text(
+            text = "${swipeIndex + 1}/$swipeCount",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(min = 30.dp)
+        )
+        IconButton(onClick = { onSwipeNext(messageId) }, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Filled.ChevronRight,
+                contentDescription = "下一个回复",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.weight(1f))
+        IconButton(onClick = onRegenerate, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Filled.Refresh,
+                contentDescription = "重写",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = onContinue, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Filled.PlayArrow,
+                contentDescription = "继续",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = onMore, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Filled.MoreHoriz,
+                contentDescription = "更多消息操作",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

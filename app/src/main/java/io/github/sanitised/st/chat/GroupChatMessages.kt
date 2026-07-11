@@ -58,6 +58,8 @@ import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.chat.engine.GroupReply
 import io.github.sanitised.st.chat.engine.NativeGroupGenerator
 import io.github.sanitised.st.chat.engine.pickGroupSpeaker
+import io.github.sanitised.st.chat.ui.AssistantMessageControls
+import io.github.sanitised.st.chat.ui.ChatBubbleSurface
 import io.github.sanitised.st.ui.screens.STAvatar
 import io.github.sanitised.st.ui.screens.stAvatarImageUrl
 import coil3.compose.AsyncImage
@@ -141,7 +143,7 @@ fun GroupMesAssistant(
     msg: ChatMessage,
     member: DemoGroupMember,
     baseUrl: String,
-    isLast: Boolean,
+    showControls: Boolean,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     onRegenerate: () -> Unit,
@@ -186,63 +188,28 @@ fun GroupMesAssistant(
                 )
             }
             
-            // 文本气泡 —— 仅左侧一条 accent 强调竖条（随圆角裁剪），对齐设计稿 border-left
-            val bubbleShape = RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)
-            Box(
-                modifier = Modifier
-                    .widthIn(max = (LocalConfiguration.current.screenWidthDp * 0.92f).dp)
-                    .clip(bubbleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
+            // 文本气泡:共享外壳 + 群聊特有的成员 accent 竖条(对齐设计稿 border-left)
+            ChatBubbleSurface(
+                isUser = false,
+                maxWidth = (LocalConfiguration.current.screenWidthDp * 0.92f).dp,
+                accent = member.accent
             ) {
-                // 左侧强调条
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .width(2.dp)
-                        .fillMaxHeight()
-                        .background(member.accent)
-                )
-                Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    // applySwipe 与流式生成都会同步更新 mes,直接渲染即可。
-                    GText(text = msg.mes)
-                }
+                // applySwipe 与流式生成都会同步更新 mes,直接渲染即可。
+                GText(text = msg.mes)
             }
-            
-            // 最后一发 Swipes 动作面板
-            if (isLast && msg.swipes.size > 1) {
-                val idx = msg.swipeId
-                val total = msg.swipes.size
-                Row(
-                    modifier = Modifier
-                        .padding(top = 6.dp)
-                        .fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onSwipeLeft, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Filled.ChevronLeft, contentDescription = "上个版本", modifier = Modifier.size(18.dp))
-                    }
-                    Text(
-                        text = "${idx + 1} / $total",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 6.dp)
-                    )
-                    IconButton(onClick = onSwipeRight, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Filled.ChevronRight, contentDescription = "下个版本", modifier = Modifier.size(18.dp))
-                    }
-                    
-                    Spacer(modifier = Modifier.weight(1f))
-                    
-                    IconButton(onClick = onRegenerate, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "重写", modifier = Modifier.size(18.dp))
-                    }
-                    IconButton(onClick = onContinue, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "继续", modifier = Modifier.size(18.dp))
-                    }
-                    IconButton(onClick = onMore, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Filled.MoreHoriz, contentDescription = "更多选项", modifier = Modifier.size(18.dp))
-                    }
-                }
+
+            // 最后一发操作行(swipe 切换 + 重写/继续/更多),与单聊共用同一组件
+            if (showControls) {
+                AssistantMessageControls(
+                    messageId = msg.id,
+                    swipeIndex = msg.swipeId,
+                    swipeCount = msg.swipes.size.coerceAtLeast(1),
+                    onSwipePrevious = { onSwipeLeft() },
+                    onSwipeNext = { onSwipeRight() },
+                    onRegenerate = onRegenerate,
+                    onContinue = onContinue,
+                    onMore = onMore
+                )
             }
         }
     }
@@ -269,12 +236,7 @@ fun GroupMesUser(msg: ChatMessage) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp)
             )
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 4.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
-            ) {
+            ChatBubbleSurface(isUser = true) {
                 Text(
                     text = msg.mes,
                     style = MaterialTheme.typography.bodyMedium,
