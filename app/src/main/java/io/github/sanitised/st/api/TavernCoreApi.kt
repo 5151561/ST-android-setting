@@ -953,7 +953,7 @@ class TavernCoreClient(
                 val parsed = yaml.load<Any?>(body)
                 val hasError = parsed is Map<*, *> && parsed["error"] == true
                 if (hasError) {
-                    val msg = (parsed as? Map<*, *>)?.get("message")?.toString()
+                    val msg = parsed["message"]?.toString()
                     return@withContext ConnectionTestResult(
                         success = false,
                         errorMessage = msg ?: "API 返回错误，请检查密钥"
@@ -1589,10 +1589,10 @@ class TavernCoreClient(
             try {
                 call.execute().use { response ->
                     if (!response.isSuccessful) {
-                        val err = response.body?.string().orEmpty()
+                        val err = response.body.string().orEmpty()
                         throw IllegalStateException("SillyTavern API ${response.code}: $err")
                     }
-                    val source = response.body?.source() ?: throw IllegalStateException("生成响应为空")
+                    val source = response.body.source()
                     while (isActive && !source.exhausted()) {
                         val line = source.readUtf8Line() ?: break
                         if (!line.startsWith("data:")) continue
@@ -1650,10 +1650,10 @@ class TavernCoreClient(
             try {
                 call.execute().use { response ->
                     if (!response.isSuccessful) {
-                        val err = response.body?.string().orEmpty()
+                        val err = response.body.string().orEmpty()
                         throw IllegalStateException("SillyTavern API ${response.code}: $err")
                     }
-                    val source = response.body?.source() ?: throw IllegalStateException("生成响应为空")
+                    val source = response.body.source()
                     while (isActive && !source.exhausted()) {
                         val line = source.readUtf8Line() ?: break
                         if (!line.startsWith("data:")) continue
@@ -1728,7 +1728,7 @@ class TavernCoreClient(
         }
         val request = builder.build()
         httpClient.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
+            val body = response.body.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException("SillyTavern API ${response.code}: $body")
             }
@@ -1744,7 +1744,7 @@ class TavernCoreClient(
             builder.header("x-csrf-token", token)
         }
         httpClient.newCall(builder.build()).execute().use { response ->
-            val body = response.body?.string().orEmpty()
+            val body = response.body.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException("SillyTavern API ${response.code}: $body")
             }
@@ -1761,7 +1761,7 @@ class TavernCoreClient(
             builder.header("x-csrf-token", token)
         }
         generationHttpClient.newCall(builder.build()).execute().use { response ->
-            val body = response.body?.string().orEmpty()
+            val body = response.body.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException("SillyTavern API ${response.code}: $body")
             }
@@ -1778,7 +1778,7 @@ class TavernCoreClient(
         }
         val request = builder.build()
         httpClient.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string().orEmpty()
+            val responseBody = response.body.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException("SillyTavern API ${response.code}: $responseBody")
             }
@@ -1795,7 +1795,7 @@ class TavernCoreClient(
         }
         val request = builder.build()
         httpClient.newCall(request).execute().use { response ->
-            val bytes = response.body?.bytes() ?: ByteArray(0)
+            val bytes = response.body.bytes()
             if (!response.isSuccessful) {
                 throw IllegalStateException("SillyTavern API ${response.code}: ${bytes.toString(Charsets.UTF_8)}")
             }
@@ -1819,7 +1819,7 @@ class TavernCoreClient(
                 .build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@runCatching ""
-                val body = response.body?.string().orEmpty()
+                val body = response.body.string().orEmpty()
                 val token = (yaml.load<Any?>(body) as? Map<*, *>)
                     ?.stringValue("token")
                     .orEmpty()

@@ -16,6 +16,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
@@ -63,12 +64,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -152,8 +155,8 @@ private val drawerNavItems = listOf(
     DrawerNavItem(STRoutes.APPEARANCE, "主题外观", Icons.Filled.Palette, isPrimaryGroup = false),
     DrawerNavItem(STRoutes.MANAGE_ST, "ST 内核", Icons.Filled.Memory, isPrimaryGroup = false),
     DrawerNavItem(STRoutes.SETTINGS, "设置", Icons.Filled.Settings, isPrimaryGroup = false),
-    DrawerNavItem(STRoutes.LEGAL, "帮助 & 文档", Icons.Filled.Help, isPrimaryGroup = false),
-    DrawerNavItem(STRoutes.LOGIN, "退出登录", Icons.Filled.Logout, isPrimaryGroup = false)
+    DrawerNavItem(STRoutes.LEGAL, "帮助 & 文档", Icons.AutoMirrored.Filled.Help, isPrimaryGroup = false),
+    DrawerNavItem(STRoutes.LOGIN, "退出登录", Icons.AutoMirrored.Filled.Logout, isPrimaryGroup = false)
 )
 
 @Composable
@@ -506,8 +509,10 @@ class MainActivity : ComponentActivity() {
                 stLabel
             }
             SideEffect {
-                window.statusBarColor = Color.TRANSPARENT
-                window.navigationBarColor = Color.TRANSPARENT
+                enableEdgeToEdge(
+                    statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { useDarkTheme },
+                    navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { useDarkTheme }
+                )
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = !useDarkTheme
                     isAppearanceLightNavigationBars = !useDarkTheme

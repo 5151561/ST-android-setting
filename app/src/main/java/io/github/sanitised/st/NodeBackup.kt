@@ -16,7 +16,6 @@ import java.util.zip.GZIPOutputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
-import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream
 import org.yaml.snakeyaml.Yaml
 
@@ -386,7 +385,7 @@ object NodeBackup {
             ZipArchiveInputStream(input).use { zis ->
                 while (true) {
                     val archiveEntry = zis.nextEntry ?: break
-                    val entry = archiveEntry as? ZipArchiveEntry ?: continue
+                    val entry = archiveEntry
                     if (entry.name.isNotEmpty()) {
                         val target = mapBackupPath(destDir, entry.name)
                         if (target != null) {
@@ -436,7 +435,7 @@ object NodeBackup {
             TarArchiveInputStream(stream).use { tar ->
                 while (true) {
                     val archiveEntry = tar.nextEntry ?: break
-                    val entry = archiveEntry as? TarArchiveEntry ?: continue
+                    val entry = archiveEntry
                     val entryName = entry.name ?: continue
                     val target = mapBackupPath(destDir, entryName) ?: continue
                     when {

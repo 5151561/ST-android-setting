@@ -455,7 +455,7 @@ private fun ConfigFieldRow(
             isError = isNumberError,
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.None,
-                autoCorrect = false,
+                autoCorrectEnabled = false,
                 keyboardType = keyboardType,
                 imeAction = if (multiLine) ImeAction.Default else ImeAction.Done
             ),
@@ -570,7 +570,7 @@ private fun ConfigYamlEditor(
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
-                        autoCorrect = false,
+                        autoCorrectEnabled = false,
                         imeAction = ImeAction.Default
                     )
                 )

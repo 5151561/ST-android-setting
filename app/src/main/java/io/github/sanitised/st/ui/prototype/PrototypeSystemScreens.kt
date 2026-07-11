@@ -40,14 +40,14 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderZip
-import androidx.compose.material.icons.filled.Help
+import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -55,7 +55,7 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.StickyNote2
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Tune
@@ -485,7 +485,7 @@ fun PrototypeAISettingsScreen(
         PrototypeTemplateRow(Icons.Filled.Code, "Instruct 模板", instructName, "角色名 / 系统提示遵循模型格式", toggle = true)
         PrototypeTemplateRow(Icons.Filled.Bookmarks, "上下文模板", contextName, "角色描述 + 场景 + 历史的组织方式")
         PrototypeTemplateRow(Icons.Filled.Tune, "系统提示", syspromptName, "注入到对话最前", toggle = true, checked = true)
-        PrototypeTemplateRow(Icons.Filled.StickyNote2, "作者注 / 深度笔记", "未设置", "按需注入到指定深度")
+        PrototypeTemplateRow(Icons.AutoMirrored.Filled.StickyNote2, "作者注 / 深度笔记", "未设置", "按需注入到指定深度")
         PrototypeSectionHeader("核心采样")
         PrototypeStatefulSlider("温度 Temperature", temp, 0f..2f) { temp = it }
         PrototypeStatefulSlider("Top P", topP, 0f..1f) { topP = it }
@@ -596,7 +596,7 @@ fun PrototypeApiConnectionScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                PrototypeIconButton(Icons.Filled.Help, "帮助", { onShowMessage("已打开 API 说明书") })
+                PrototypeIconButton(Icons.AutoMirrored.Filled.Help, "帮助", { onShowMessage("已打开 API 说明书") })
             }
 
             // Connection Profile Presets row card
@@ -1966,7 +1966,7 @@ private fun PrototypeStStatusHero(status: NodeStatus, stLabel: String, nodeLabel
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (running) {
                 Button(onClick = onOpen, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Filled.OpenInNew, null)
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, null)
                     Spacer(Modifier.width(8.dp))
                     Text("在浏览器打开")
                 }

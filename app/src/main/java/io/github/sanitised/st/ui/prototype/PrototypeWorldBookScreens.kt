@@ -43,7 +43,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -559,7 +559,7 @@ fun PrototypeWorldEntryEditScreen(
             Spacer(Modifier.width(8.dp))
             Switch(checked = !b("disable"), onCheckedChange = { draft["disable"] = !it })
         }
-        TabRow(selectedTabIndex = tab, containerColor = Color.Transparent) {
+        PrimaryTabRow(selectedTabIndex = tab, containerColor = Color.Transparent) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("内容") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("插入与触发") })
         }

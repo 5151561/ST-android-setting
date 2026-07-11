@@ -899,12 +899,12 @@ private fun CharacterDetailSections(
         DetailSubHeader("角色备注 (Character Note)")
         DetailLabeledBody("备注内容", detail?.depthPrompt, empty = "未设置")
         if (!detail?.depthPrompt.isNullOrBlank()) {
-            val role = when (detail?.depthPromptRole) {
+            val role = when (detail.depthPromptRole) {
                 "user" -> "用户"
                 "assistant" -> "AI"
                 else -> "系统"
             }
-            PrototypeFieldRow("插入深度 / 角色", "@深度 ${detail?.depthPromptDepth ?: 4} · $role")
+            PrototypeFieldRow("插入深度 / 角色", "@深度 ${detail.depthPromptDepth} · $role")
         }
         DetailSubHeader("群聊行为")
         PrototypeFieldRow("健谈度", "${((detail?.talkativeness ?: 0.5) * 100).toInt()}% · 群聊中主动发言倾向")
@@ -930,7 +930,7 @@ private fun CharacterDetailSections(
         PrototypeFieldRow("创建日期", detail?.createDate?.ifBlank { "未知" } ?: "未知")
         PrototypeFieldRow("规范格式", "Character Card V2 (chara_card_v2)")
         if (!detail?.sourceUrl.isNullOrBlank()) {
-            PrototypeFieldRow("角色源", detail?.sourceUrl ?: "")
+            PrototypeFieldRow("角色源", detail.sourceUrl)
         }
     }
 }

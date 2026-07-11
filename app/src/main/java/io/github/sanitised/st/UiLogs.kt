@@ -47,8 +47,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import android.content.ClipData
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,7 +69,7 @@ fun LogsScreen(
 ) {
     var selectedTab by remember { mutableStateOf("stdout") }
     var realtimeFollow by remember { mutableStateOf(true) }
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -111,7 +112,11 @@ fun LogsScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { clipboard.setText(AnnotatedString(currentLogText)) },
+                        onClick = {
+                            scope.launch {
+                                clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("运行日志", currentLogText)))
+                            }
+                        },
                         enabled = currentLogText.isNotEmpty()
                     ) {
                         Icon(

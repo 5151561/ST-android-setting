@@ -22,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -178,7 +180,7 @@ fun GroupChatScreen(
                 mesId = 0,
                 time = formatGroupTime(map["send_date"]?.toString()),
                 text = map["mes"]?.toString() ?: "",
-                swipes = if (hasSwipes) Pair(swipeId.coerceIn(0, swipeTexts!!.size - 1), swipeTexts.size) else null,
+                swipes = if (hasSwipes) Pair(swipeId.coerceIn(0, swipeTexts.size - 1), swipeTexts.size) else null,
                 swipeTexts = if (hasSwipes) swipeTexts else null
             )
         }.mapIndexed { index, message -> message.copy(mesId = index) }
@@ -892,7 +894,7 @@ fun MemberStrip(
                     ) {
                         if (m.muted) {
                             Icon(
-                                imageVector = Icons.Filled.VolumeOff,
+                                imageVector = Icons.AutoMirrored.Filled.VolumeOff,
                                 contentDescription = "静音",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(10.dp)
@@ -1212,10 +1214,10 @@ fun TypingRow(member: DemoGroupMember, baseUrl: String) {
                         animationSpec = infiniteRepeatable(
                             animation = keyframes {
                                 durationMillis = 1000
-                                0.0f at 0 with FastOutSlowInEasing
-                                -6f at 300 with FastOutSlowInEasing
-                                0.0f at 600 with FastOutSlowInEasing
-                                0.0f at 1000 with FastOutSlowInEasing
+                                0.0f at 0 using FastOutSlowInEasing
+                                -6f at 300 using FastOutSlowInEasing
+                                0.0f at 600 using FastOutSlowInEasing
+                                0.0f at 1000 using FastOutSlowInEasing
                             },
                             repeatMode = RepeatMode.Restart,
                             initialStartOffset = StartOffset(index * 160)
@@ -1633,7 +1635,7 @@ fun SpeakerSheet(
                     
                     IconButton(onClick = { onToggleMute(m.id) }) {
                         Icon(
-                            imageVector = if (m.muted) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                            imageVector = if (m.muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = "切换静音",
                             tint = if (m.muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                         )

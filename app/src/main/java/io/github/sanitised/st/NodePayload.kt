@@ -14,9 +14,7 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.deleteRecursively
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream
 import org.json.JSONObject
 
@@ -354,7 +352,7 @@ class NodePayload(private val context: Context) {
                 TarArchiveInputStream(input).use { tar ->
                     while (true) {
                         val archiveEntry = tar.nextEntry ?: break
-                        val entry = archiveEntry as? TarArchiveEntry ?: continue
+                        val entry = archiveEntry
                         if (entry.name == null) continue
                         val target = TarUtils.resolveArchiveEntry(destDir, entry)
                         when {
@@ -634,7 +632,7 @@ class NodePayload(private val context: Context) {
             ZipArchiveInputStream(BufferedInputStream(input)).use { zis ->
                 while (true) {
                     val archiveEntry = zis.nextEntry ?: break
-                    val entry = archiveEntry as? ZipArchiveEntry ?: continue
+                    val entry = archiveEntry
                     if (entry.name.isNotEmpty()) {
                         val target = TarUtils.resolveArchiveEntry(destDir, entry)
                         if (entry.isDirectory) {
