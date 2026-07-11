@@ -256,32 +256,6 @@ fun SpeakerSheet(
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// DateChipG — 会话日期
-// ─────────────────────────────────────────────────────────────
-@Composable
-fun DateChipG(text: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Surface(
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
 internal fun getStrategyLabel(id: String): String {
     return when (id) {
         "manual" -> "手动"

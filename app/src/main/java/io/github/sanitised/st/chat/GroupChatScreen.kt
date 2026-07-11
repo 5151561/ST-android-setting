@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.chat.engine.GroupReply
+import io.github.sanitised.st.chat.ui.ChatDateChip
 import io.github.sanitised.st.chat.engine.NativeGroupGenerator
 import io.github.sanitised.st.chat.engine.pickGroupSpeaker
 import io.github.sanitised.st.ui.prototype.PrototypeAvatar
@@ -414,7 +415,7 @@ fun GroupChatScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     item {
-                        DateChipG(text = "今晚 20:55 · 雨")
+                        ChatDateChip(text = "今晚 20:55 · 雨", verticalPadding = 12.dp, bold = true)
                     }
                     itemsIndexed(threadMessages) { idx, msg ->
                         val isLast = idx == threadMessages.lastIndex

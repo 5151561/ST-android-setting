@@ -145,6 +145,7 @@ import coil3.compose.AsyncImage
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.chat.engine.ChatEngine
+import io.github.sanitised.st.chat.ui.ChatDateChip
 import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
@@ -382,7 +383,7 @@ internal fun MessageList(
     ) {
         if (dateLabel != null) {
             item(key = "date-chip") {
-                DateChip(text = dateLabel)
+                ChatDateChip(text = dateLabel)
             }
         }
         items(
@@ -843,23 +844,6 @@ internal fun ToolCallCard(
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
-        }
-    }
-}
-
-@Composable
-internal fun DateChip(text: String) {
-    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Surface(
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-            )
         }
     }
 }
