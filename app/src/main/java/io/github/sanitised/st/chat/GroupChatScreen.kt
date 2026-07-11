@@ -415,9 +415,22 @@ fun GroupChatScreen(
                 )
             }
 
-            // 5. 消息输入框
-            GroupComposer(
-                onSend = { text -> sendUserMessage(text) }
+            // 5. 消息输入框:与单聊共用 ChatInputBar(群聊拿到停止生成按钮与
+            // 生成期间禁用输入的一致行为),附件暂不支持,@ 点名收进输入框尾部。
+            ChatInputBar(
+                isGenerating = isGenerating,
+                runtimeReady = !loading && activeChatId.isNotBlank(),
+                pendingAttachments = emptyList(),
+                injectedText = "",
+                injectedTextToken = 0,
+                onSend = { text -> sendUserMessage(text) },
+                onStop = { generator.requestStop() },
+                onVoiceInput = { onShowMessage("语音输入暂未接入") },
+                onRemovePendingAttachment = {},
+                onAttachmentAction = {},
+                placeholder = "发条消息，或 @ 点名某位角色",
+                attachmentsEnabled = false,
+                showMentionButton = true
             )
         }
 

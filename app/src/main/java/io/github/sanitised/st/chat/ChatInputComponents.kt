@@ -55,6 +55,7 @@ import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.AttachFile
@@ -262,7 +263,12 @@ internal fun ChatInputBar(
     onVoiceInput: () -> Unit,
     onRemovePendingAttachment: (PendingAttachment) -> Unit,
     onAttachmentAction: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    placeholder: String = "发条消息，或 /? 查看指令",
+    // 群聊暂不支持附件,传 false 隐藏附件按钮与附件条
+    attachmentsEnabled: Boolean = true,
+    // 群聊特有:输入框尾部的 @ 点名按钮,点击在文本末尾补一个 @
+    showMentionButton: Boolean = false
 ) {
     var text by rememberSaveable { mutableStateOf("") }
     var showAttach by rememberSaveable { mutableStateOf(false) }
@@ -273,7 +279,7 @@ internal fun ChatInputBar(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        if (showAttach) {
+        if (attachmentsEnabled && showAttach) {
             AttachSheet(onAction = onAttachmentAction)
         }
         PendingAttachmentStrip(
@@ -287,24 +293,48 @@ internal fun ChatInputBar(
                     .padding(horizontal = 10.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
-                IconButton(onClick = { showAttach = !showAttach }, modifier = Modifier.size(44.dp)) {
-                    Icon(
-                        imageVector = if (showAttach) Icons.Filled.Close else Icons.Filled.Add,
-                        contentDescription = "附件",
-                        tint = if (showAttach) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                if (attachmentsEnabled) {
+                    IconButton(onClick = { showAttach = !showAttach }, modifier = Modifier.size(44.dp)) {
+                        Icon(
+                            imageVector = if (showAttach) Icons.Filled.Close else Icons.Filled.Add,
+                            contentDescription = "附件",
+                            tint = if (showAttach) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
                 }
-                Spacer(modifier = Modifier.width(6.dp))
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
                     modifier = Modifier.weight(1f),
                     placeholder = {
                         Text(
-                            text = if (runtimeReady) "发条消息，或 /? 查看指令" else "正在等待运行时…",
+                            text = if (runtimeReady) placeholder else "正在等待运行时…",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    },
+                    trailingIcon = if (showMentionButton) {
+                        {
+                            IconButton(
+                                onClick = {
+                                    text = when {
+                                        text.endsWith("@") -> text
+                                        text.isEmpty() || text.endsWith(" ") -> "$text@"
+                                        else -> "$text @"
+                                    }
+                                },
+                                enabled = runtimeReady && !isGenerating
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.AlternateEmail,
+                                    contentDescription = "点名某位角色",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        null
                     },
                     enabled = runtimeReady && !isGenerating,
                     maxLines = 5,
