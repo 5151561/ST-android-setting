@@ -20,6 +20,6 @@ class GradleJavaHomeTest {
         val releaseFile = File(javaHome, "release")
         assertTrue("Java runtime should include a release file", releaseFile.exists())
         val javaVersionLine = releaseFile.readLines().firstOrNull { it.startsWith("JAVA_VERSION=") }
-        assertEquals("JAVA_VERSION=\"21.0.10\"", javaVersionLine)
+        assertEquals("JAVA_VERSION=\"21.0.11\"", javaVersionLine)
     }
 }

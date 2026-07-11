@@ -1,13 +1,13 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 val fallbackVersionName = "0.4.0"
 
 android {
     namespace = "io.github.sanitised.st"
-    compileSdk = 36
+    compileSdk = 37
 
     fun envOrProp(name: String): String? =
         (findProperty(name) as String?)?.takeIf { it.isNotBlank() }
@@ -91,16 +91,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
+    // built-in Kotlin 下 jvmTarget 默认跟随 compileOptions.targetCompatibility(17),
+    // Compose 编译器由 org.jetbrains.kotlin.plugin.compose 插件接管,无需 composeOptions。
     buildFeatures {
         compose = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
+        // AGP 9 起 resValues 默认关闭;debug 变体的 resValue("app_name") 需要它。
+        resValues = true
     }
 
     packaging {
@@ -114,28 +110,30 @@ android {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.activity:activity-compose:1.9.0")
-    implementation("com.google.android.material:material:1.12.0")
+    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("org.apache.commons:commons-compress:1.26.2")
-    implementation("org.yaml:snakeyaml:2.2")
-    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("org.apache.commons:commons-compress:1.28.0")
+    implementation("org.yaml:snakeyaml:2.6")
+    implementation("io.coil-kt.coil3:coil-compose:3.5.0")
+    // Coil 3 默认不带网络层,加载 http(s) 图片必须显式引入 OkHttp 网络组件。
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
 
     // Navigation Compose
-    implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("androidx.navigation:navigation-compose:2.9.8")
 
     // OkHttp for TavernApiAdapter
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.4.0")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
     testImplementation("org.json:json:20240303")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

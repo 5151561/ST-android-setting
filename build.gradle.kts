@@ -1,4 +1,6 @@
 plugins {
-    id("com.android.application") version "8.5.2" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+    id("com.android.application") version "9.2.1" apply false
+    // AGP 9 内置 Kotlin 支持(built-in Kotlin),不再应用 org.jetbrains.kotlin.android。
+    // Compose 编译器插件版本需与 AGP 内嵌的 Kotlin Gradle Plugin 版本一致(AGP 9.2 为 2.3.10)。
+    id("org.jetbrains.kotlin.plugin.compose") version "2.3.10" apply false
 }

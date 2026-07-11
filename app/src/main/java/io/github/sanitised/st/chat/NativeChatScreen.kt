@@ -139,7 +139,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.chat.engine.ChatEngine
@@ -291,9 +291,6 @@ fun NativeChatScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        // The runtime WebView is hosted persistently in MainActivity (outside the
-        // NavHost) so it survives tab navigation and is not reloaded on every chat
-        // entry. This screen is now pure native UI driven by ChatStore.
         Column(
             modifier = Modifier
                 .fillMaxSize()

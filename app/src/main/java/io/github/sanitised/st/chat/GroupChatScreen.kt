@@ -56,7 +56,7 @@ import io.github.sanitised.st.chat.engine.NativeGroupGenerator
 import io.github.sanitised.st.chat.engine.pickGroupSpeaker
 import io.github.sanitised.st.ui.prototype.PrototypeAvatar
 import io.github.sanitised.st.ui.prototype.prototypeAvatarImageUrl
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
