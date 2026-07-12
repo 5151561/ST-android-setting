@@ -289,7 +289,9 @@ data class GroupSummary(
     val disabledMembers: List<String> = emptyList(),
     val autoModeDelay: Int = 5,
     val generationModeJoinPrefix: String = "",
-    val generationModeJoinSuffix: String = ""
+    val generationModeJoinSuffix: String = "",
+    // 服务端 /api/groups/all 不返回消息内容,由本地 group chats/*.jsonl 补齐
+    val lastMessage: String? = null
 )
 
 data class GroupCreateRequest(

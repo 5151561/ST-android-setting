@@ -12,12 +12,15 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -42,9 +45,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.clip
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
-import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 
 import androidx.compose.foundation.lazy.LazyColumn
@@ -54,26 +57,27 @@ import androidx.compose.foundation.layout.PaddingValues
 @Composable
 fun STChatListScreen(
     status: NodeStatus,
-    recentChats: List<ChatSummary>,
+    chatItems: List<STChatItem>,
     stLabel: String,
     nodeLabel: String,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpenChat: (STChatItem) -> Unit,
+    onOpenGroupChat: (STChatItem) -> Unit,
     onNewChat: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val openDrawer = LocalSTOpenDrawer.current
-    val chatItems = remember(recentChats) {
-        recentChats.map { chat -> chat.toSTChatItem() }
-    }
     val baseUrl = remember(status.port) { "http://127.0.0.1:${status.port}" }
     var selectedFilter by remember { mutableIntStateOf(0) }
 
     val filteredChats = remember(chatItems, selectedFilter) {
         when (selectedFilter) {
             1 -> chatItems.filter { it.favorite }
+            2 -> chatItems.filter { it.inProgress }
+            3 -> chatItems.filter { it.kind == STChatKind.GROUP }
+            4 -> chatItems.filter { it.isCheckpoint }
             else -> chatItems
         }
     }
@@ -112,7 +116,10 @@ fun STChatListScreen(
                         STChipRow(
                             items = listOf(
                                 "全部 ${chatItems.size}",
-                                "置顶 ${chatItems.count { it.favorite }}"
+                                "收藏 ${chatItems.count { it.favorite }}",
+                                "进行中 ${chatItems.count { it.inProgress }}",
+                                "群聊 ${chatItems.count { it.kind == STChatKind.GROUP }}",
+                                "检查点 ${chatItems.count { it.isCheckpoint }}"
                             ),
                             selectedIndex = selectedFilter,
                             onSelected = { selectedFilter = it },
@@ -139,7 +146,9 @@ fun STChatListScreen(
                     STChatListItem(
                         item = chat,
                         baseUrl = baseUrl,
-                        onClick = { onOpenChat(chat) }
+                        onClick = {
+                            if (chat.kind == STChatKind.GROUP) onOpenGroupChat(chat) else onOpenChat(chat)
+                        }
                     )
                 }
             }
@@ -177,12 +186,24 @@ private fun STChatListItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (item.kind == STChatKind.GROUP) {
-                STGroupAvatar(
-                    initials = listOf(item.initial),
-                    imageUrls = listOf(item.avatarUrl),
-                    baseUrl = baseUrl,
-                    size = 52.dp
-                )
+                if (item.avatarUrl != null && !item.avatarUrl.startsWith("img/")) {
+                    STAvatar(
+                        label = item.initial,
+                        imageUrl = item.avatarUrl,
+                        baseUrl = baseUrl,
+                        size = 52.dp,
+                        gradient = stGradientFor(item.id.hashCode())
+                    )
+                } else {
+                    STGroupAvatar(
+                        initials = item.memberAvatars
+                            .map { it.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?" }
+                            .ifEmpty { listOf(item.initial) },
+                        imageUrls = item.memberAvatars,
+                        baseUrl = baseUrl,
+                        size = 52.dp
+                    )
+                }
             } else {
                 STAvatar(
                     label = item.initial,
@@ -233,14 +254,51 @@ private fun STChatListItem(
                     )
                 }
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = item.preview,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (item.kind == STChatKind.GROUP) {
+                        Icon(
+                            imageVector = Icons.Filled.Groups,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${item.memberCount} 位 · ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                    if (item.inProgress) {
+                        Text(
+                            text = "● 进行中 · ",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            maxLines = 1
+                        )
+                    }
+                    Text(
+                        text = item.preview,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (item.unread) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(9.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                }
             }
         }
     }

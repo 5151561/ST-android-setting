@@ -78,7 +78,7 @@ internal class UpdateManager(
         appPrefs.getBoolean(PREF_AUTO_CHECK, false)
     )
     val autoOpenBrowserWhenReady = mutableStateOf(
-        appPrefs.getBoolean(PREF_AUTO_OPEN_BROWSER, true)
+        appPrefs.getBoolean(PREF_AUTO_OPEN_BROWSER, false)
     )
     val autoStartService = mutableStateOf(
         appPrefs.getBoolean(PREF_AUTO_START_SERVICE, true)

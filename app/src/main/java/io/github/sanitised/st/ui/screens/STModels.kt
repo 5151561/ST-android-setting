@@ -6,6 +6,8 @@ import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
+import io.github.sanitised.st.api.GroupSummary
+import io.github.sanitised.st.api.SecretProviderState
 
 enum class STChatKind {
     DIRECT,
@@ -23,7 +25,12 @@ data class STChatItem(
     val time: String,
     val initial: String,
     val favorite: Boolean,
-    val kind: STChatKind = STChatKind.DIRECT
+    val kind: STChatKind = STChatKind.DIRECT,
+    val memberCount: Int = 0,
+    val memberAvatars: List<String> = emptyList(),
+    val unread: Boolean = false,
+    val inProgress: Boolean = false,
+    val isCheckpoint: Boolean = false
 )
 
 @Immutable
@@ -39,21 +46,67 @@ data class STCharacterCard(
     val gradient: List<Long>
 )
 
+/** 抽屉头部的真实账户信息:当前扮演者 + 当前 API 连接,由 settings/secrets 拉取。 */
+@Immutable
+data class STDrawerAccount(
+    val personaName: String,
+    val providerLabel: String,
+    val model: String,
+    val secretConfigured: Boolean
+)
+
+fun buildSTDrawerAccount(
+    settings: Map<String, Any?>,
+    secrets: List<SecretProviderState>
+): STDrawerAccount {
+    val userAvatar = settings["user_avatar"] as? String ?: ""
+    val personas = ((settings["power_user"] as? Map<*, *>)?.get("personas") as? Map<*, *>)
+    val personaName = (personas?.get(userAvatar) as? String)?.trim()?.ifBlank { null }
+        ?: userAvatar.substringBeforeLast('.').replace('_', ' ').trim().ifBlank { "我" }
+    val connection = buildApiConnectionUiState(
+        settings = settings,
+        secrets = secrets,
+        serviceRunning = true
+    )
+    return STDrawerAccount(
+        personaName = personaName,
+        providerLabel = connection.activeProvider.label,
+        model = connection.activeModel,
+        secretConfigured = connection.activeProvider.hasConfiguredSecret
+    )
+}
+
 @Immutable
 data class STDrawerState(
     val personaName: String,
     val personaInitial: String,
     val connectionEyebrow: String,
     val connectionLabel: String,
+    val connectionInitial: String,
     val connected: Boolean
 ) {
     companion object {
         fun from(
             status: NodeStatus,
             stLabel: String,
-            nodeLabel: String
+            nodeLabel: String,
+            account: STDrawerAccount? = null
         ): STDrawerState {
             val running = status.state == NodeState.RUNNING
+            if (running && account != null) {
+                return STDrawerState(
+                    personaName = account.personaName,
+                    personaInitial = account.personaName.trim().firstOrNull()?.toString() ?: "我",
+                    connectionEyebrow = if (account.secretConfigured) {
+                        "已连接 · ${account.providerLabel}"
+                    } else {
+                        "未配置密钥 · ${account.providerLabel}"
+                    },
+                    connectionLabel = account.model,
+                    connectionInitial = account.providerLabel.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "C",
+                    connected = account.secretConfigured
+                )
+            }
             return STDrawerState(
                 personaName = "我（默认）",
                 personaInitial = "我",
@@ -67,6 +120,7 @@ data class STDrawerState(
                         else -> "未运行 · :${status.port}"
                     }
                 },
+                connectionInitial = "ST",
                 connected = running
             )
         }
@@ -85,8 +139,72 @@ fun ChatSummary.toSTChatItem(): STChatItem {
         time = stRelativeTimeLabel(lastUpdated),
         initial = characterName.initial(),
         favorite = isPinned,
-        kind = STChatKind.DIRECT
+        kind = STChatKind.DIRECT,
+        isCheckpoint = parsedChatFile?.contains("checkpoint", ignoreCase = true) == true
     )
+}
+
+fun GroupSummary.toSTChatItem(): STChatItem {
+    return STChatItem(
+        id = "group:$id",
+        characterId = id,
+        chatFile = chatId.ifBlank { null },
+        avatarUrl = avatarUrl.takeIf { it.isNotBlank() },
+        title = name,
+        preview = lastMessage?.trim().orEmpty().ifBlank { "还没有消息，点开开始群聊。" },
+        time = stRelativeTimeLabel(lastUpdated),
+        initial = name.initial(),
+        favorite = isFavorite,
+        kind = STChatKind.GROUP,
+        memberCount = members.size,
+        memberAvatars = members.take(3)
+    )
+}
+
+/** 未读打点的键:单聊按「角色 + 聊天文件」,群聊按群 id。 */
+fun chatSeenKey(characterId: String, chatFile: String?): String =
+    "char:$characterId:${chatFile.orEmpty().removeSuffix(".jsonl")}"
+
+fun groupSeenKey(groupId: String): String = "group:$groupId"
+
+/**
+ * 首页对话列表:单聊 + 群聊按最后更新时间混排(对齐设计稿 ChatList 的单一 feed),
+ * 并标注未读(上次离开后有更新)与进行中(后台仍在生成)。
+ */
+fun buildHomeChatItems(
+    snapshot: LocalTavernLibrarySnapshot,
+    generatingKey: String? = null,
+    lastSeen: (String) -> Long = { 0L }
+): List<STChatItem> {
+    val favoriteCharacters = snapshot.characters
+        .filter { it.isFavorite }
+        .map { it.id }
+        .toSet()
+
+    fun decorate(item: STChatItem, key: String, lastUpdated: Long): STChatItem {
+        val inProgress = key == generatingKey
+        val seenAt = lastSeen(key)
+        return item.copy(
+            inProgress = inProgress,
+            // 从未打开过的会话不算未读,避免首启全列表点亮
+            unread = !inProgress && seenAt > 0L && lastUpdated > seenAt
+        )
+    }
+
+    val chatEntries = snapshot.recentChats.map { chat ->
+        val item = chat.toSTChatItem()
+        val decorated = decorate(item, chatSeenKey(chat.characterId, item.chatFile), chat.lastUpdated)
+        chat.lastUpdated to decorated.copy(
+            favorite = decorated.favorite || chat.characterId in favoriteCharacters
+        )
+    }
+    val groupEntries = snapshot.groups.map { group ->
+        group.lastUpdated to decorate(group.toSTChatItem(), groupSeenKey(group.id), group.lastUpdated)
+    }
+
+    return (chatEntries + groupEntries)
+        .sortedByDescending { (lastUpdated, _) -> lastUpdated }
+        .map { (_, item) -> item }
 }
 
 fun stCharacterTagFilters(

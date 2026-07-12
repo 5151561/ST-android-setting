@@ -625,7 +625,7 @@ fun STMeScreen(
             )
             STSwitchRow("流式生成时震动反馈", "逐字到达时轻微震动", vibrationFeedback, onVibrationFeedbackChanged)
             STSwitchRow("敏感操作二次确认", "删除消息、清空对话等", secondConfirmation, onSecondConfirmationChanged)
-            STSwitchRow("启动时自动连接 API", null, autoOpenBrowserEnabled, onAutoOpenBrowserChanged)
+            STSwitchRow("服务就绪后自动打开浏览器", null, autoOpenBrowserEnabled, onAutoOpenBrowserChanged)
             STSwitchRow("滑动呼出抽屉", "从左边缘横扫", swipeDrawer, onSwipeDrawerChanged)
         }
         // ── 数据 ──

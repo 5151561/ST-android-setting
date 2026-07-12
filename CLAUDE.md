@@ -43,9 +43,9 @@ git submodule update --init --recursive
 
 ### 导航与 UI
 
-`MainActivity` 托管 `NavHost`，底部导航定义在 `ui/navigation/STNavGraph.kt`（`STRoutes`）。主要标签页：
+`MainActivity` 托管 `NavHost`，路由定义在 `ui/navigation/STNavGraph.kt`（`STRoutes`），导航外壳是抽屉（`STNavigationScaffold`，无底栏）。主要页面：
 
-- **Home** (`chats/home`) — 仪表盘，状态卡片 + 最近聊天/角色 + 快捷操作。位于 `ui/screens/STHomeScreen.kt`。
+- **Home** (`chats/home`) — 对话列表：单聊 + 群聊按最后更新混排，筛选 chips（收藏/进行中/群聊/检查点）、未读打点（`ChatSeenStore`）。位于 `ui/screens/STHomeScreen.kt`。
 - **Chat** (`chat`) — `chat/NativeChatScreen`，纯原生 Compose 聊天界面（无 WebView）。
 - **Characters** (`characters`) — 原生 Compose 角色管理：列表、详情、编辑。位于 `ui/screens/STCharacterScreens.kt`。
 - **Tools** (`tools`) — 工具页面（世界书、预设、API 连接等）。位于 `ui/screens/` 下。

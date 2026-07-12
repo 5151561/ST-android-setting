@@ -46,12 +46,15 @@ class ChatInterfaceAuditRegressionTest {
     }
 
     @Test
-    fun chatListFiltersDoNotClassifyRealChatsByIdSubstring() {
+    fun chatListFiltersClassifyByRealFieldsInsteadOfIdSubstring() {
         val source = File("src/main/java/io/github/sanitised/st/ui/screens/STHomeScreen.kt").readText()
 
+        // 群聊/检查点必须来自模型层的真实字段(GroupSummary / 检查点命名约定),
+        // 不允许在 UI 层拿 id 子串猜分类。
         assertFalse(source.contains("id.contains(\"group\")"))
         assertFalse(source.contains("id.contains(\"checkpoint\")"))
-        assertFalse(source.contains("进行中"))
+        assertTrue(source.contains("it.kind == STChatKind.GROUP"))
+        assertTrue(source.contains("it.isCheckpoint"))
     }
 
     @Test
@@ -94,12 +97,18 @@ class ChatInterfaceAuditRegressionTest {
     }
 
     @Test
-    fun chatListDoesNotRenderUnavailableStreamingOrUnreadState() {
-        val source = File("src/main/java/io/github/sanitised/st/ui/screens/STHomeScreen.kt").readText()
+    fun chatListStreamingAndUnreadStatesAreBackedByRealSources() {
+        // 未读/进行中曾是原型里的假状态,禁止渲染;现在有真实数据源后放开,
+        // 但必须接在真实来源上:进行中 = chatStore.isGenerating,未读 = ChatSeenStore 打点。
+        val home = File("src/main/java/io/github/sanitised/st/ui/screens/STHomeScreen.kt").readText()
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val models = File("src/main/java/io/github/sanitised/st/ui/screens/STModels.kt").readText()
 
-        assertFalse(source.contains("item.streaming"))
-        assertFalse(source.contains("item.unread"))
-        assertFalse(source.contains("● 进行中"))
+        assertTrue(home.contains("item.inProgress"))
+        assertTrue(home.contains("item.unread"))
+        assertTrue(mainActivity.contains("chatStore.isGenerating && chatStore.mode == \"character\""))
+        assertTrue(mainActivity.contains("chatSeenStore.markSeen"))
+        assertTrue(models.contains("seenAt > 0L && lastUpdated > seenAt"))
     }
 
     @Test

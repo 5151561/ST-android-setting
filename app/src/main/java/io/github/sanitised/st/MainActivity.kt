@@ -19,6 +19,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -120,7 +121,13 @@ import io.github.sanitised.st.ui.screens.STCharacterAdvancedScreen
 import io.github.sanitised.st.ui.screens.STBackgroundsScreen
 import io.github.sanitised.st.ui.screens.STThemeScreen
 import io.github.sanitised.st.ui.screens.STChatBehaviorScreen
+import io.github.sanitised.st.ui.screens.ChatSeenStore
+import io.github.sanitised.st.ui.screens.STDrawerAccount
+import io.github.sanitised.st.ui.screens.buildHomeChatItems
+import io.github.sanitised.st.ui.screens.buildSTDrawerAccount
+import io.github.sanitised.st.ui.screens.chatSeenKey
 import io.github.sanitised.st.ui.screens.configuredApiConnectionProviderCount
+import io.github.sanitised.st.ui.screens.groupSeenKey
 import io.github.sanitised.st.ui.screens.rememberLocalTavernLibrarySnapshot
 import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STDialogButtonStyle
@@ -163,13 +170,17 @@ private val drawerNavItems = listOf(
 private fun STAppDrawerHeader(
     stLabel: String,
     nodeLabel: String,
-    status: NodeStatus
+    status: NodeStatus,
+    account: STDrawerAccount?,
+    onOpenPersonas: () -> Unit,
+    onOpenConnections: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     val drawerState = STDrawerState.from(
         status = status,
         stLabel = stLabel,
-        nodeLabel = nodeLabel
+        nodeLabel = nodeLabel,
+        account = account
     )
     Surface(
         modifier = Modifier
@@ -179,9 +190,12 @@ private fun STAppDrawerHeader(
         color = colors.surfaceContainer
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable(onClick = onOpenPersonas)
+            ) {
                 STAvatar(
-                    label = "我",
+                    label = drawerState.personaInitial,
                     size = 56.dp,
                     ringColor = colors.primary
                 )
@@ -205,6 +219,7 @@ private fun STAppDrawerHeader(
                 )
             }
             Surface(
+                onClick = onOpenConnections,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 12.dp),
@@ -223,7 +238,7 @@ private fun STAppDrawerHeader(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                text = "C",
+                                text = drawerState.connectionInitial,
                                 style = MaterialTheme.typography.titleSmall
                             )
                         }
@@ -367,6 +382,7 @@ class MainActivity : ComponentActivity() {
             val snackbarHostState = remember { SnackbarHostState() }
             
             var connectedCount by remember { mutableStateOf(0) }
+            var drawerAccount by remember { mutableStateOf<STDrawerAccount?>(null) }
             val running = statusState.value.state == NodeState.RUNNING
             LaunchedEffect(running, statusState.value.port) {
                 if (running) {
@@ -376,9 +392,13 @@ class MainActivity : ComponentActivity() {
                         )
                         val secretsList = client.listSecrets()
                         connectedCount = configuredApiConnectionProviderCount(secretsList)
+                        drawerAccount = runCatching {
+                            buildSTDrawerAccount(client.getSettings(), secretsList)
+                        }.getOrNull()
                     }
                 } else {
                     connectedCount = 0
+                    drawerAccount = null
                 }
             }
             LaunchedEffect(statusState.value.state, statusState.value.port) {
@@ -432,11 +452,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            // refreshKey 带上「是否在首页」:从聊天屏回到列表时重扫本地文件,
+            // 未读/预览/排序才反映刚刚发生的对话。
             val librarySnapshot by rememberLocalTavernLibrarySnapshot(
                 dataRoot = appPaths.dataDir,
                 serverRunning = statusState.value.state == NodeState.RUNNING,
                 baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                refreshKey = statusState.value.state
+                refreshKey = statusState.value.state to (currentRoute == STRoutes.HOME)
             )
 
             val service = nodeServiceState.value
@@ -613,6 +635,17 @@ class MainActivity : ComponentActivity() {
             var pendingChatTarget by rememberSaveable(stateSaver = chatTargetSaver()) {
                 mutableStateOf<ChatTarget>(ChatTarget.Current)
             }
+            val chatSeenStore = remember { ChatSeenStore(this@MainActivity) }
+            val generatingSeenKey = if (chatStore.isGenerating && chatStore.mode == "character") {
+                chatSeenKey(chatStore.avatarUrl, chatStore.chatFile)
+            } else null
+            val homeChatItems = remember(librarySnapshot, generatingSeenKey, chatSeenStore.revision) {
+                buildHomeChatItems(
+                    snapshot = librarySnapshot,
+                    generatingKey = generatingSeenKey,
+                    lastSeen = chatSeenStore::lastSeen
+                )
+            }
             val navigateMainTab: (String) -> Unit = { route ->
                 if (route == STRoutes.LOGIN) {
                     // 抽屉「退出登录」走通用导航：先向后端注销并清本地会话 cookie，再进登录页，
@@ -657,22 +690,24 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val openCharacterChatFromCharacterManagement: (String, String?) -> Unit = { avatar, chatFile ->
+                chatSeenStore.markSeen(chatSeenKey(avatar, chatFile))
                 pendingChatTarget = ChatTarget.CharacterChat(avatar, chatFile)
                 navController.navigate(STRoutes.CHAT) {
                     launchSingleTop = true
                 }
             }
             val openGroupChat: (String, String?) -> Unit = { groupId, chatId ->
+                chatSeenStore.markSeen(groupSeenKey(groupId))
                 navController.navigate(STRoutes.groupChatDetail(groupId, chatId)) {
                     launchSingleTop = true
                 }
             }
 
-            val dynamicDrawerItems = remember(drawerNavItems, connectedCount, librarySnapshot, statusState.value.state) {
+            val dynamicDrawerItems = remember(drawerNavItems, connectedCount, librarySnapshot, homeChatItems, statusState.value.state) {
                 drawerNavItems.map { item ->
                     when (item.route) {
                         STRoutes.HOME -> item.copy(
-                            badgeText = librarySnapshot.recentChats.size
+                            badgeText = homeChatItems.size
                                 .takeIf { it > 0 }
                                 ?.toString()
                         )
@@ -704,11 +739,14 @@ class MainActivity : ComponentActivity() {
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         )
                     },
-                    drawerHeader = {
+                    drawerHeader = { navigateFromDrawer ->
                         STAppDrawerHeader(
                             stLabel = currentStLabel,
                             nodeLabel = nodeLabel,
-                            status = statusState.value
+                            status = statusState.value,
+                            account = drawerAccount,
+                            onOpenPersonas = { navigateFromDrawer(STRoutes.PERSONA) },
+                            onOpenConnections = { navigateFromDrawer(STRoutes.CONNECTIONS) }
                         )
                     }
                 ) { innerPadding ->
@@ -737,9 +775,12 @@ class MainActivity : ComponentActivity() {
                                         }
                                     } else stLabel,
                                     nodeLabel = nodeLabel,
-                                    recentChats = librarySnapshot.recentChats,
+                                    chatItems = homeChatItems,
                                     onOpenChat = { chat ->
                                         openCharacterChatFromCharacterManagement(chat.characterId, chat.chatFile)
+                                    },
+                                    onOpenGroupChat = { chat ->
+                                        openGroupChat(chat.characterId, chat.chatFile)
                                     },
                                     onNewChat = {
                                         navController.navigate(STRoutes.CHARACTERS)
@@ -750,6 +791,15 @@ class MainActivity : ComponentActivity() {
                             }
 
                             composable(STRoutes.CHAT) {
+                                // 离开时打「看过」时间戳;若离开时仍在后台生成,
+                                // 生成完成的更新会晚于该时间戳,列表如实标未读。
+                                DisposableEffect(Unit) {
+                                    onDispose {
+                                        if (chatStore.avatarUrl.isNotBlank()) {
+                                            chatSeenStore.markSeen(chatSeenKey(chatStore.avatarUrl, chatStore.chatFile))
+                                        }
+                                    }
+                                }
                                 NativeChatScreen(
                                     status = statusState.value,
                                     target = pendingChatTarget,
@@ -1098,6 +1148,11 @@ class MainActivity : ComponentActivity() {
                                 BackHandler { navController.popBackStack() }
                                 val gid = backStackEntry.arguments?.getString("groupId").orEmpty()
                                 val cid = backStackEntry.arguments?.getString("chatId").orEmpty()
+                                DisposableEffect(gid) {
+                                    onDispose {
+                                        if (gid.isNotBlank()) chatSeenStore.markSeen(groupSeenKey(gid))
+                                    }
+                                }
                                 GroupChatScreen(
                                     groupId = gid,
                                     chatId = cid.takeIf { it.isNotBlank() },

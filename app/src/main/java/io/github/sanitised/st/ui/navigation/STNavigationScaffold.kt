@@ -61,7 +61,8 @@ fun STNavigationScaffold(
     onNavigate: (String) -> Unit,
     showNavigation: Boolean = true,
     snackbarHost: @Composable () -> Unit,
-    drawerHeader: @Composable (() -> Unit)? = null,
+    // 头部里的可点区域(扮演者/连接卡)拿到的是「关抽屉再导航」的回调
+    drawerHeader: (@Composable ((String) -> Unit) -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -99,7 +100,7 @@ private fun STDrawerSheet(
     drawerItems: List<DrawerNavItem>,
     currentRoute: String?,
     onNavigate: (String) -> Unit,
-    header: @Composable (() -> Unit)?
+    header: (@Composable ((String) -> Unit) -> Unit)?
 ) {
     ModalDrawerSheet(
         modifier = Modifier.width(width = (LocalConfiguration.current.screenWidthDp * 0.85f).dp).widthIn(max = 360.dp),
@@ -114,7 +115,7 @@ private fun STDrawerSheet(
                 .padding(vertical = 12.dp)
         ) {
             if (header != null) {
-                header()
+                header(onNavigate)
                 Spacer(modifier = Modifier.height(8.dp))
             }
             drawerItems.forEachIndexed { index, item ->
