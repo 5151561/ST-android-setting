@@ -15,7 +15,6 @@ object STRoutes {
     const val PRESETS = "ai-settings"
     const val CONNECTIONS = "api-connections"
     const val CHAT_BACKUPS = "memory"
-    const val GROUP_CHAT = "group-chat"
     const val GROUP_CHAT_DETAIL = "group-chat/detail/{groupId}?chatId={chatId}"
     const val GROUP_SETTINGS = "group-chat/settings/{groupId}"
     const val GROUP_MEMBERS = "group-chat/members/{groupId}"

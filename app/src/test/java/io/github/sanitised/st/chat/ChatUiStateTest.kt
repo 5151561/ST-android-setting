@@ -29,8 +29,21 @@ class ChatUiStateTest {
             )
         )
 
-        assertEquals("May 25, 2026 10:00am", label)
+        // ST 人类可读格式按本地时区解析并本地化输出,无时区换算,断言与运行环境无关
+        assertEquals("2026年5月25日 10:00", label)
         assertNull(conversationDateLabel(listOf(chatMessage(id = 2, sendDate = ""))))
+    }
+
+    @Test
+    fun dateLabelFormatsIsoUtcAndPassesThroughUnknownFormats() {
+        val previousZone = java.util.TimeZone.getDefault()
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
+            assertEquals("2026年7月12日 17:24", formatChatDateLabel("2026-07-12T09:24:06.116Z"))
+        } finally {
+            java.util.TimeZone.setDefault(previousZone)
+        }
+        assertEquals("不认识的格式", formatChatDateLabel("不认识的格式"))
     }
 
     @Test

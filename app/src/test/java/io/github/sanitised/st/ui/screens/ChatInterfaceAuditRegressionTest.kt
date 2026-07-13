@@ -112,27 +112,27 @@ class ChatInterfaceAuditRegressionTest {
     }
 
     @Test
-    fun groupListUsesDedicatedNewGroupRouteWithoutLegacyInlineCreateView() {
-        val source = File("src/main/java/io/github/sanitised/st/ui/screens/STGroupChatScreen.kt").readText()
+    fun groupHubScreenStaysMergedIntoUnifiedChatList() {
+        // 群聊列表页与对话页功能重复,已删除;群聊入口只保留在对话页
+        // (列表混排 + 长按「新对话」创建群聊)。不允许旧的独立群聊 hub 回流。
+        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val routes = File("src/main/java/io/github/sanitised/st/ui/navigation/STNavGraph.kt").readText()
 
-        assertFalse(source.contains("GroupCreateView"))
-        assertFalse(source.contains("isCreating"))
-        assertFalse(source.contains("GroupCreateRequest"))
-        assertTrue(source.contains("onCreate = onNavigateToNewGroup"))
+        assertFalse(File("src/main/java/io/github/sanitised/st/ui/screens/STGroupChatScreen.kt").exists())
+        assertFalse(routes.contains("const val GROUP_CHAT ="))
+        assertFalse(mainActivity.contains("DrawerNavItem(STRoutes.GROUP_CHAT"))
+        assertTrue(mainActivity.contains("onNewGroupChat = { navController.navigate(\"group-chat/new\") }"))
     }
 
     @Test
-    fun drawerGroupChatRouteShowsGroupListBeforeOpeningSpecificGroupChat() {
+    fun homeFabLongPressOpensGroupCreationAndEntersCreatedGroup() {
+        val home = File("src/main/java/io/github/sanitised/st/ui/screens/STHomeScreen.kt").readText()
         val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
-        val groupRouteBlock = mainActivity
-            .substringAfter("composable(STRoutes.GROUP_CHAT) {")
-            .substringBefore("route = STRoutes.GROUP_CHAT_DETAIL")
-        val groupListSource = File("src/main/java/io/github/sanitised/st/ui/screens/STGroupChatScreen.kt").readText()
 
-        assertTrue(groupRouteBlock.contains("STGroupChatScreen("))
-        assertTrue(groupRouteBlock.contains("onOpenGroupChat = openGroupChat"))
-        assertFalse(Regex("""(?<!ST)GroupChatScreen\(""").containsMatchIn(groupRouteBlock))
-        assertTrue(groupListSource.contains("onOpenGroupChat(group.id, group.chatId.takeIf { it.isNotBlank() })"))
+        assertTrue(home.contains("onLongClick = { showNewChatMenu = true }"))
+        assertTrue(home.contains("Text(\"创建群聊\")"))
+        // 创建成功后直接进入新群聊,而不是停在来路页面
+        assertTrue(mainActivity.contains("openGroupChat(created.id, null)"))
     }
 
     @Test

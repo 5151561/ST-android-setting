@@ -107,7 +107,6 @@ import io.github.sanitised.st.ui.screens.STExtensionsScreen
 import io.github.sanitised.st.ui.screens.STAuthorNoteCFGScreen
 import io.github.sanitised.st.ui.screens.STQuickReplyScreen
 import io.github.sanitised.st.ui.screens.STAppearanceScreen
-import io.github.sanitised.st.ui.screens.STGroupChatScreen
 import io.github.sanitised.st.ui.screens.STLoginScreen
 import io.github.sanitised.st.ui.screens.STOnboardingScreen
 import io.github.sanitised.st.ui.screens.STAccountScreen
@@ -151,7 +150,6 @@ import java.time.format.DateTimeFormatter
 private val drawerNavItems = listOf(
     DrawerNavItem(STRoutes.HOME, "对话", Icons.AutoMirrored.Filled.Chat),
     DrawerNavItem(STRoutes.CHARACTERS, "角色库", Icons.Filled.Groups),
-    DrawerNavItem(STRoutes.GROUP_CHAT, "群聊", Icons.Filled.GroupAdd),
     DrawerNavItem(STRoutes.PERSONA, "扮演者", Icons.Filled.Face),
     DrawerNavItem(STRoutes.WORLD_INFO, "世界书", Icons.Filled.Book),
     DrawerNavItem(STRoutes.CHAT_BACKUPS, "记忆与回顾", Icons.Filled.CloudSync),
@@ -325,7 +323,7 @@ class MainActivity : ComponentActivity() {
                 STRoutes.WORLD_INFO_BOOK,
                 STRoutes.WORLD_INFO_ENTRY,
                 STRoutes.WORLD_INFO_GLOBAL -> STRoutes.WORLD_INFO
-                STRoutes.GROUP_CHAT_DETAIL -> STRoutes.GROUP_CHAT
+                STRoutes.GROUP_CHAT_DETAIL -> STRoutes.HOME
                 STRoutes.SECRETS -> STRoutes.CONNECTIONS
                 STRoutes.QUICK_REPLIES -> STRoutes.EXTENSIONS
                 STRoutes.BACKGROUNDS,
@@ -786,6 +784,7 @@ class MainActivity : ComponentActivity() {
                                         navController.navigate(STRoutes.CHARACTERS)
                                         viewModel.showTransientMessage("请选择角色开始新对话")
                                     },
+                                    onNewGroupChat = { navController.navigate("group-chat/new") },
                                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                                 )
                             }
@@ -1119,22 +1118,6 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
 
-                            composable(STRoutes.GROUP_CHAT) {
-                                BackHandler {
-                                    if (!navController.popBackStack()) {
-                                        navigateMainTab(STRoutes.HOME)
-                                    }
-                                }
-                                STGroupChatScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onOpenGroupChat = openGroupChat,
-                                    onStartService = { startNode() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
-                                    onNavigateToNewGroup = { navController.navigate("group-chat/new") }
-                                )
-                            }
-
                             composable(
                                 route = STRoutes.GROUP_CHAT_DETAIL,
                                 arguments = listOf(
@@ -1225,7 +1208,9 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             }.onSuccess { created ->
                                                 viewModel.showTransientMessage("已创建群聊「${created.name}」")
+                                                // 群聊列表页已并入对话页:创建完成直接进入新群聊
                                                 navController.popBackStack()
+                                                openGroupChat(created.id, null)
                                             }.onFailure { error ->
                                                 viewModel.showTransientMessage(error.message ?: "创建群聊失败")
                                             }

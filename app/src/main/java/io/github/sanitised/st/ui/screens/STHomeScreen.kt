@@ -26,8 +26,12 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -36,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,6 +59,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.PaddingValues
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun STChatListScreen(
     status: NodeStatus,
@@ -65,6 +71,7 @@ fun STChatListScreen(
     onOpenChat: (STChatItem) -> Unit,
     onOpenGroupChat: (STChatItem) -> Unit,
     onNewChat: () -> Unit,
+    onNewGroupChat: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -153,17 +160,48 @@ fun STChatListScreen(
                 }
             }
 
-            ExtendedFloatingActionButton(
-                onClick = onNewChat,
-                icon = { Icon(Icons.Filled.Edit, contentDescription = null) },
-                text = { Text("新对话") },
+            // 点按 = 新建单聊,长按 = 弹出创建群聊(群聊列表页已并入本页)。
+            // Material3 的 FAB 不支持 onLongClick,用同样式的 Surface + combinedClickable 自绘。
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
-                    .padding(16.dp),
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-            )
+                    .padding(16.dp)
+            ) {
+                var showNewChatMenu by remember { mutableStateOf(false) }
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.combinedClickable(
+                        onClick = onNewChat,
+                        onLongClick = { showNewChatMenu = true }
+                    )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                    ) {
+                        Icon(Icons.Filled.Edit, contentDescription = null)
+                        Text("新对话", fontWeight = FontWeight.Medium)
+                    }
+                }
+                DropdownMenu(
+                    expanded = showNewChatMenu,
+                    onDismissRequest = { showNewChatMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("创建群聊") },
+                        leadingIcon = { Icon(Icons.Filled.Groups, contentDescription = null) },
+                        onClick = {
+                            showNewChatMenu = false
+                            onNewGroupChat()
+                        }
+                    )
+                }
+            }
         }
     }
 }

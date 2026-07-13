@@ -193,6 +193,14 @@ fun GroupChatScreen(
 
     val lazyListState = rememberLazyListState()
 
+    // 新消息与流式输出期间保持列表贴底(与单聊 ChatMessageList 的滚动行为一致)。
+    // 目标下标按数据推算:日期头固定占第 0 项,最后一条消息即下标 size。
+    LaunchedEffect(threadMessages.size, threadMessages.lastOrNull()?.mes) {
+        if (threadMessages.isNotEmpty()) {
+            lazyListState.animateScrollToItem(threadMessages.size)
+        }
+    }
+
     val generator = remember { NativeGroupGenerator { TavernCoreClient(baseUrl) } }
     var isGenerating by remember { mutableStateOf(false) }
     // Serializes every read-modify-write of the group JSONL so the user-message
@@ -415,7 +423,7 @@ fun GroupChatScreen(
                         // 首条消息的发送时间作为会话日期头;原先是写死的 Demo 文案。
                         val firstDate = threadMessages.firstOrNull()?.sendDate?.takeIf { it.isNotBlank() }
                         if (firstDate != null) {
-                            ChatDateChip(text = firstDate, verticalPadding = 12.dp, bold = true)
+                            ChatDateChip(text = formatChatDateLabel(firstDate), verticalPadding = 12.dp, bold = true)
                         }
                     }
                     itemsIndexed(threadMessages) { idx, msg ->

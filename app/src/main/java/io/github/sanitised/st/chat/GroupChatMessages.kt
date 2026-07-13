@@ -113,14 +113,6 @@ fun GroupMesAssistant(
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = member.subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
                     text = formatGroupTime(msg.sendDate),
