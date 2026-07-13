@@ -202,13 +202,14 @@ fun GroupChatScreen(
     // can wait for it before persisting its reply.
     var pendingUserSave by remember { mutableStateOf<Job?>(null) }
 
-    // 发送用户消息：追加到本地并真实落库（群聊 JSONL）。
-    fun sendUserMessage(text: String) {
+    // 发送用户消息：追加到本地并真实落库（群聊 JSONL）。返回是否真的发出，
+    // 调用方据此决定要不要触发自动回复。
+    fun sendUserMessage(text: String): Boolean {
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || activeChatId.isBlank()) return
+        if (trimmed.isEmpty() || activeChatId.isBlank()) return false
         if (isGenerating) {
             onShowMessage("正在生成回复，请稍候")
-            return
+            return false
         }
         val date = groupSendDate()
         threadMessages.add(groupUserChatMessage(threadMessages.size, userName, trimmed, date))
@@ -223,6 +224,7 @@ fun GroupChatScreen(
                 }
             }.onFailure { error -> onShowMessage(error.message ?: "保存消息失败") }
         }
+        return true
     }
 
     // AI 回复生成：原生群聊生成（NativeGroupGenerator）。
@@ -410,7 +412,11 @@ fun GroupChatScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     item {
-                        ChatDateChip(text = "今晚 20:55 · 雨", verticalPadding = 12.dp, bold = true)
+                        // 首条消息的发送时间作为会话日期头;原先是写死的 Demo 文案。
+                        val firstDate = threadMessages.firstOrNull()?.sendDate?.takeIf { it.isNotBlank() }
+                        if (firstDate != null) {
+                            ChatDateChip(text = firstDate, verticalPadding = 12.dp, bold = true)
+                        }
                     }
                     itemsIndexed(threadMessages) { idx, msg ->
                         val isLast = idx == threadMessages.lastIndex
@@ -473,7 +479,13 @@ fun GroupChatScreen(
                 pendingAttachments = emptyList(),
                 injectedText = "",
                 injectedTextToken = 0,
-                onSend = { text -> sendUserMessage(text) },
+                onSend = { text ->
+                    // 非手动策略下用户发言后自动让下一位成员接话（与上游生成语义一致）；
+                    // 手动策略保持只落库，由用户点名触发。
+                    if (sendUserMessage(text) && groupState.value.strategy != "manual") {
+                        requestGroupReply(null)
+                    }
+                },
                 onStop = { generator.requestStop() },
                 onVoiceInput = { onShowMessage("语音输入暂未接入") },
                 onRemovePendingAttachment = {},
