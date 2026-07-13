@@ -112,7 +112,7 @@ class NativeChatRepository(
                 source.saveChatJsonl(avatar, backupNameProvider(avatar, chatFile), current.nativeChatDeepCopy())
             }
             val next = chat.nativeChatDeepCopy()
-            next.refreshNativeChatIntegrity()
+            next.ensureNativeChatIntegrity()
             source.saveChatJsonl(avatar, chatFile, next)
             pruneNativeBackups(source, avatar, chatFile)
         }
@@ -449,10 +449,14 @@ private fun List<Any?>.nativeChatIntegrity(): String {
     return metadata["integrity"]?.toString().orEmpty()
 }
 
-private fun MutableList<Any?>.refreshNativeChatIntegrity() {
+// ST 服务端 /api/chats/save 要求 payload 首行 integrity 与磁盘文件一致（上游前端在加载时
+// 补全后保持不变），因此这里只在缺失时补全，绝不能每次保存都换新值。
+private fun MutableList<Any?>.ensureNativeChatIntegrity() {
     val metadata = firstOrNull().nativeChatHeaderMetadata()
     if (metadata != null) {
-        metadata["integrity"] = UUID.randomUUID().toString()
+        if (metadata["integrity"]?.toString().isNullOrBlank()) {
+            metadata["integrity"] = UUID.randomUUID().toString()
+        }
         return
     }
     add(

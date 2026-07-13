@@ -8,7 +8,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -16,7 +15,7 @@ import org.junit.Test
 class NativeChatRepositorySafetyTest {
 
     @Test
-    fun savesBackupBeforeTargetAndRefreshesIntegrity() = runBlocking {
+    fun savesBackupBeforeTargetAndKeepsIntegrityStable() = runBlocking {
         val source = SafetyDataSource()
         val repository = NativeChatRepository(
             dataSourceProvider = { source },
@@ -31,7 +30,8 @@ class NativeChatRepositorySafetyTest {
         assertEquals(listOf("main.native-backup-1", "main.jsonl"), source.saveCalls.map { it.chatFile })
         assertEquals("start", source.saved("main.native-backup-1").integrity())
         assertEquals(listOf("hello"), source.saved("main.jsonl").messages())
-        assertNotEquals("start", source.saved("main.jsonl").integrity())
+        // ST 服务端保存时校验 payload integrity 与磁盘一致，slug 必须保持稳定
+        assertEquals("start", source.saved("main.jsonl").integrity())
     }
 
     @Test

@@ -4,6 +4,7 @@ import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.StJson
+import io.github.sanitised.st.chat.isNativeChatBackupName
 import java.io.File
 import java.io.RandomAccessFile
 
@@ -38,6 +39,7 @@ class LocalTavernLibraryReader(
                 characterDir.safeFiles()
                     .asSequence()
                     .filter { it.isFile && !it.name.startsWith(".") && it.extension.equals("jsonl", ignoreCase = true) }
+                    .filterNot { isNativeChatBackupName(it.nameWithoutExtension) }
                     .map { chatFile -> characterDir to chatFile }
             }
             .sortedByDescending { (_, chatFile) -> chatFile.lastModified() }

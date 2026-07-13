@@ -256,8 +256,10 @@ private fun chatRichLine(line: String, primaryColor: Color, mutedColor: Color): 
                 }
             }
 
-            // 普通文本
-            var nextSpecial = i
+            // 普通文本。从 i+1 起扫:走到这里说明 line[i] 要么是普通字符,要么是没找到
+            // 闭合的 * / " (流式输出时 chunk 边界常落在配对中间),都按普通文本消费掉,
+            // 否则 i 原地不动会让主线程死循环。
+            var nextSpecial = i + 1
             while (nextSpecial < line.length && line[nextSpecial] != '*' && line[nextSpecial] != '"' && line[nextSpecial] != '“') {
                 nextSpecial++
             }
