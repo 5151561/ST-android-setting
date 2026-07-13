@@ -127,6 +127,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -368,14 +369,46 @@ internal fun MessageList(
     val listState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val density = LocalDensity.current
-    val imeBottom = WindowInsets.ime.getBottom(density)
+    val imeInsets = WindowInsets.ime
     val visibleMessages = visibleChatMessages(messages)
-    val dateLabel = conversationDateLabel(messages)
+    // 日期头只由首条消息的 send_date 决定;conversationDateLabel 每次调用都要
+    // 新建多个 SimpleDateFormat,不能放在重组热路径上直接算。
+    val firstSendDate = visibleMessages.firstOrNull()?.sendDate
+    val dateLabel = remember(firstSendDate) { conversationDateLabel(visibleMessages) }
 
-    LaunchedEffect(visibleMessages.size, visibleMessages.lastOrNull()?.mes, imeBottom, dateLabel) {
-        chatListScrollTargetIndex(visibleMessages, dateLabel)?.let { index ->
-            listState.animateScrollToItem(index)
-        }
+    // 滚动跟随统一走 snapshotFlow:组合期不读会变的状态,列表本体不再因
+    // 滚动跟随而重组。新消息(条数变化)动画滚到底;流式输出只让最后一条变长,
+    // 这时用非动画贴底——原实现把 mes 当 LaunchedEffect key,生成期间每个
+    // 节流 tick 都重启一次滚动动画,动画互相打断造成持续卡顿。
+    // 另外只有本来就停在底部附近时才跟随,用户上翻阅读旧消息不再被拽回。
+    LaunchedEffect(messages, dateLabel) {
+        var lastCount = -1
+        snapshotFlow { messages.size to messages.lastOrNull()?.mes }
+            .collect { (count, _) ->
+                val target = chatListScrollTargetIndex(visibleChatMessages(messages), dateLabel)
+                    ?: return@collect
+                val countChanged = count != lastCount
+                lastCount = count
+                if (countChanged) {
+                    listState.animateScrollToItem(target)
+                } else {
+                    val info = listState.layoutInfo
+                    val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: return@collect
+                    if (lastVisible >= info.totalItemsCount - 2) {
+                        listState.scrollToItem(target)
+                    }
+                }
+            }
+    }
+    // 键盘弹出/收起时保持贴底。原实现在组合期读 WindowInsets.ime,
+    // 键盘动画每一帧都会让整个消息列表重组;snapshotFlow 在快照系统里观察,
+    // 不触发任何重组。
+    LaunchedEffect(listState, imeInsets, density) {
+        snapshotFlow { imeInsets.getBottom(density) }
+            .collect {
+                val total = listState.layoutInfo.totalItemsCount
+                if (total > 0) listState.scrollToItem(total - 1)
+            }
     }
 
     LazyColumn(

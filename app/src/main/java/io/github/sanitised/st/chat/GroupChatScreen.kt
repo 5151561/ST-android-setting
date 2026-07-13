@@ -193,12 +193,28 @@ fun GroupChatScreen(
 
     val lazyListState = rememberLazyListState()
 
-    // 新消息与流式输出期间保持列表贴底(与单聊 ChatMessageList 的滚动行为一致)。
+    // 新消息与流式输出期间保持列表贴底(与单聊 MessageList 的滚动行为一致)。
     // 目标下标按数据推算:日期头固定占第 0 项,最后一条消息即下标 size。
-    LaunchedEffect(threadMessages.size, threadMessages.lastOrNull()?.mes) {
-        if (threadMessages.isNotEmpty()) {
-            lazyListState.animateScrollToItem(threadMessages.size)
-        }
+    // 走 snapshotFlow 而非把 mes 当 LaunchedEffect key:流式生成每个节流 tick
+    // 都换 key 会不停重启滚动动画,动画互相打断造成持续卡顿。条数变化才动画,
+    // 流式跟随用非动画贴底,且只有停在底部附近时才跟随,用户上翻不被拽回。
+    LaunchedEffect(threadMessages) {
+        var lastCount = -1
+        snapshotFlow { threadMessages.size to threadMessages.lastOrNull()?.mes }
+            .collect { (count, _) ->
+                if (count == 0) return@collect
+                val countChanged = count != lastCount
+                lastCount = count
+                if (countChanged) {
+                    lazyListState.animateScrollToItem(count)
+                } else {
+                    val info = lazyListState.layoutInfo
+                    val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: return@collect
+                    if (lastVisible >= info.totalItemsCount - 2) {
+                        lazyListState.scrollToItem(count)
+                    }
+                }
+            }
     }
 
     val generator = remember { NativeGroupGenerator { TavernCoreClient(baseUrl) } }
@@ -433,9 +449,12 @@ fun GroupChatScreen(
                 ) {
                     item {
                         // 首条消息的发送时间作为会话日期头;原先是写死的 Demo 文案。
+                        // 本 item 会随消息列表每次变化重组,formatChatDateLabel 每次调用
+                        // 都要新建多个 SimpleDateFormat,必须用 remember 挡住。
                         val firstDate = threadMessages.firstOrNull()?.sendDate?.takeIf { it.isNotBlank() }
                         if (firstDate != null) {
-                            ChatDateChip(text = formatChatDateLabel(firstDate), verticalPadding = 12.dp, bold = true)
+                            val label = remember(firstDate) { formatChatDateLabel(firstDate) }
+                            ChatDateChip(text = label, verticalPadding = 12.dp, bold = true)
                         }
                     }
                     itemsIndexed(threadMessages) { idx, msg ->

@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.height
@@ -214,14 +215,27 @@ fun ChatRichText(
     Column(modifier = modifier) {
         text.split('\n').forEachIndexed { index, line ->
             if (index > 0) Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = chatRichLine(line, primary, muted),
-                style = MaterialTheme.typography.bodyMedium,
-                color = color,
-                lineHeight = 22.sp
-            )
+            ChatRichTextLine(line = line, color = color, primary = primary, muted = muted)
         }
     }
+}
+
+// 每行独立成可跳过的 composable:流式生成时整条消息的 text 每个节流 tick 都在变,
+// 但只有最后一行的内容真的不同——其余行参数不变直接跳过,行内解析(chatRichLine)
+// 就不会对全文反复重跑。remember 再挡一层父级强制重组时的重复解析。
+@Composable
+private fun ChatRichTextLine(
+    line: String,
+    color: Color,
+    primary: Color,
+    muted: Color,
+) {
+    Text(
+        text = remember(line, primary, muted) { chatRichLine(line, primary, muted) },
+        style = MaterialTheme.typography.bodyMedium,
+        color = color,
+        lineHeight = 22.sp
+    )
 }
 
 /** 单行的行内格式转换:*斜体* -> 弱化斜体,"引号对话" -> primary 色。 */

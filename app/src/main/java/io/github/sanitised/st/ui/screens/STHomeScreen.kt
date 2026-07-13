@@ -88,6 +88,17 @@ fun STChatListScreen(
             else -> chatItems
         }
     }
+    // chips 标签要对整个列表跑 4 次 count,只在数据变化时算一次,
+    // 不跟着筛选切换等无关重组反复计数。
+    val chipLabels = remember(chatItems) {
+        listOf(
+            "全部 ${chatItems.size}",
+            "收藏 ${chatItems.count { it.favorite }}",
+            "进行中 ${chatItems.count { it.inProgress }}",
+            "群聊 ${chatItems.count { it.kind == STChatKind.GROUP }}",
+            "检查点 ${chatItems.count { it.isCheckpoint }}"
+        )
+    }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -121,13 +132,7 @@ fun STChatListScreen(
                         )
 
                         STChipRow(
-                            items = listOf(
-                                "全部 ${chatItems.size}",
-                                "收藏 ${chatItems.count { it.favorite }}",
-                                "进行中 ${chatItems.count { it.inProgress }}",
-                                "群聊 ${chatItems.count { it.kind == STChatKind.GROUP }}",
-                                "检查点 ${chatItems.count { it.isCheckpoint }}"
-                            ),
+                            items = chipLabels,
                             selectedIndex = selectedFilter,
                             onSelected = { selectedFilter = it },
                             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
