@@ -88,6 +88,7 @@ class NativeChatEngine(
             store.recordCommandError("当前聊天未就绪，无法发送")
             return
         }
+        store.clearSaveError()
         launchGeneration {
             val client = clientProvider()
             val settings = client.getSettings()
@@ -148,15 +149,47 @@ class NativeChatEngine(
                 NativeChatRepository(dataSourceProvider = { TavernNativeChatDataSource(client) })
                     .save(avatar, chatFile, chat)
                 persisted = true
+                store.clearSaveError()
             } catch (e: kotlinx.coroutines.CancellationException) {
+                // Deliberate stop: the user chose to abandon this turn, so discard it
+                // fully (unlike an unexpected failure below, nothing here is unwanted
+                // data loss) so the next send starts from a clean slate.
                 if (!persisted) rollbackOptimisticMessages(store, optimisticUserId, optimisticAssistantId)
                 throw e
             } catch (e: Exception) {
                 if (!persisted) {
-                    rollbackOptimisticMessages(store, optimisticUserId, optimisticAssistantId)
+                    handleSendFailure(message, pendingAttachments, optimisticUserId, optimisticAssistantId, e.message ?: "保存失败")
                 }
                 throw e
             }
+        }
+    }
+
+    /**
+     * On an unexpected send failure, keep whatever the user typed and whatever the
+     * model already streamed back visible instead of deleting them — losing a user's
+     * just-typed message on a transient save error is the bug this guards against. An
+     * empty assistant placeholder (nothing was generated yet) is removed since there's
+     * nothing to show; retry re-sends the original text from scratch.
+     */
+    private fun handleSendFailure(
+        originalMessage: String,
+        attachments: List<io.github.sanitised.st.chat.PendingAttachment>,
+        userMessageId: Int?,
+        assistantMessageId: Int?,
+        reason: String,
+    ) {
+        assistantMessageId?.let { id ->
+            val idx = store.messages.indexOfFirst { it.id == id }
+            if (idx >= 0 && store.messages[idx].mes.isBlank()) {
+                store.deleteMessage(id)
+            }
+        }
+        store.recordSaveError("消息未能保存：$reason") {
+            userMessageId?.let(store::deleteMessage)
+            assistantMessageId?.let(store::deleteMessage)
+            store.pendingAttachments.addAll(attachments)
+            send(originalMessage)
         }
     }
 
@@ -280,6 +313,7 @@ class NativeChatEngine(
             return
         }
 
+        store.clearSaveError()
         launchGeneration {
             val client = clientProvider()
             val settings = client.getSettings()
@@ -310,19 +344,31 @@ class NativeChatEngine(
             }
             if (generated.isBlank()) return@launchGeneration
 
-            val chat = client.getChatJsonl(avatar, chatFile)
-            applyGenerated(chat, target.id, generated, target.mes)
-            NativeChatRepository(dataSourceProvider = { TavernNativeChatDataSource(client) })
-                .save(avatar, chatFile, chat)
-            store.applySnapshot(
-                buildNativeCharacterChatSnapshot(
-                    avatar = avatar,
-                    character = character,
-                    chatFile = chatFile,
-                    rawChat = chat,
-                ),
-                markRuntimeReady = false,
-            )
+            try {
+                val chat = client.getChatJsonl(avatar, chatFile)
+                applyGenerated(chat, target.id, generated, target.mes)
+                NativeChatRepository(dataSourceProvider = { TavernNativeChatDataSource(client) })
+                    .save(avatar, chatFile, chat)
+                store.applySnapshot(
+                    buildNativeCharacterChatSnapshot(
+                        avatar = avatar,
+                        character = character,
+                        chatFile = chatFile,
+                        rawChat = chat,
+                    ),
+                    markRuntimeReady = false,
+                )
+                store.clearSaveError()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The regenerated/continued text is already visible in `target`'s bubble
+                // (streamed in place) — keep it and let the user retry the save instead
+                // of silently reverting to the stale, still-persisted original.
+                store.recordSaveError("消息未能保存：${e.message ?: "保存失败"}") {
+                    mutateLastAssistantWithGeneration(includeCurrentAssistantInPrompt, prefix, applyGenerated)
+                }
+            }
         }
     }
 

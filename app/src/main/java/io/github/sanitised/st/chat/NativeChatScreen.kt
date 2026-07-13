@@ -371,7 +371,11 @@ fun NativeChatScreen(
             if (store.saveError != null) {
                 SaveErrorBanner(
                     message = store.saveError!!,
-                    onRetry = { onShowMessage("保存重试已由原生保存流程自动处理") },
+                    onRetry = {
+                        val retry = store.pendingRetry
+                        store.clearSaveError()
+                        retry?.invoke() ?: onShowMessage("没有可重试的操作")
+                    },
                     onDismiss = { store.clearSaveError() }
                 )
             }

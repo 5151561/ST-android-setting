@@ -46,6 +46,7 @@ class ChatStore {
     var isGenerating by mutableStateOf(false)
     var runtimeError by mutableStateOf<String?>(null)
     var saveError by mutableStateOf<String?>(null)
+    var pendingRetry by mutableStateOf<(() -> Unit)?>(null)
     var authorsNote by mutableStateOf("")
     var cfgScale by mutableStateOf(1.0f)
     var cfgNegativePrompt by mutableStateOf("")
@@ -121,12 +122,14 @@ class ChatStore {
         runtimeError = null
     }
 
-    fun recordSaveError(message: String) {
+    fun recordSaveError(message: String, retry: (() -> Unit)? = null) {
         saveError = message
+        pendingRetry = retry
     }
 
     fun clearSaveError() {
         saveError = null
+        pendingRetry = null
     }
 
     fun pushToast(type: String, title: String, message: String) {
@@ -216,6 +219,7 @@ class ChatStore {
         isGenerating = false
         runtimeError = null
         saveError = null
+        pendingRetry = null
         authorsNote = ""
         cfgScale = 1.0f
         cfgNegativePrompt = ""
