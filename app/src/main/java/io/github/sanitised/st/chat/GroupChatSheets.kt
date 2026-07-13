@@ -94,18 +94,7 @@ fun SpeakerSheet(
                 .fillMaxWidth()
                 .padding(bottom = 24.dp)
         ) {
-            // Drag Handle line
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .width(32.dp)
-                    .height(4.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
-                    .padding(bottom = 12.dp)
-            )
-            
-            // Header Row
+            // Header Row（拖拽横条由 ModalBottomSheet 默认 dragHandle 提供，不再自绘）
             Row(
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -582,50 +571,6 @@ internal fun ConversationRow(c: GroupConversation, onClick: () -> Unit) {
                     )
                 }
             }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// GroupMessageActionSheet — 长按消息的操作面板(复制/编辑/删除)
-// ─────────────────────────────────────────────────────────────
-@Composable
-internal fun GroupMessageActionSheet(
-    message: ChatMessage,
-    onDismiss: () -> Unit,
-    onCopy: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-            Text(
-                "消息操作",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-            )
-            Text(
-                text = message.mes.take(80),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                ActionGridItem(icon = Icons.Filled.ContentCopy, label = "复制", onClick = onCopy)
-                ActionGridItem(icon = Icons.Filled.Edit, label = "编辑", onClick = onEdit)
-                ActionGridItem(icon = Icons.Filled.Delete, label = "删除", onClick = onDelete)
-            }
-            Spacer(modifier = Modifier.height(20.dp))
         }
     }
 }

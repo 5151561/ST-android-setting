@@ -261,8 +261,8 @@ fun GroupChatScreen(
             return
         }
 
-        // 提示词历史:线程消息已经是 ChatMessage,直接快照即可。
-        val promptHistory = threadMessages.toList()
+        // 提示词历史:PromptBuilder 约定调用方只传可见消息,隐藏(is_system)的在此过滤。
+        val promptHistory = threadMessages.filter { !it.isSystem }
 
         // 乐观空气泡（流式期间输入被禁用，占位始终保持在末尾）。
         threadMessages.add(
@@ -376,6 +376,16 @@ fun GroupChatScreen(
         }
     }
 
+    // 隐藏/取消隐藏:写 is_system 标记(与上游语义一致,隐藏的消息不进提示词)。
+    fun applyHideToggle(uiIndex: Int, hidden: Boolean) {
+        val msg = threadMessages.getOrNull(uiIndex) ?: return
+        threadMessages[uiIndex] = msg.copy(isSystem = hidden)
+        mutateMessageLine(uiIndex, "保存隐藏状态") { updated ->
+            updated["is_system"] = hidden
+            true
+        }
+    }
+
     // 删除消息:本地移除并重排 id(id 始终等于 JSONL 内的消息序号)。
     fun deleteMessageAt(uiIndex: Int) {
         if (uiIndex !in threadMessages.indices) return
@@ -387,7 +397,9 @@ fun GroupChatScreen(
     }
 
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
+        // 底部导航栏 inset 已由外层 Scaffold 的 innerPadding 提供,这里只需跟随
+        // 输入法抬升(与单聊 NativeChatScreen 一致),再叠 navigationBarsPadding 会双倍留白。
+        Column(modifier = Modifier.fillMaxSize().imePadding()) {
             // 1. 群聊头部
             GroupChatHeader(
                 group = groupState.value,
@@ -579,9 +591,10 @@ fun GroupChatScreen(
             )
         }
 
-        // 8. 消息长按操作(复制/编辑/删除)
+        // 8. 消息长按操作:与单聊共用 MessageActionSheet(存档点/分支与提示词分析
+        // 群聊原生路径暂不支持,用参数隐藏)。
         actionMessage?.let { msg ->
-            GroupMessageActionSheet(
+            MessageActionSheet(
                 message = msg,
                 onDismiss = { actionMessage = null },
                 onCopy = {
@@ -595,10 +608,36 @@ fun GroupChatScreen(
                     actionMessage = null
                     editingMessage = msg
                 },
+                onRegenerate = {
+                    actionMessage = null
+                    val member = findGroupSpeaker(msg, membersList)
+                    if (member != null) requestGroupReply(member.id)
+                    else onShowMessage("找不到该成员")
+                },
+                onHideToggle = {
+                    actionMessage = null
+                    val index = threadMessages.indexOfFirst { it.id == msg.id }
+                    if (index >= 0) {
+                        applyHideToggle(index, !msg.isSystem)
+                        onShowMessage(
+                            if (msg.isSystem) "消息已取消隐藏" else "消息已隐藏（不会被 AI 看到）"
+                        )
+                    }
+                },
+                onCreateCheckpoint = {},
+                onCreateBranch = {},
+                onViewBranches = {},
+                onItemizedPrompt = {},
                 onDelete = {
                     actionMessage = null
                     deletingMessage = msg
-                }
+                },
+                onUnavailableAction = { label ->
+                    actionMessage = null
+                    onShowMessage("$label 功能暂未接入原生群聊")
+                },
+                showCheckpointActions = false,
+                showItemizedPrompt = false
             )
         }
         editingMessage?.let { msg ->

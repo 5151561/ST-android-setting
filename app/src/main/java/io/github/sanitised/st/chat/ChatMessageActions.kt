@@ -172,7 +172,10 @@ internal fun MessageActionSheet(
     onViewBranches: () -> Unit,
     onItemizedPrompt: () -> Unit,
     onDelete: () -> Unit,
-    onUnavailableAction: (String) -> Unit
+    onUnavailableAction: (String) -> Unit,
+    // 群聊原生路径暂不支持存档点/分支与提示词分析,传 false 隐藏对应条目
+    showCheckpointActions: Boolean = true,
+    showItemizedPrompt: Boolean = true
 ) {
     val branchCount = message.branches.size
     val sheetState = rememberModalBottomSheetState()
@@ -248,47 +251,49 @@ internal fun MessageActionSheet(
                 )
             }
 
-            Surface(
-                onClick = onCreateCheckpoint,
-                color = MaterialTheme.colorScheme.surfaceContainerLow
-            ) {
-                ListItem(
-                    headlineContent = { Text("创建存档点") },
-                    supportingContent = {
-                        Text("为当前消息保存一个快照", style = MaterialTheme.typography.bodySmall)
-                    },
-                    leadingContent = {
-                        Icon(
-                            Icons.Filled.BookmarkAdd,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                )
+            if (showCheckpointActions) {
+                Surface(
+                    onClick = onCreateCheckpoint,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    ListItem(
+                        headlineContent = { Text("创建存档点") },
+                        supportingContent = {
+                            Text("为当前消息保存一个快照", style = MaterialTheme.typography.bodySmall)
+                        },
+                        leadingContent = {
+                            Icon(
+                                Icons.Filled.BookmarkAdd,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    )
+                }
+
+                Surface(
+                    onClick = onCreateBranch,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    ListItem(
+                        headlineContent = { Text("创建分支") },
+                        supportingContent = {
+                            Text("从此消息开启新的聊天线", style = MaterialTheme.typography.bodySmall)
+                        },
+                        leadingContent = {
+                            Icon(
+                                Icons.Filled.AccountTree,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    )
+                }
             }
 
-            Surface(
-                onClick = onCreateBranch,
-                color = MaterialTheme.colorScheme.surfaceContainerLow
-            ) {
-                ListItem(
-                    headlineContent = { Text("创建分支") },
-                    supportingContent = {
-                        Text("从此消息开启新的聊天线", style = MaterialTheme.typography.bodySmall)
-                    },
-                    leadingContent = {
-                        Icon(
-                            Icons.Filled.AccountTree,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                )
-            }
-
-            if (branchCount > 0) {
+            if (showCheckpointActions && branchCount > 0) {
                 Surface(
                     onClick = onViewBranches,
                     color = MaterialTheme.colorScheme.surfaceContainerLow
@@ -325,7 +330,7 @@ internal fun MessageActionSheet(
                 }
             }
 
-            if (!message.isUser) {
+            if (showItemizedPrompt && !message.isUser) {
                 Surface(
                     onClick = onItemizedPrompt,
                     color = MaterialTheme.colorScheme.surfaceContainerLow

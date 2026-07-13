@@ -94,11 +94,13 @@ fun GroupMesAssistant(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            // 隐藏(is_system)消息压暗展示,与单聊一致
+            .alpha(if (msg.isSystem) 0.5f else 1f),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         GroupMemberAvatar(member = member, baseUrl = baseUrl, size = 36.dp)
-        
+
         Column(modifier = Modifier.weight(1f)) {
             // Header Row
             Row(
@@ -128,6 +130,9 @@ fun GroupMesAssistant(
                 accent = member.accent,
                 onLongPress = onLongPress
             ) {
+                if (msg.isSystem) {
+                    HiddenMessageBadge(modifier = Modifier.padding(bottom = 4.dp))
+                }
                 // applySwipe 与流式生成都会同步更新 mes,直接渲染即可。
                 ChatRichText(text = msg.mes)
             }
@@ -157,7 +162,8 @@ fun GroupMesUser(msg: ChatMessage, onLongPress: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .alpha(if (msg.isSystem) 0.5f else 1f),
         horizontalArrangement = Arrangement.End
     ) {
         Column(
@@ -171,6 +177,9 @@ fun GroupMesUser(msg: ChatMessage, onLongPress: (() -> Unit)? = null) {
                 modifier = Modifier.padding(bottom = 4.dp)
             )
             ChatBubbleSurface(isUser = true, onLongPress = onLongPress) {
+                if (msg.isSystem) {
+                    HiddenMessageBadge(modifier = Modifier.padding(bottom = 4.dp))
+                }
                 ChatRichText(
                     text = msg.mes,
                     color = MaterialTheme.colorScheme.onPrimaryContainer

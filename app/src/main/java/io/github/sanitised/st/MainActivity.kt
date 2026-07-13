@@ -22,6 +22,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
@@ -748,9 +749,13 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 ) { innerPadding ->
+                    // M3 Scaffold 的约定:innerPadding 要同时 padding + consumeWindowInsets。
+                    // 只 padding 不 consume 时,子层的 imePadding() 会重复计入系统栏高度,
+                    // 键盘上方会多出一条导航栏高的缝;statusBarsPadding() 也会双倍留白。
                     Box(
                         modifier = Modifier
                             .padding(innerPadding)
+                            .consumeWindowInsets(innerPadding)
                             .fillMaxSize()
                     ) {
                         NavHost(
