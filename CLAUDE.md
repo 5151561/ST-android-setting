@@ -66,7 +66,7 @@ git submodule update --init --recursive
 
 ### 数据访问 — 双路径
 
-- **API 路径**：`api/TavernCoreApi.kt` 中的 `TavernCoreClient`，通过 OkHttp 调用本地 SillyTavern HTTP API。使用 SnakeYAML 解析 JSON（不用 Gson/Moshi），JSON 序列化用手写工具函数（`jsonObject()`、`jsonValue()`、`quoteJson()`）。CSRF token 自动获取。
+- **API 路径**：`api/TavernCoreApi.kt` 中的 `TavernCoreClient`，通过 OkHttp 调用本地 SillyTavern HTTP API。JSON 编解码用 `api/StJson.kt`（基于 kotlinx.serialization，不用 Gson/Moshi），解析结果保持旧 SnakeYAML 路径的宽松形态（`Map<String, Any?>` / `List<Any?>` / 基本类型），序列化经 `jsonObject()`、`jsonValue()` 委托给 `StJson.encode*`。CSRF token 自动获取。
 - **本地文件路径**：`data/LocalTavernLibraryReader` 直接读取 `data/<user>/` 下的角色 PNG 和聊天 JSONL，作为服务未运行时的 fallback。
 
 ### 主题
@@ -82,7 +82,7 @@ git submodule update --init --recursive
 
 - UI 语言是中文。字符串资源在 `res/values/strings.xml` 和 `res/values-zh/strings.xml`。
 - Compose + Material 3（`androidx.compose.material3`）。AGP 9（built-in Kotlin，不再应用 `org.jetbrains.kotlin.android` 插件），Compose 编译器由 `org.jetbrains.kotlin.plugin.compose` 插件提供，版本需与 AGP 内嵌的 Kotlin Gradle Plugin 一致（根 `build.gradle.kts` 有注释说明）。
-- `TavernCoreClient` 中 JSON 构造是手写的，不依赖 JSON 序列化库。chat 层 JSON 操作使用 `org.json.JSONObject`。
+- `TavernCoreClient` 的 JSON 编解码走 `StJson`（kotlinx.serialization）。chat 层 JSON 操作使用 `org.json.JSONObject`。SnakeYAML 仅用于 YAML（`ConfigFormTools`、`NodeBackup` 处理 config.yaml），不再参与 JSON 解析。
 - 图片加载用 Coil 3（`coil3.compose.AsyncImage`），网络图片依赖 `coil-network-okhttp` 组件。
 - Debug 变体使用 applicationId 后缀 `.dev`，应用名 "ST dev"。
 - `minSdk = 26`（Android 8.0），`targetSdk = 36`，`compileSdk = 37`。
