@@ -415,7 +415,7 @@ private fun STConnectionProfileCard(
 ) {
     PremiumCard(
         onClick = onClick,
-        borderColor = Color(0x0DFFFFFF)
+        borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -438,7 +438,7 @@ private fun STConnectionProfileCard(
             }
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = Color(0x0AFFFFFF),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
                 modifier = Modifier.padding(horizontal = 4.dp)
             ) {
                 Text(
@@ -476,7 +476,7 @@ private fun STModeControl(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0x08FFFFFF), RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f), RoundedCornerShape(14.dp))
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -494,7 +494,7 @@ private fun STModeControl(
                     Text(
                         text = label,
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (sel) Color(0xFF4A2700) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         fontSize = 11.sp
@@ -547,7 +547,7 @@ private fun STActiveConnectionCard(
     }
     
     PremiumCard(
-        borderColor = if (connectionStatusOk) Color(0x407FCE8E) else Color(0x0DFFFFFF)
+        borderColor = if (connectionStatusOk) Color(0x407FCE8E) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -556,7 +556,7 @@ private fun STActiveConnectionCard(
             Surface(
                 modifier = Modifier.size(40.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = if (connectionStatusOk) MaterialTheme.colorScheme.primaryContainer else Color(0x0DFFFFFF),
+                color = if (connectionStatusOk) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
                 contentColor = if (connectionStatusOk) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -588,7 +588,7 @@ private fun STActiveConnectionCard(
             STIconButton(Icons.Filled.Settings, "配置详细后端", onConfigure)
         }
         Spacer(modifier = Modifier.height(10.dp))
-        HorizontalDivider(color = Color(0x0DFFFFFF))
+        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
         Spacer(modifier = Modifier.height(10.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -659,10 +659,10 @@ private fun ProviderGrid(
                         onClick = { onProviderChange(provider) },
                         modifier = Modifier.weight(1f),
                         shape = MaterialTheme.shapes.large,
-                        color = if (active) STThemePrimary.copy(alpha = 0.08f) else Color(0x05FFFFFF),
+                        color = if (active) STThemePrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.02f),
                         border = androidx.compose.foundation.BorderStroke(
                             1.dp,
-                            if (active) STThemePrimary.copy(alpha = 0.35f) else Color(0x0AFFFFFF)
+                            if (active) STThemePrimary.copy(alpha = 0.35f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
                         )
                     ) {
                         Column(
@@ -671,13 +671,13 @@ private fun ProviderGrid(
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (active) STThemePrimary else Color(0x08FFFFFF),
+                                color = if (active) STThemePrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f),
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
                                         text = provider.icon,
-                                        color = if (active) Color(0xFF18130E) else STThemePrimary,
+                                        color = if (active) MaterialTheme.colorScheme.onPrimary else STThemePrimary,
                                         fontWeight = FontWeight.Bold,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontSize = 16.sp
@@ -743,7 +743,7 @@ private fun ConnectionProfileBottomSheet(
                     Icon(Icons.Filled.Close, "关闭")
                 }
             }
-            HorizontalDivider(color = Color(0x0DFFFFFF))
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
             Spacer(modifier = Modifier.height(8.dp))
 
             if (apiProfiles.isEmpty()) {
@@ -759,7 +759,7 @@ private fun ConnectionProfileBottomSheet(
                             onClick = { onProfileSelected(profile.label, profile.label) },
                             modifier = Modifier.fillMaxWidth(),
                             shape = MaterialTheme.shapes.large,
-                            color = if (active) Color(0x08FFFFFF) else Color.Transparent
+                            color = if (active) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f) else Color.Transparent
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -767,8 +767,8 @@ private fun ConnectionProfileBottomSheet(
                             ) {
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = if (active) STThemePrimary else Color(0x0DFFFFFF),
-                                    contentColor = if (active) Color(0xFF4A2700) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = if (active) STThemePrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                                    contentColor = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
@@ -803,14 +803,14 @@ private fun ConnectionProfileBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider(color = Color(0x0DFFFFFF))
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = { /* New preset action */ },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x1EFFFFFF))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                 ) {
                     Icon(Icons.Filled.Add, null)
                     Spacer(Modifier.width(6.dp))
@@ -820,7 +820,7 @@ private fun ConnectionProfileBottomSheet(
                     onClick = { /* Export preset action */ },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x0AFFFFFF), contentColor = MaterialTheme.colorScheme.onSurface)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f), contentColor = MaterialTheme.colorScheme.onSurface)
                 ) {
                     Icon(Icons.Filled.Download, null)
                     Spacer(Modifier.width(6.dp))

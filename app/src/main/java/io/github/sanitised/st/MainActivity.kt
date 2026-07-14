@@ -692,7 +692,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            STAppTheme(useDarkTheme = useDarkTheme, colorSource = themeColorSource) {
+            STAppTheme(
+                useDarkTheme = useDarkTheme,
+                colorSource = themeColorSource,
+                chatFontSize = viewModel.fontSize.value,
+                chatBubbleStyle = viewModel.bubbleStyle.value
+            ) {
                 STAppChrome(
                     navController = navController,
                     drawerItems = dynamicDrawerItems,

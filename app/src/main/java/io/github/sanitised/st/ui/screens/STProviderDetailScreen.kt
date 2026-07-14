@@ -379,7 +379,7 @@ fun STProviderDetailScreen(
                 }
             }
             
-            HorizontalDivider(color = Color(0x0DFFFFFF), modifier = Modifier.padding(vertical = 8.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), modifier = Modifier.padding(vertical = 8.dp))
             
             PremiumSectionHeader(title = "端点设置")
             
@@ -488,7 +488,7 @@ fun STProviderDetailScreen(
                 )
             }
 
-            HorizontalDivider(color = Color(0x0DFFFFFF), modifier = Modifier.padding(vertical = 12.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), modifier = Modifier.padding(vertical = 12.dp))
 
             Row(
                 modifier = Modifier
@@ -574,7 +574,7 @@ fun STProviderDetailScreen(
                 }
             }
             
-            HorizontalDivider(color = Color(0x0DFFFFFF), modifier = Modifier.padding(vertical = 12.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), modifier = Modifier.padding(vertical = 12.dp))
             
             PremiumSectionHeader(title = "模型并发与参数重载")
             
@@ -606,7 +606,7 @@ fun STProviderDetailScreen(
                     colors = SliderDefaults.colors(
                         thumbColor = STThemePrimary,
                         activeTrackColor = STThemePrimary,
-                        inactiveTrackColor = Color(0x0DFFFFFF)
+                        inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
                     ),
                     modifier = Modifier.padding(top = 4.dp)
                 )
@@ -640,7 +640,7 @@ fun STProviderDetailScreen(
                     colors = SliderDefaults.colors(
                         thumbColor = STThemePrimary,
                         activeTrackColor = STThemePrimary,
-                        inactiveTrackColor = Color(0x0DFFFFFF)
+                        inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
                     ),
                     modifier = Modifier.padding(top = 4.dp)
                 )

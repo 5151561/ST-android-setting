@@ -48,10 +48,17 @@ import kotlinx.coroutines.launch
 // Shared HUD Primitives & Style Tokens (1:1 Matching tokens.css)
 // ─────────────────────────────────────────────────────────────
 
-val STThemePrimary = Color(0xFFFFB871)
-val STThemeTertiary = Color(0xFFC6CB95)
-val STThemeError = Color(0xFFFFB4AB)
-val STThemeBg = Color(0xFF18130E)
+// 这些原本是 dark-only 硬编码色板(1:1 对齐旧 tokens.css),主题重做后必须跟随
+// MaterialTheme。改成 @Composable 只读访问器后,散落在各屏的 100+ 处引用无需改动即可
+// 随明暗/配色切换,不再锁死在深色橙。
+val STThemePrimary: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.primary
+val STThemeTertiary: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.tertiary
+val STThemeError: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.error
+val STThemeBg: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.background
 
 @Composable
 fun GlowStatusDot(
@@ -78,7 +85,7 @@ fun GlowStatusDot(
 fun PremiumCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    borderColor: Color = Color(0x1AFFFFFF),
+    borderColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
     content: @Composable ColumnScope.() -> Unit
 ) {
     Surface(
@@ -89,7 +96,7 @@ fun PremiumCard(
                 if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
             ),
         shape = RoundedCornerShape(20.dp),
-        color = Color(0x08FFFFFF),
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f),
         border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
     ) {
         Column(modifier = Modifier.padding(14.dp), content = content)
@@ -284,7 +291,7 @@ fun STSecretsScreen(
 
                 // Safety Header Callout
                 PremiumCard(
-                    borderColor = Color(0x12FFFFFF)
+                    borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -332,7 +339,7 @@ fun STSecretsScreen(
                             val statusBadgeBg = statusBadgeColor.copy(alpha = 0.12f)
                             val provider = backendSecrets.first { it.key == row.providerKey }
 
-                            PremiumCard(borderColor = Color(0x12FFFFFF)) {
+                            PremiumCard(borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.fillMaxWidth()
@@ -389,7 +396,7 @@ fun STSecretsScreen(
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
-                                HorizontalDivider(color = Color(0x0DFFFFFF))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -632,7 +639,7 @@ fun STSecretsScreen(
                                     editingSecretBackend = null
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = STThemePrimary, contentColor = Color(0xFF4A2700)),
+                            colors = ButtonDefaults.buttonColors(containerColor = STThemePrimary, contentColor = MaterialTheme.colorScheme.onPrimary),
                             modifier = Modifier.weight(2f),
                             shape = RoundedCornerShape(16.dp)
                         ) {
@@ -767,7 +774,7 @@ fun STSecretsScreen(
                             }
                         },
                         enabled = providerOptions.isNotEmpty(),
-                        colors = ButtonDefaults.buttonColors(containerColor = STThemePrimary, contentColor = Color(0xFF4A2700)),
+                        colors = ButtonDefaults.buttonColors(containerColor = STThemePrimary, contentColor = MaterialTheme.colorScheme.onPrimary),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -857,7 +864,7 @@ fun STExtensionsScreen(
 
             // Extras API status card (Premium Translucent Card style)
             PremiumCard(
-                borderColor = if (activeExtras) STThemeTertiary.copy(alpha = 0.25f) else Color(0x12FFFFFF)
+                borderColor = if (activeExtras) STThemeTertiary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -902,10 +909,10 @@ fun STExtensionsScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
-                        color = Color(0x06FFFFFF),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.024f),
                         border = androidx.compose.foundation.BorderStroke(
                             width = 1.dp,
-                            color = if (ext.active) STThemePrimary.copy(alpha = 0.25f) else Color(0x0DFFFFFF)
+                            color = if (ext.active) STThemePrimary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
                         )
                     ) {
                         Row(
@@ -917,7 +924,7 @@ fun STExtensionsScreen(
                             Surface(
                                 modifier = Modifier.size(38.dp),
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (ext.active) STThemePrimary.copy(alpha = 0.1f) else Color(0x0DFFFFFF),
+                                color = if (ext.active) STThemePrimary.copy(alpha = 0.1f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
                                 contentColor = if (ext.active) STThemePrimary else MaterialTheme.colorScheme.onSurfaceVariant
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -1079,7 +1086,7 @@ fun STAuthorNoteCFGScreen(
                     "note" -> {
                         // Cascade levels preview
                         PremiumCard(
-                            borderColor = Color(0x12FFFFFF)
+                            borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
                         ) {
                             Text(
                                 text = "注入层级级联预览",
@@ -1130,7 +1137,7 @@ fun STAuthorNoteCFGScreen(
                         )
 
                         PremiumCard(
-                            borderColor = Color(0x12FFFFFF)
+                            borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
                         ) {
                             Text(
                                 text = authorNote,
@@ -1197,7 +1204,7 @@ fun STAuthorNoteCFGScreen(
                                 activeSheet = "positive"
                                 tempEditText = positivePrompt
                             },
-                            borderColor = Color(0x12FFFFFF)
+                            borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 GlowStatusDot(color = STThemeTertiary)
@@ -1213,7 +1220,7 @@ fun STAuthorNoteCFGScreen(
                                 activeSheet = "negative"
                                 tempEditText = negativePrompt
                             },
-                            borderColor = Color(0x12FFFFFF)
+                            borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 GlowStatusDot(color = STThemeError)
@@ -1354,7 +1361,7 @@ fun STAuthorNoteCFGScreen(
                             onShowMessage("已更新级联参数")
                             activeSheet = null
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = STThemePrimary, contentColor = Color(0xFF4A2700)),
+                        colors = ButtonDefaults.buttonColors(containerColor = STThemePrimary, contentColor = MaterialTheme.colorScheme.onPrimary),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -1460,8 +1467,8 @@ fun STQuickReplyScreen(
                         
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = Color(0x0AFFFFFF),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x0DFFFFFF)),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -1477,8 +1484,8 @@ fun STQuickReplyScreen(
                                         Surface(
                                             onClick = { toastMessage = "快捷发送指令：\"${r.label}\"" },
                                             shape = RoundedCornerShape(8.dp),
-                                            color = Color(0x0DFFFFFF),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x10FFFFFF)),
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)),
                                             modifier = Modifier.height(26.dp)
                                         ) {
                                             Row(
@@ -1513,8 +1520,8 @@ fun STQuickReplyScreen(
                                             .weight(1f)
                                             .height(34.dp),
                                         shape = RoundedCornerShape(16.dp),
-                                        color = Color(0x06FFFFFF),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x0AFFFFFF))
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.024f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f))
                                     ) {
                                         Box(
                                             contentAlignment = Alignment.CenterStart,
@@ -1531,7 +1538,7 @@ fun STQuickReplyScreen(
                                         modifier = Modifier.size(34.dp),
                                         shape = CircleShape,
                                         color = STThemePrimary,
-                                        contentColor = Color(0xFF4A2700)
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Icon(
@@ -1572,7 +1579,7 @@ fun STQuickReplyScreen(
                     ) {
                         for ((index, reply) in repliesList.withIndex()) {
                             PremiumCard(
-                                borderColor = Color(0x12FFFFFF)
+                                borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -1581,7 +1588,7 @@ fun STQuickReplyScreen(
                                     Surface(
                                         modifier = Modifier.size(36.dp),
                                         shape = RoundedCornerShape(8.dp),
-                                        color = Color(0x0DFFFFFF),
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
                                         contentColor = STThemePrimary
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
@@ -1656,7 +1663,7 @@ private fun STSystemInfoCard(
     details: String
 ) {
     PremiumCard(
-        borderColor = Color(0x12FFFFFF)
+        borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -1805,7 +1812,7 @@ fun STMemoryScreen(
                         "summary" -> {
                             // Smart cognitive dashboard (Memory HUD)
                             PremiumCard(
-                                borderColor = Color(0x12FFFFFF)
+                                borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
                             ) {
                                 Text(
                                     text = "智能认知仪表盘 (Memory HUD)",
@@ -1824,8 +1831,8 @@ fun STMemoryScreen(
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(12.dp))
-                                            .background(Color(0x06FFFFFF))
-                                            .border(1.dp, Color(0x0AFFFFFF), RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.024f))
+                                            .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f), RoundedCornerShape(12.dp))
                                             .padding(vertical = 10.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -1839,8 +1846,8 @@ fun STMemoryScreen(
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(12.dp))
-                                            .background(Color(0x06FFFFFF))
-                                            .border(1.dp, Color(0x0AFFFFFF), RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.024f))
+                                            .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f), RoundedCornerShape(12.dp))
                                             .padding(vertical = 10.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -1854,8 +1861,8 @@ fun STMemoryScreen(
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(12.dp))
-                                            .background(Color(0x06FFFFFF))
-                                            .border(1.dp, Color(0x0AFFFFFF), RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.024f))
+                                            .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f), RoundedCornerShape(12.dp))
                                             .padding(vertical = 10.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -1917,7 +1924,7 @@ fun STMemoryScreen(
                             )
 
                             PremiumCard(
-                                borderColor = Color(0x12FFFFFF)
+                                borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
                             ) {
                                 Text(
                                     text = summaryText,
@@ -1942,8 +1949,8 @@ fun STMemoryScreen(
                                         .fillMaxWidth()
                                         .height(48.dp),
                                     shape = CircleShape,
-                                    color = Color(0x0AFFFFFF),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x0DFFFFFF))
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -1995,7 +2002,7 @@ fun STMemoryScreen(
                                 ) {
                                     for (res in searchResults) {
                                         PremiumCard(
-                                            borderColor = Color(0x12FFFFFF)
+                                            borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
                                         ) {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
@@ -2083,10 +2090,10 @@ fun STMemoryScreen(
                                         },
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(16.dp),
-                                        color = if (cp.active) STThemePrimary.copy(alpha = 0.05f) else Color(0x03FFFFFF),
+                                        color = if (cp.active) STThemePrimary.copy(alpha = 0.05f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.012f),
                                         border = androidx.compose.foundation.BorderStroke(
                                             width = 1.dp,
-                                            color = if (cp.active) STThemePrimary.copy(alpha = 0.25f) else Color(0x0AFFFFFF)
+                                            color = if (cp.active) STThemePrimary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
                                         )
                                     ) {
                                         Row(
@@ -2115,7 +2122,7 @@ fun STMemoryScreen(
                                             }
                                             STBadge(
                                                 label = cp.tag,
-                                                containerColor = if (cp.active) STThemePrimary.copy(alpha = 0.12f) else Color(0x0DFFFFFF),
+                                                containerColor = if (cp.active) STThemePrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
                                                 contentColor = if (cp.active) STThemePrimary else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
@@ -2190,7 +2197,7 @@ fun STMemoryScreen(
                             toastMessage = "手动摘要修改成功"
                             editingSummary = false
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = STThemePrimary, contentColor = Color(0xFF4A2700)),
+                        colors = ButtonDefaults.buttonColors(containerColor = STThemePrimary, contentColor = MaterialTheme.colorScheme.onPrimary),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -2274,7 +2281,7 @@ fun STMemoryScreen(
                                 toastMessage = "已成功回滚会话至 \"${cp.name}\""
                                 activeCheckpoint = null
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = STThemeError, contentColor = Color(0xFF5B0009)),
+                            colors = ButtonDefaults.buttonColors(containerColor = STThemeError, contentColor = MaterialTheme.colorScheme.onError),
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(16.dp)
                         ) {

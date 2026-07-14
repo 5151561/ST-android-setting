@@ -1352,12 +1352,12 @@ fun STGlassTextField(
                 .fillMaxWidth()
                 .height(48.dp)
                 .background(
-                    color = Color(0x05FFFFFF),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.02f),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
                 )
                 .border(
                     width = 1.dp,
-                    color = if (isFocused) STThemePrimary else Color(0x0DFFFFFF),
+                    color = if (isFocused) STThemePrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
                 )
                 .padding(horizontal = 14.dp),
