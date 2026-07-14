@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -365,7 +366,9 @@ internal fun MessageList(
     onSaveEdit: (Int) -> Unit,
     onCancelEdit: () -> Unit,
     onDeleteFromEdit: (ChatMessage) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // 底部留白 = 悬浮在列表上方的「继续/重写」快捷条高度,保证最后一条消息能完整滚到其上方
+    bottomContentPadding: Dp = 8.dp
 ) {
     val listState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
@@ -415,7 +418,7 @@ internal fun MessageList(
     LazyColumn(
         modifier = modifier,
         state = listState,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         if (dateLabel != null) {

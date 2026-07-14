@@ -955,10 +955,14 @@ internal fun STBackRoot(
 
 @Composable
 private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, selective: Boolean, order: Int = 0) {
+    // 直接点击整条即展开/收起,不再单独放按钮(展开后无需再找按钮,误触也能就地收起)。
+    var expanded by remember { mutableStateOf(false) }
+    var overflowing by remember { mutableStateOf(false) }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable(enabled = overflowing || expanded) { expanded = !expanded },
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainer
     ) {
@@ -998,7 +1002,17 @@ private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, s
                     )
                 }
             }
-            Text(content, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight)
+            Text(
+                content,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = MaterialTheme.typography.bodyMedium.lineHeight,
+                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { result ->
+                    if (!expanded && result.hasVisualOverflow) overflowing = true
+                }
+            )
         }
     }
 }

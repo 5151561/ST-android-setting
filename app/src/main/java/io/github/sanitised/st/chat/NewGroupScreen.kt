@@ -21,9 +21,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sanitised.st.api.CharacterSummary
+import io.github.sanitised.st.ui.screens.STAvatar
+import io.github.sanitised.st.ui.screens.STGroupAvatar
+import io.github.sanitised.st.ui.screens.stGradientFor
 
 // SillyTavern group_activation_strategy (scripts/group-chats.js):
 // NATURAL=0, LIST=1, MANUAL=2, POOLED=3.
@@ -57,11 +61,12 @@ internal fun gradientFor(seed: String): List<Color> {
 internal fun memberInitial(name: String): String =
     name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun NewGroupScreen(
     characters: List<CharacterSummary>,
     loading: Boolean,
+    baseUrl: String = "",
     onClose: () -> Unit,
     onCreate: (name: String, members: List<String>, activationStrategy: Int) -> Unit,
     modifier: Modifier = Modifier
@@ -135,7 +140,7 @@ fun NewGroupScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    NewGroupHeaderAvatar(members = selectedMembers, size = 64.dp)
+                    NewGroupHeaderAvatar(members = selectedMembers, baseUrl = baseUrl, size = 64.dp)
 
                     OutlinedTextField(
                         value = groupName,
@@ -245,15 +250,13 @@ fun NewGroupScreen(
                         }
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(Brush.linearGradient(gradientFor(m.id))),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(memberInitial(m.name), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    }
+                    STAvatar(
+                        label = m.name,
+                        imageUrl = m.avatarUrl,
+                        baseUrl = baseUrl,
+                        size = 40.dp,
+                        gradient = stGradientFor(m.id.hashCode())
+                    )
 
                     Spacer(modifier = Modifier.width(12.dp))
 
@@ -313,15 +316,13 @@ fun NewGroupScreen(
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Box(modifier = Modifier.size(56.dp)) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(CircleShape)
-                                            .background(Brush.linearGradient(gradientFor(c.id))),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(memberInitial(c.name), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                    STAvatar(
+                                        label = c.name,
+                                        imageUrl = c.avatarUrl,
+                                        baseUrl = baseUrl,
+                                        size = 56.dp,
+                                        gradient = stGradientFor(c.id.hashCode())
+                                    )
 
                                     Box(
                                         modifier = Modifier
@@ -359,11 +360,12 @@ fun NewGroupScreen(
                 SectionHeader(title = "回复策略")
             }
             item {
-                Row(
+                FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val strategies = listOf(
                         Triple("manual", "手动", Icons.Filled.TouchApp),
@@ -420,32 +422,28 @@ fun NewGroupScreen(
 }
 
 @Composable
-private fun NewGroupHeaderAvatar(members: List<CharacterSummary>, size: androidx.compose.ui.unit.Dp) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(
-                Brush.linearGradient(
-                    gradientFor(members.firstOrNull()?.id ?: "group")
-                )
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        if (members.isEmpty()) {
+private fun NewGroupHeaderAvatar(members: List<CharacterSummary>, baseUrl: String, size: Dp) {
+    if (members.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(gradientFor("group"))),
+            contentAlignment = Alignment.Center
+        ) {
             Icon(
                 imageVector = Icons.Filled.Group,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(size / 2)
             )
-        } else {
-            Text(
-                text = members.take(2).joinToString("") { memberInitial(it.name) },
-                color = Color.White,
-                fontSize = (size.value / 3).sp,
-                fontWeight = FontWeight.Bold
-            )
         }
+    } else {
+        STGroupAvatar(
+            initials = members.map { memberInitial(it.name) },
+            imageUrls = members.map { it.avatarUrl },
+            baseUrl = baseUrl,
+            size = size
+        )
     }
 }

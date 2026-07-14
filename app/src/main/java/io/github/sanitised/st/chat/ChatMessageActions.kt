@@ -110,6 +110,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -131,6 +132,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -231,6 +233,7 @@ internal fun MessageActionSheet(
                 color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = {
                         Text(if (message.isSystem) "取消隐藏" else "从 AI 上下文中隐藏")
                     },
@@ -257,6 +260,7 @@ internal fun MessageActionSheet(
                     color = MaterialTheme.colorScheme.surfaceContainerLow
                 ) {
                     ListItem(
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text("创建存档点") },
                         supportingContent = {
                             Text("为当前消息保存一个快照", style = MaterialTheme.typography.bodySmall)
@@ -277,6 +281,7 @@ internal fun MessageActionSheet(
                     color = MaterialTheme.colorScheme.surfaceContainerLow
                 ) {
                     ListItem(
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text("创建分支") },
                         supportingContent = {
                             Text("从此消息开启新的聊天线", style = MaterialTheme.typography.bodySmall)
@@ -299,6 +304,7 @@ internal fun MessageActionSheet(
                     color = MaterialTheme.colorScheme.surfaceContainerLow
                 ) {
                     ListItem(
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text("查看分支") },
                         leadingContent = {
                             Icon(
@@ -336,6 +342,7 @@ internal fun MessageActionSheet(
                     color = MaterialTheme.colorScheme.surfaceContainerLow
                 ) {
                     ListItem(
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text("提示词分析") },
                         supportingContent = {
                             Text("查看本条生成的 token 构成", style = MaterialTheme.typography.bodySmall)
@@ -358,6 +365,7 @@ internal fun MessageActionSheet(
                 color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = {
                         Text(
                             "删除消息",

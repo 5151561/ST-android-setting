@@ -85,28 +85,26 @@ fun LogsScreen(
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color(0xFF0D0A07) // Premium ultra dark terminal background
+        color = MaterialTheme.colorScheme.background
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-            // Premium Terminal Custom Top Bar
+            // Terminal-style top bar, theme-driven
             TopAppBar(
                 title = {
                     Text(
                         text = "运行日志",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Color.White
+                        style = MaterialTheme.typography.titleLarge
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = Color.White
+                            contentDescription = "返回"
                         )
                     }
                 },
@@ -121,23 +119,21 @@ fun LogsScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.ContentCopy,
-                            contentDescription = "复制日志",
-                            tint = if (currentLogText.isNotEmpty()) Color.White else Color.White.copy(alpha = 0.4f)
+                            contentDescription = "复制日志"
                         )
                     }
                     IconButton(onClick = onExportDiagnostics) {
                         Icon(
                             imageVector = Icons.Filled.FileDownload,
-                            contentDescription = "导出诊断数据",
-                            tint = Color.White
+                            contentDescription = "导出诊断数据"
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0D0A07),
-                    navigationIconContentColor = Color.White,
-                    titleContentColor = Color.White,
-                    actionIconContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.background,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
 
@@ -160,10 +156,10 @@ fun LogsScreen(
                         modifier = Modifier
                             .weight(1f)
                             .clip(CircleShape)
-                            .background(if (isSelected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
+                            .background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
                             .border(
                                 width = 1.dp,
-                                color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.15f),
+                                color = if (isSelected) Color.Transparent else MaterialTheme.colorScheme.outlineVariant,
                                 shape = CircleShape
                             )
                             .clickable { selectedTab = id }
@@ -174,13 +170,13 @@ fun LogsScreen(
                             Text(
                                 text = label,
                                 style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace),
-                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.6f),
+                                color = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = size,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (isSelected) Color.White.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.4f),
+                                color = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }
@@ -194,8 +190,8 @@ fun LogsScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .background(Color(0xFF060503).copy(alpha = 0.5f), shape = MaterialTheme.shapes.large)
-                    .border(1.dp, Color.White.copy(alpha = 0.1f), shape = MaterialTheme.shapes.large)
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.large)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape = MaterialTheme.shapes.large)
                     .padding(12.dp)
             ) {
 
@@ -214,7 +210,7 @@ fun LogsScreen(
                         Text(
                             text = "日志为空",
                             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                            color = Color.White.copy(alpha = 0.35f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 } else {
@@ -263,7 +259,7 @@ fun LogsScreen(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .background(
-                                        color = if (realtimeFollow) Color(0xFF7FCE8E) else Color.White.copy(alpha = 0.3f),
+                                        color = if (realtimeFollow) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                                         shape = CircleShape
                                     )
                             )
@@ -322,17 +318,17 @@ private fun ParsedLogLine(line: String) {
     val isLvl = level.startsWith("[") && level.endsWith("]")
 
     val levelColor = when {
-        level.contains("info", ignoreCase = true) -> Color(0xFF9CC79E)
-        level.contains("warn", ignoreCase = true) -> Color(0xFFE8B86A)
-        level.contains("error", ignoreCase = true) -> Color(0xFFF2B8B5)
-        else -> Color(0xFF9CC79E)
+        level.contains("warn", ignoreCase = true) -> MaterialTheme.colorScheme.tertiary
+        level.contains("error", ignoreCase = true) -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.primary
     }
+    val messageColor = MaterialTheme.colorScheme.onSurface
 
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
         if (isTime && isLvl) {
             Text(
                 text = time,
-                color = Color.White.copy(alpha = 0.55f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 modifier = Modifier.padding(end = 6.dp)
             )
@@ -344,14 +340,14 @@ private fun ParsedLogLine(line: String) {
             )
             Text(
                 text = message,
-                color = Color(0xFFD2C5B8),
+                color = messageColor,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
             )
         } else {
             val color = when {
-                line.contains("[error]", ignoreCase = true) || line.contains("error", ignoreCase = true) -> Color(0xFFF2B8B5)
-                line.contains("[warn]", ignoreCase = true) || line.contains("warn", ignoreCase = true) -> Color(0xFFE8B86A)
-                else -> Color(0xFFD2C5B8)
+                line.contains("error", ignoreCase = true) -> MaterialTheme.colorScheme.error
+                line.contains("warn", ignoreCase = true) -> MaterialTheme.colorScheme.tertiary
+                else -> messageColor
             }
             Text(
                 text = line,

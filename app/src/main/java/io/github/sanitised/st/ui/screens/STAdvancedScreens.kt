@@ -693,19 +693,41 @@ fun STSecretsScreen(
                     Text("选择 API 提供商", style = MaterialTheme.typography.labelMedium, color = STThemePrimary, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(6.dp))
                     
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    var providerMenuExpanded by remember { mutableStateOf(false) }
+                    val selectedProviderLabel = providerOptions
+                        .firstOrNull { it.key == customKeyProvider }
+                        ?.label
+                        ?: "请选择供应商"
+                    ExposedDropdownMenuBox(
+                        expanded = providerMenuExpanded,
+                        onExpandedChange = { providerMenuExpanded = it }
                     ) {
-                        providerOptions.forEach { option ->
-                            val sel = customKeyProvider == option.key
-                            FilterChip(
-                                selected = sel,
-                                onClick = { customKeyProvider = option.key },
-                                label = { Text(option.label) }
-                            )
+                        OutlinedTextField(
+                            value = selectedProviderLabel,
+                            onValueChange = {},
+                            readOnly = true,
+                            singleLine = true,
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerMenuExpanded)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        ExposedDropdownMenu(
+                            expanded = providerMenuExpanded,
+                            onDismissRequest = { providerMenuExpanded = false }
+                        ) {
+                            providerOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    onClick = {
+                                        customKeyProvider = option.key
+                                        providerMenuExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
 

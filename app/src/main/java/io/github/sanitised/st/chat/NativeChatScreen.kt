@@ -126,6 +126,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -404,6 +405,10 @@ fun NativeChatScreen(
             }
 
             Box(modifier = Modifier.weight(1f)) {
+                // 「继续/重写」快捷条悬浮在消息列表底部(透明,不做背景遮罩)。测得其高度后
+                // 作为列表底部留白,最后一条消息就能完整滚到它上方,内容不再被这排盖住。
+                var quickStripHeightPx by remember { mutableStateOf(0) }
+                val quickStripHeight = with(LocalDensity.current) { quickStripHeightPx.toDp() }
                 if (!targetMatched || (store.runtimeState == RuntimeState.NOT_READY && store.messages.isEmpty())) {
                     ChatLoadingView(
                         targetLabel = target.displayLabel(),
@@ -451,32 +456,40 @@ fun NativeChatScreen(
                             editingMessageId = -1
                             deletingMessage = message
                         },
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        bottomContentPadding = quickStripHeight + 8.dp
                     )
                 }
-            }
 
-            if (editingMessageId < 0) {
-                ChatQuickStrip(
-                    runtimeReady = readyForTarget,
-                    onContinue = { engine.continueGeneration() },
-                    onRegenerate = { engine.regenerate() },
-                    onUnavailableAction = { label -> onShowMessage("$label 功能暂未接入原生聊天运行时") }
-                )
-                QuickReplyStrip(
-                    items = store.quickReplies,
-                    enabled = readyForTarget && !store.isGenerating,
-                    onExecute = { item ->
-                        when (val result = QuickReplyRuntime.execute(item)) {
-                            is QuickReplyExecution.Send -> engine.send(result.text)
-                            is QuickReplyExecution.Draft -> {
-                                quickReplyDraftText = result.text
-                                quickReplyDraftToken += 1
+                if (editingMessageId < 0) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth()
+                            .onSizeChanged { quickStripHeightPx = it.height }
+                    ) {
+                        ChatQuickStrip(
+                            runtimeReady = readyForTarget,
+                            onContinue = { engine.continueGeneration() },
+                            onRegenerate = { engine.regenerate() },
+                            onUnavailableAction = { label -> onShowMessage("$label 功能暂未接入原生聊天运行时") }
+                        )
+                        QuickReplyStrip(
+                            items = store.quickReplies,
+                            enabled = readyForTarget && !store.isGenerating,
+                            onExecute = { item ->
+                                when (val result = QuickReplyRuntime.execute(item)) {
+                                    is QuickReplyExecution.Send -> engine.send(result.text)
+                                    is QuickReplyExecution.Draft -> {
+                                        quickReplyDraftText = result.text
+                                        quickReplyDraftToken += 1
+                                    }
+                                    is QuickReplyExecution.Unsupported -> onShowMessage(result.reason)
+                                }
                             }
-                            is QuickReplyExecution.Unsupported -> onShowMessage(result.reason)
-                        }
+                        )
                     }
-                )
+                }
             }
 
             ChatInputBar(

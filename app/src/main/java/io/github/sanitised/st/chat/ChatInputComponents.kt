@@ -106,7 +106,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -209,10 +209,9 @@ internal fun QuickReplyStrip(
         modifier = Modifier
             .fillMaxWidth()
             .alpha(if (enabled) 1f else 0.45f),
-        color = MaterialTheme.colorScheme.surfaceContainerLow
+        color = Color.Transparent
     ) {
         Column {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
