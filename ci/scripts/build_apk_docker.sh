@@ -106,10 +106,14 @@ docker run --rm \
       app/src/main/jniLibs/arm64-v8a/libnode.so \
       app/src/main/jniLibs/arm64-v8a/libc++_shared.so; \
     bash ci/scripts/build_st_bundle.sh; \
+    GRADLE_JAVA_HOME="${JAVA_HOME:-}"; \
+    if [ -z "$GRADLE_JAVA_HOME" ] || [ ! -x "$GRADLE_JAVA_HOME/bin/java" ]; then \
+      GRADLE_JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"; \
+    fi; \
     if [ "$BUILD_MODE" = "release" ]; then \
-      gradle :app:assembleRelease --stacktrace --no-daemon; \
+      gradle :app:assembleRelease -Dorg.gradle.java.home="$GRADLE_JAVA_HOME" --stacktrace --no-daemon; \
     else \
-      gradle :app:assembleDebug --stacktrace --no-daemon; \
+      gradle :app:assembleDebug -Dorg.gradle.java.home="$GRADLE_JAVA_HOME" --stacktrace --no-daemon; \
     fi; \
   '
 
@@ -120,24 +124,29 @@ elif [ -f "${ROOT_DIR}/app/build/outputs/apk/debug/app-debug.apk" ]; then
   APK_PATH="${ROOT_DIR}/app/build/outputs/apk/debug/app-debug.apk"
 fi
 
-if [ -n "${APK_PATH}" ] && [[ "${APK_PATH}" == */release/* ]]; then
-  VERSION_LABEL="${VERSION_NAME:-}"
-  if [ -z "${VERSION_LABEL}" ] && [ -n "${GITHUB_REF_NAME:-}" ]; then
-    VERSION_LABEL="${GITHUB_REF_NAME#refs/tags/}"
-  fi
-  VERSION_LABEL="${VERSION_LABEL#v}"
-  if [ -n "${VERSION_LABEL}" ]; then
-    mkdir -p "${ROOT_DIR}/out"
-    RELEASE_NAME="ST-android-${VERSION_LABEL}.apk"
-    cp -f "${APK_PATH}" "${ROOT_DIR}/out/${RELEASE_NAME}"
-    printf '\nAPK: %s\n' "${ROOT_DIR}/out/${RELEASE_NAME}"
-    exit 0
-  fi
-fi
-
-if [ -n "${APK_PATH}" ]; then
-  printf '\nAPK: %s\n' "${APK_PATH}"
-else
+if [ -z "${APK_PATH}" ]; then
   printf '\nAPK not found\n'
   exit 1
 fi
+
+# 计算版本标签（tag / VERSION_NAME），去掉前导 v
+VERSION_LABEL="${VERSION_NAME:-}"
+if [ -z "${VERSION_LABEL}" ] && [ -n "${GITHUB_REF_NAME:-}" ]; then
+  VERSION_LABEL="${GITHUB_REF_NAME#refs/tags/}"
+fi
+VERSION_LABEL="${VERSION_LABEL#v}"
+
+# 无论 release 还是 debug，都把产物复制到 out/ 供 CI 上传 / 发布
+mkdir -p "${ROOT_DIR}/out"
+if [[ "${APK_PATH}" == */release/* ]]; then
+  BUILD_SUFFIX=""
+else
+  BUILD_SUFFIX="-debug"
+fi
+if [ -n "${VERSION_LABEL}" ]; then
+  RELEASE_NAME="ST-android-${VERSION_LABEL}${BUILD_SUFFIX}.apk"
+else
+  RELEASE_NAME="ST-android${BUILD_SUFFIX}.apk"
+fi
+cp -f "${APK_PATH}" "${ROOT_DIR}/out/${RELEASE_NAME}"
+printf '\nAPK: %s\n' "${ROOT_DIR}/out/${RELEASE_NAME}"
