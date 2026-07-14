@@ -124,7 +124,6 @@ import io.github.sanitised.st.ui.screens.STCharacterFormScreen
 import io.github.sanitised.st.ui.screens.STAltGreetingsScreen
 import io.github.sanitised.st.ui.screens.STCharacterAdvancedScreen
 import io.github.sanitised.st.ui.screens.STBackgroundsScreen
-import io.github.sanitised.st.ui.screens.STThemeScreen
 import io.github.sanitised.st.ui.screens.STChatBehaviorScreen
 import io.github.sanitised.st.ui.screens.ChatSeenStore
 import io.github.sanitised.st.ui.screens.STDrawerAccount
@@ -801,7 +800,6 @@ class MainActivity : ComponentActivity() {
             STRoutes.SECRETS -> STRoutes.CONNECTIONS
             STRoutes.QUICK_REPLIES -> STRoutes.EXTENSIONS
             STRoutes.BACKGROUNDS,
-            STRoutes.THEME,
             STRoutes.CHAT_BEHAVIOR -> STRoutes.APPEARANCE
             STRoutes.LOGS,
             STRoutes.CONFIG -> STRoutes.MANAGE_ST
@@ -923,6 +921,7 @@ class MainActivity : ComponentActivity() {
                             navController.navigate(STRoutes.pastChats(avatar))
                         }
                     },
+                    chatBackground = viewModel.chatBackground.value,
                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
                 )
             }
@@ -1332,18 +1331,12 @@ class MainActivity : ComponentActivity() {
                     onAutoCheckChanged = { enabled -> viewModel.setAutoCheckForUpdates(enabled) },
                     autoOpenBrowserEnabled = viewModel.autoOpenBrowserWhenReady.value,
                     onAutoOpenBrowserChanged = { enabled -> viewModel.setAutoOpenBrowserWhenReady(enabled) },
-                    themeMode = viewModel.themeMode.value,
-                    onThemeModeChanged = { mode -> viewModel.setThemeMode(mode) },
-                    colorSource = viewModel.themeColorSource.value,
-                    onColorSourceChanged = { source -> viewModel.setThemeColorSource(source) },
                     isBatteryUnrestricted = batteryUnrestrictedState.value,
                     onOpenBatterySettings = { openBatteryOptimizationSettings() },
                     channel = viewModel.updateChannel.value,
                     onChannelChanged = { channel -> viewModel.setUpdateChannel(channel) },
                     onCheckNow = { viewModel.checkForUpdates("manual") },
                     isChecking = viewModel.isCheckingForUpdates.value,
-                    bubbleStyle = viewModel.bubbleStyle.value,
-                    onBubbleStyleChanged = { enabled -> viewModel.setBubbleStyle(enabled) },
                     vibrationFeedback = viewModel.vibrationFeedback.value,
                     onVibrationFeedbackChanged = { enabled -> viewModel.setVibrationFeedback(enabled) },
                     secondConfirmation = viewModel.secondConfirmation.value,
@@ -1365,7 +1358,6 @@ class MainActivity : ComponentActivity() {
                     onOpenAppearance = { navController.navigate(STRoutes.APPEARANCE) },
                     onOpenAccount = { navController.navigate(STRoutes.ACCOUNT) },
                     onOpenBackgrounds = { navController.navigate(STRoutes.BACKGROUNDS) },
-                    onOpenTheme = { navController.navigate(STRoutes.THEME) },
                     onOpenChatBehavior = { navController.navigate(STRoutes.CHAT_BEHAVIOR) },
                     appVersion = versionLabel,
                     onShowMessage = { message -> viewModel.showTransientMessage(message) }
@@ -1418,17 +1410,9 @@ class MainActivity : ComponentActivity() {
                     status = statusState.value,
                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
                     onBack = { navController.popBackStack() },
-                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                )
-            }
-
-            composable(STRoutes.THEME) {
-                BackHandler { navController.popBackStack() }
-                STThemeScreen(
-                    status = statusState.value,
-                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                    onBack = { navController.popBackStack() },
-                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
+                    chatBackground = viewModel.chatBackground.value,
+                    onChatBackgroundChanged = { value -> viewModel.setChatBackground(value) }
                 )
             }
 
@@ -1480,8 +1464,14 @@ class MainActivity : ComponentActivity() {
             composable(STRoutes.APPEARANCE) {
                 BackHandler { navController.popBackStack() }
                 STAppearanceScreen(
+                    themeMode = viewModel.themeMode.value,
+                    onThemeModeChanged = { mode -> viewModel.setThemeMode(mode) },
+                    colorSource = viewModel.themeColorSource.value,
+                    onColorSourceChanged = { source -> viewModel.setThemeColorSource(source) },
                     fontSize = viewModel.fontSize.value,
                     onFontSizeChanged = { size -> viewModel.setFontSize(size) },
+                    bubbleStyle = viewModel.bubbleStyle.value,
+                    onBubbleStyleChanged = { enabled -> viewModel.setBubbleStyle(enabled) },
                     reduceMotion = viewModel.reduceMotion.value,
                     onReduceMotionChanged = { enabled -> viewModel.setReduceMotion(enabled) },
                     onBack = { navController.popBackStack() },

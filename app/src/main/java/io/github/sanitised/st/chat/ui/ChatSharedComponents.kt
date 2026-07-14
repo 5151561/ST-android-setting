@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -44,6 +45,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.sanitised.st.ui.theme.LocalChatBubbleStyle
+import io.github.sanitised.st.ui.theme.LocalChatFontScale
 
 /**
  * 单聊与群聊共享的日期/分段分隔条(取代原 DateChip 与 DateChipG)。
@@ -93,20 +96,32 @@ fun ChatBubbleSurface(
     onLongPress: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(
-        topStart = if (isUser) 18.dp else 4.dp,
-        topEnd = if (isUser) 4.dp else 18.dp,
-        bottomStart = 18.dp,
-        bottomEnd = 18.dp
-    )
-    val background = if (isUser) {
-        MaterialTheme.colorScheme.primaryContainer
+    // 关闭"消息冒泡风格"时切换为全宽文档样式:透明背景、无圆角、正文铺满整行。
+    // 说话人由 MessageBubble 用头像/名字区分(见 DocumentMessageRow),而非气泡形状与左右对齐。
+    val documentStyle = !LocalChatBubbleStyle.current
+    val shape = if (documentStyle) {
+        RectangleShape
     } else {
-        MaterialTheme.colorScheme.surfaceContainer
+        RoundedCornerShape(
+            topStart = if (isUser) 18.dp else 4.dp,
+            topEnd = if (isUser) 4.dp else 18.dp,
+            bottomStart = 18.dp,
+            bottomEnd = 18.dp
+        )
+    }
+    val background = when {
+        documentStyle -> Color.Transparent
+        isUser -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainer
+    }
+    val widthModifier = when {
+        documentStyle -> Modifier.fillMaxWidth()
+        maxWidth != Dp.Unspecified -> Modifier.widthIn(max = maxWidth)
+        else -> Modifier
     }
     Box(
         modifier = modifier
-            .then(if (maxWidth != Dp.Unspecified) Modifier.widthIn(max = maxWidth) else Modifier)
+            .then(widthModifier)
             .clip(shape)
             .then(
                 if (onLongPress != null) {
@@ -117,7 +132,7 @@ fun ChatBubbleSurface(
             )
             .background(background)
     ) {
-        if (accent != null) {
+        if (accent != null && !documentStyle) {
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
@@ -127,7 +142,10 @@ fun ChatBubbleSurface(
             )
         }
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(
+                horizontal = if (documentStyle) 0.dp else 14.dp,
+                vertical = if (documentStyle) 2.dp else 12.dp
+            ),
             content = content
         )
     }
@@ -230,11 +248,16 @@ private fun ChatRichTextLine(
     primary: Color,
     muted: Color,
 ) {
+    // 字号缩放系数由 LocalChatFontScale 提供(基准 14sp),用户在设置屏调整字号时生效;
+    // 缩放只作用于 style 的 fontSize/lineHeight,不进 AnnotatedString,故不影响上面的 remember 缓存。
+    val scale = LocalChatFontScale.current
     Text(
         text = remember(line, primary, muted) { chatRichLine(line, primary, muted) },
-        style = MaterialTheme.typography.bodyMedium,
+        style = MaterialTheme.typography.bodyMedium.copy(
+            fontSize = 14.sp * scale,
+            lineHeight = 22.sp * scale
+        ),
         color = color,
-        lineHeight = 22.sp
     )
 }
 

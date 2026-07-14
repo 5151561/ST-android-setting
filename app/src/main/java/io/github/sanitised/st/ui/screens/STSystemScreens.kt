@@ -127,8 +127,6 @@ import io.github.sanitised.st.BackupOperationAnchor
 import io.github.sanitised.st.CustomOperationAnchor
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
-import io.github.sanitised.st.ThemeColorSource
-import io.github.sanitised.st.ThemeMode
 import io.github.sanitised.st.UpdateChannel
 import io.github.sanitised.st.api.ChatBackupSummary
 import io.github.sanitised.st.api.ConnectionProfile
@@ -508,18 +506,12 @@ fun STMeScreen(
     onAutoCheckChanged: (Boolean) -> Unit,
     autoOpenBrowserEnabled: Boolean,
     onAutoOpenBrowserChanged: (Boolean) -> Unit,
-    themeMode: ThemeMode,
-    onThemeModeChanged: (ThemeMode) -> Unit,
-    colorSource: ThemeColorSource,
-    onColorSourceChanged: (ThemeColorSource) -> Unit,
     isBatteryUnrestricted: Boolean,
     onOpenBatterySettings: () -> Unit,
     channel: UpdateChannel,
     onChannelChanged: (UpdateChannel) -> Unit,
     onCheckNow: () -> Unit,
     isChecking: Boolean,
-    bubbleStyle: Boolean,
-    onBubbleStyleChanged: (Boolean) -> Unit,
     vibrationFeedback: Boolean,
     onVibrationFeedbackChanged: (Boolean) -> Unit,
     secondConfirmation: Boolean,
@@ -541,7 +533,6 @@ fun STMeScreen(
     onOpenAppearance: () -> Unit,
     onOpenAccount: () -> Unit = {},
     onOpenBackgrounds: () -> Unit = {},
-    onOpenTheme: () -> Unit = {},
     onOpenChatBehavior: () -> Unit = {},
     appVersion: String = "",
     onShowMessage: (String) -> Unit,
@@ -579,39 +570,19 @@ fun STMeScreen(
         STSectionHeader("外观")
         STSettingsGroup {
             STListItem(
-                headline = "主题",
-                supporting = when (themeMode) {
-                    ThemeMode.LIGHT -> "浅色模式"
-                    ThemeMode.DARK -> "深色模式"
-                    ThemeMode.AUTO -> "跟随系统"
-                },
+                headline = "主题外观",
+                supporting = "明暗模式、界面配色、字号、消息样式",
                 leading = { STTileIcon(Icons.Filled.Palette) },
                 trailing = { STMiniSwatch() },
                 divider = true,
                 onClick = onOpenAppearance
             )
             STListItem(
-                headline = "界面主题与颜色",
-                supporting = "已安装主题、颜色细调、自定义 CSS",
-                leading = { STTileIcon(Icons.Filled.ColorLens) },
-                divider = true,
-                onClick = onOpenTheme
-            )
-            STListItem(
-                headline = "字号",
-                supporting = "点击调整",
-                leading = { STTileIcon(Icons.Filled.TextFields) },
-                divider = true,
-                onClick = onOpenAppearance
-            )
-            STListItem(
                 headline = "聊天背景",
-                supporting = "背景网格、锁定、上传",
+                supporting = "为聊天设置全局壁纸",
                 leading = { STTileIcon(Icons.Filled.Image) },
-                divider = true,
                 onClick = onOpenBackgrounds
             )
-            STSwitchRow("消息冒泡风格", "关闭则使用全宽文档样式", bubbleStyle, onBubbleStyleChanged)
         }
         // ── 行为 ──
         STSectionHeader("行为")

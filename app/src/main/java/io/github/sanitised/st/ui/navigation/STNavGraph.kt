@@ -40,7 +40,6 @@ object STRoutes {
     const val CHAR_ADVANCED = "characters/advanced/{avatar}"
 
     const val BACKGROUNDS = "settings/backgrounds"
-    const val THEME = "settings/theme"
     const val CHAT_BEHAVIOR = "settings/chat-behavior"
 
     const val SECRETS = "settings/secrets"

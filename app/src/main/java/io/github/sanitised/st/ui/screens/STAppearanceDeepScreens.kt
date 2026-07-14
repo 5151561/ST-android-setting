@@ -1,6 +1,9 @@
 package io.github.sanitised.st.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -49,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,6 +76,25 @@ private fun pmap(value: Any?): MutableMap<String, Any?> =
 private fun bgThumbUrl(baseUrl: String, file: String): String =
     "${baseUrl.trimEnd('/')}/thumbnail?type=bg&file=" + URLEncoder.encode(file, "UTF-8").replace("+", "%20")
 
+// ST 内置背景库的全尺寸图 URL(对齐上游 getBackgroundPath: backgrounds/<encoded>)。
+private fun bgFullUrl(baseUrl: String, file: String): String =
+    "${baseUrl.trimEnd('/')}/backgrounds/" + URLEncoder.encode(file, "UTF-8").replace("+", "%20")
+
+// 把相册选中的图片复制到 app 内部存储(chat_bg 目录),返回可供 Coil 加载的 file:// URI 字符串。
+// 只保留最新一张壁纸,避免占用空间。失败返回 null。
+private fun copyBackgroundToLocal(context: android.content.Context, uri: android.net.Uri): String? =
+    runCatching {
+        val dir = java.io.File(context.filesDir, "chat_bg").apply { mkdirs() }
+        val dest = java.io.File(dir, "wallpaper_${System.currentTimeMillis()}")
+        val ok = context.contentResolver.openInputStream(uri)?.use { input ->
+            dest.outputStream().use { output -> input.copyTo(output) }
+            true
+        } ?: false
+        if (!ok) return@runCatching null
+        dir.listFiles()?.forEach { if (it.absolutePath != dest.absolutePath) it.delete() }
+        android.net.Uri.fromFile(dest).toString()
+    }.getOrNull()
+
 private fun gradientFor(seed: Int): List<Color> {
     val grads = listOf(
         listOf(0xFF3A2D1D, 0xFF0E0B07), listOf(0xFF22354A, 0xFF0A0F16), listOf(0xFF46371F, 0xFF14100A),
@@ -79,40 +102,6 @@ private fun gradientFor(seed: Int): List<Color> {
     )
     return grads[(seed % grads.size + grads.size) % grads.size].map { Color(it) }
 }
-
-/** 解析 CSS 颜色（#rrggbb / #rgb / rgba(...) / rgb(...)）为 Compose Color，失败返回 null。 */
-private fun parseCssColor(s: String): Color? {
-    val t = s.trim()
-    try {
-        if (t.startsWith("#")) {
-            val hex = t.substring(1)
-            return when (hex.length) {
-                6 -> Color(("FF$hex").toLong(16))
-                8 -> Color(hex.toLong(16))
-                3 -> Color(("FF" + hex.map { "$it$it" }.joinToString("")).toLong(16))
-                else -> null
-            }
-        }
-        if (t.startsWith("rgb")) {
-            val nums = t.substringAfter("(").substringBefore(")").split(",").map { it.trim() }
-            if (nums.size >= 3) {
-                val r = nums[0].toFloat() / 255f; val g = nums[1].toFloat() / 255f; val b = nums[2].toFloat() / 255f
-                val a = if (nums.size >= 4) nums[3].toFloat() else 1f
-                return Color(r, g, b, a)
-            }
-        }
-    } catch (_: Exception) {}
-    return null
-}
-
-private val THEME_COLOR_FIELDS = listOf(
-    "主色 / 强调" to "main_text_color",
-    "引用文本" to "quote_text_color",
-    "斜体 / 动作" to "italics_text_color",
-    "AI 气泡" to "bot_mes_blur_tint_color",
-    "用户气泡" to "user_mes_blur_tint_color",
-    "背景叠加" to "blur_tint_color",
-)
 
 // ── 20/21 背景管理 ───────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -122,8 +111,11 @@ fun STBackgroundsScreen(
     baseUrl: String,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit = {},
+    chatBackground: String = "",
+    onChatBackgroundChanged: (String) -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
+    val context = LocalContext.current
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }
@@ -131,6 +123,20 @@ fun STBackgroundsScreen(
     var reloadKey by remember { mutableStateOf(0) }
     var actionsFor by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val stored = copyBackgroundToLocal(context, uri)
+            if (stored != null) {
+                onChatBackgroundChanged(stored)
+                onShowMessage("已设置聊天背景")
+            } else {
+                onShowMessage("图片读取失败")
+            }
+        }
+    }
 
     LaunchedEffect(running, baseUrl, reloadKey) {
         if (!running) { loading = false; return@LaunchedEffect }
@@ -145,36 +151,89 @@ fun STBackgroundsScreen(
         title = "聊天背景",
         onBack = onBack,
         actions = {
-            STIconButton(Icons.Filled.Search, "搜索", { onShowMessage("搜索背景") })
-            STIconButton(Icons.Filled.AddPhotoAlternate, "上传", { onShowMessage("上传背景：在文件管理器中选择图片") })
+            STIconButton(Icons.Filled.AddPhotoAlternate, "从相册选择", onClick = {
+                photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            })
         }
     ) {
-        if (!running) { Offline("启动服务后可读写真实背景。"); return@P0Scaffold }
-        if (loading) { Loading("正在读取背景…"); return@P0Scaffold }
-        P0ToggleRow(icon = Icons.Filled.Wallpaper, title = "锁定当前聊天背景", sub = "锁定后，切换全局背景不影响当前聊天", initialOn = false)
-        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        P0SectionHeader("全部背景", trailing = {
-            Text("${backgrounds.size} 张", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        })
-        if (backgrounds.isEmpty()) {
-            Text("暂无背景图。点击右上「上传」添加。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
-        }
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            backgrounds.chunked(2).forEach { pair ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    pair.forEach { bg ->
-                        BackgroundTile(bg, baseUrl, modifier = Modifier.weight(1f), onClick = { onShowMessage("应用背景「$bg」（下次进入聊天生效）") }, onLongClick = { actionsFor = bg })
-                    }
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
-                }
+        // 当前壁纸:相册壁纸为本地保存,不依赖服务,故始终显示。
+        P0SectionHeader("当前壁纸")
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (chatBackground.isBlank()) {
+                Text("未设置背景（聊天使用纯色）", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                AsyncImage(
+                    model = chatBackground,
+                    contentDescription = "当前背景",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize().clip(RoundedCornerShape(16.dp))
+                )
             }
         }
-        Text(
-            "长按背景可重命名或删除。应用背景在进入聊天时生效。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+        STListItem(
+            headline = "从相册选择图片",
+            supporting = "选中后复制到本地，作为聊天全局背景",
+            leading = { STTileIcon(Icons.Filled.AddPhotoAlternate) },
+            divider = chatBackground.isNotBlank(),
+            onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
         )
+        if (chatBackground.isNotBlank()) {
+            STListItem(
+                headline = "移除背景",
+                supporting = "恢复纯色聊天背景",
+                leading = { STTileIcon(Icons.Filled.Wallpaper) },
+                onClick = { onChatBackgroundChanged(""); onShowMessage("已移除聊天背景") }
+            )
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+        when {
+            !running -> Text(
+                "启动服务后可浏览 SillyTavern 内置背景库；相册壁纸为本地保存，不受服务状态影响。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp)
+            )
+            loading -> Loading("正在读取背景…")
+            else -> {
+                P0SectionHeader("内置背景库", trailing = {
+                    Text("${backgrounds.size} 张", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                })
+                if (backgrounds.isEmpty()) {
+                    Text("暂无背景图。点击右上「从相册选择」添加本地壁纸。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+                }
+                Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    backgrounds.chunked(2).forEach { pair ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            pair.forEach { bg ->
+                                BackgroundTile(
+                                    bg, baseUrl, modifier = Modifier.weight(1f),
+                                    onClick = { onChatBackgroundChanged(bgFullUrl(baseUrl, bg)); onShowMessage("已设为聊天背景「$bg」") },
+                                    onLongClick = { actionsFor = bg }
+                                )
+                            }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+                Text(
+                    "点击背景设为聊天全局背景；长按可重命名或删除。内置背景在服务运行时可用。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                )
+            }
+        }
     }
 
     val bg = actionsFor
@@ -188,7 +247,7 @@ fun STBackgroundsScreen(
                 Text(bg, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-            P0SheetItem(Icons.Filled.Wallpaper, "设为全局背景") { actionsFor = null; onShowMessage("已选择「$bg」，进入聊天生效") }
+            P0SheetItem(Icons.Filled.Wallpaper, "设为聊天背景") { actionsFor = null; onChatBackgroundChanged(bgFullUrl(baseUrl, bg)); onShowMessage("已设为聊天背景「$bg」") }
             P0SheetItem(Icons.Filled.DriveFileRenameOutline, "重命名（追加 _1）") {
                 actionsFor = null
                 scope.launch {
@@ -233,117 +292,6 @@ private fun BackgroundTile(bg: String, baseUrl: String, modifier: Modifier = Mod
     }
 }
 
-// ── 22 界面主题 ──────────────────────────────────────────────────────────────
-@Composable
-fun STThemeScreen(
-    status: NodeStatus,
-    baseUrl: String,
-    onBack: () -> Unit,
-    onShowMessage: (String) -> Unit = {},
-) {
-    BackHandler(onBack = onBack)
-    val running = status.state == NodeState.RUNNING
-    val scope = rememberCoroutineScope()
-    var loading by remember { mutableStateOf(true) }
-    var rawSettings by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
-    val pu = remember { mutableStateMapOf<String, Any?>() }
-
-    LaunchedEffect(running, baseUrl) {
-        if (!running) { loading = false; return@LaunchedEffect }
-        loading = true
-        runCatching {
-            val s = TavernCoreClient(baseUrl).getSettings()
-            rawSettings = s; pu.clear(); pu.putAll(pmap(s["power_user"]))
-        }.onFailure { onShowMessage(it.message ?: "设置加载失败") }
-        loading = false
-    }
-
-    fun save(extra: (MutableMap<String, Any?>) -> Unit = {}) {
-        scope.launch {
-            runCatching {
-                val out = rawSettings.toMutableMap()
-                val puOut = pmap(rawSettings["power_user"])
-                pu.forEach { (k, v) -> puOut[k] = v }
-                extra(puOut)
-                out["power_user"] = puOut
-                TavernCoreClient(baseUrl).saveSettings(out)
-                rawSettings = out
-            }.onFailure { onShowMessage(it.message ?: "保存失败") }
-        }
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    val themes = (pu["themes"] as? List<*>)?.mapNotNull { (it as? Map<*, *>)?.get("name")?.toString() } ?: emptyList()
-    val currentTheme = pu["theme"]?.toString() ?: ""
-
-    P0Scaffold(
-        title = "界面主题",
-        onBack = onBack,
-        actions = { STIconButton(Icons.Filled.Check, "保存", { save(); onShowMessage("主题设置已保存") }) }
-    ) {
-        if (!running) { Offline("启动服务后可读写真实主题。"); return@P0Scaffold }
-        if (loading) { Loading("正在读取设置…"); return@P0Scaffold }
-
-        P0SectionHeader("已安装主题", trailing = { Text("${themes.size} 个", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) })
-        if (themes.isEmpty()) {
-            Text("未读取到主题列表。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
-        }
-        themes.forEachIndexed { i, name ->
-            val isCurrent = name == currentTheme
-            STListItem(
-                headline = name,
-                supporting = if (isCurrent) "正在使用" else "点击应用",
-                leading = {
-                    Box(modifier = Modifier.size(width = 56.dp, height = 40.dp).clip(RoundedCornerShape(10.dp)).border(1.dp, if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh))
-                },
-                trailing = {
-                    if (isCurrent) {
-                        Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.primaryContainer).padding(horizontal = 8.dp, vertical = 2.dp)) {
-                            Text("当前", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                },
-                divider = i < themes.lastIndex,
-                onClick = { if (!isCurrent) { pu["theme"] = name; save(); onShowMessage("已应用「$name」") } }
-            )
-        }
-
-        P0SectionHeader("颜色细调")
-        THEME_COLOR_FIELDS.forEachIndexed { i, (label, key) ->
-            val value = pu[key]?.toString().orEmpty()
-            val color = parseCssColor(value)
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { onShowMessage("「$label」当前值：${value.ifBlank { "未设置" }}（色板编辑后续）") }.padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(modifier = Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(color ?: MaterialTheme.colorScheme.surfaceContainerHighest).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(9.dp)))
-                Spacer(Modifier.size(14.dp))
-                Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                Text(value.ifBlank { "—" }, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                Spacer(Modifier.size(8.dp))
-                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (i < THEME_COLOR_FIELDS.lastIndex) HorizontalDivider(modifier = Modifier.padding(start = 62.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-        }
-
-        P0SectionHeader("外观")
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text("头像样式", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
-                P0Seg(options = listOf("圆形", "圆角", "方形"), selectedIndex = ((pu["avatar_style"] as? Number)?.toInt() ?: 0).coerceIn(0, 2), onSelect = { pu["avatar_style"] = it })
-            }
-            Column(Modifier.weight(1f)) {
-                Text("聊天样式", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
-                P0Seg(options = listOf("气泡", "扁平", "文档"), selectedIndex = ((pu["chat_display"] as? Number)?.toInt() ?: 0).coerceIn(0, 2), onSelect = { pu["chat_display"] = it })
-            }
-        }
-        P0Slider("背景模糊强度", value = ((pu["blur_strength"] as? Number)?.toFloat() ?: 10f), onValueChange = { pu["blur_strength"] = it.toInt() }, valueRange = 0f..20f)
-        P0Slider("界面字号缩放 (%)", value = (((pu["font_scale"] as? Number)?.toFloat() ?: 1f) * 100f), onValueChange = { pu["font_scale"] = (it / 100f) }, valueRange = 80f..150f)
-        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        P0Field(label = "自定义 CSS", value = pu["custom_css"]?.toString().orEmpty(), onValueChange = { pu["custom_css"] = it }, multiline = true, minLines = 4, mono = true, hint = "应用于整个界面")
-        Spacer(Modifier.height(24.dp))
-    }
-}
 
 // ── 23 聊天与消息 ────────────────────────────────────────────────────────────
 @Composable

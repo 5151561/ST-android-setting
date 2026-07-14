@@ -157,6 +157,27 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+// 聊天全局背景壁纸层:铺满整屏放在内容之下,透明的消息列表区会透出壁纸;source 为空则不渲染。
+// source 是稳定的 String,仅在用户更换背景时重组,不订阅滚动状态,故对滚动帧率无影响。
+@Composable
+private fun ChatBackgroundLayer(source: String, modifier: Modifier = Modifier) {
+    if (source.isBlank()) return
+    Box(modifier = modifier.fillMaxSize()) {
+        AsyncImage(
+            model = source,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize()
+        )
+        // 半透明遮罩,保证气泡与文字在任意壁纸上都可读。
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NativeChatScreen(
@@ -172,6 +193,7 @@ fun NativeChatScreen(
     onBackToHome: () -> Unit,
     onOpenPastChats: (() -> Unit)? = null,
     onShowMessage: (String) -> Unit,
+    chatBackground: String = "",
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -315,6 +337,7 @@ fun NativeChatScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+        ChatBackgroundLayer(source = chatBackground)
         Column(
             modifier = Modifier
                 .fillMaxSize()

@@ -77,6 +77,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val developerMode: MutableState<Boolean> = updateManager.developerMode
     val fontSize: MutableState<Float> = updateManager.fontSize
     val reduceMotion: MutableState<Boolean> = updateManager.reduceMotion
+    val chatBackground: MutableState<String> = updateManager.chatBackground
     val autoCheckForUpdates: MutableState<Boolean> = updateManager.autoCheckForUpdates
     val autoOpenBrowserWhenReady: MutableState<Boolean> = updateManager.autoOpenBrowserWhenReady
     val autoStartService: MutableState<Boolean> = updateManager.autoStartService
@@ -291,6 +292,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setReduceMotion(enabled: Boolean) {
         updateManager.setReduceMotion(enabled)
+    }
+
+    fun setChatBackground(pathOrUrl: String) {
+        updateManager.setChatBackground(pathOrUrl)
     }
 
     fun setAutoCheckForUpdates(enabled: Boolean) {

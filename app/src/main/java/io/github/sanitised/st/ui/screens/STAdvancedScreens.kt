@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
+import io.github.sanitised.st.ThemeColorSource
+import io.github.sanitised.st.ThemeMode
 import io.github.sanitised.st.api.SecretEntry
 import io.github.sanitised.st.api.SecretProviderState
 import io.github.sanitised.st.api.TavernCoreClient
@@ -2307,278 +2309,254 @@ data class SimulatedCheckpoint(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun STAppearanceScreen(
+    themeMode: ThemeMode,
+    onThemeModeChanged: (ThemeMode) -> Unit,
+    colorSource: ThemeColorSource,
+    onColorSourceChanged: (ThemeColorSource) -> Unit,
     fontSize: Float,
     onFontSizeChanged: (Float) -> Unit,
+    bubbleStyle: Boolean,
+    onBubbleStyleChanged: (Boolean) -> Unit,
     reduceMotion: Boolean,
     onReduceMotionChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var themePreset by remember { mutableStateOf("amber") }
-    var fastMode by remember { mutableStateOf(true) }
-    var toastMessage by remember { mutableStateOf<String?>(null) }
+    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp)
+        ) {
+            STTopHeader(
+                title = "主题外观与阅读",
+                leading = {
+                    STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
+                },
+                titleBottomPadding = 4.dp
+            )
 
-    // Swatches preview styles logic
-    val swatchBg = when (themePreset) {
-        "midnight" -> androidx.compose.ui.graphics.Brush.verticalGradient(
-            colors = listOf(Color(0xFF10192E), Color(0xFF080D1A))
-        )
-        "terminal" -> androidx.compose.ui.graphics.Brush.verticalGradient(
-            colors = listOf(Color(0xFF000000), Color(0xFF000000))
-        )
-        else -> androidx.compose.ui.graphics.Brush.verticalGradient(
-            colors = listOf(STThemePrimary.copy(alpha = 0.18f), STThemeBg.copy(alpha = 0.95f))
-        )
-    }
-
-    val bubbleAsstColor = when (themePreset) {
-        "midnight" -> Color(0xFF1B2A47)
-        "terminal" -> Color(0xFF111111)
-        else -> MaterialTheme.colorScheme.surfaceContainerHighest
-    }
-
-    val bubbleAsstBorder = when (themePreset) {
-        "terminal" -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF39FF14))
-        else -> null
-    }
-
-    val bubbleUserColor = when (themePreset) {
-        "midnight" -> Color(0xFF2E6BFF)
-        "terminal" -> Color(0xFF111111)
-        else -> MaterialTheme.colorScheme.primaryContainer
-    }
-
-    val bubbleUserBorder = when (themePreset) {
-        "terminal" -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF39FF14))
-        else -> null
-    }
-
-    val bubbleAsstTextColor = when (themePreset) {
-        "midnight" -> Color(0xFFDCE5F5)
-        "terminal" -> Color(0xFF39FF14)
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-
-    val bubbleUserTextColor = when (themePreset) {
-        "midnight" -> Color(0xFFFFFFFF)
-        "terminal" -> Color(0xFF39FF14)
-        else -> MaterialTheme.colorScheme.onPrimaryContainer
-    }
-
-    val previewHeight = 164.dp
-
-    Surface(modifier = modifier.fillMaxSize(), color = STThemeBg) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 24.dp)
+            // ── 实时预览:随下方明暗/配色/字号/冒泡设置即时变化 ──
+            PremiumCard(
+                borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
             ) {
-                STTopHeader(
-                    title = "主题外观与阅读",
-                    leading = {
-                        STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
-                    },
-                    actions = {
-                        STIconButton(
-                            icon = Icons.Filled.FileDownload,
-                            contentDescription = "导入主题",
-                            onClick = { toastMessage = "打开本地主题库导入…" }
-                        )
-                        IconButton(
-                            onClick = { toastMessage = "当前主题偏好已成功固化" }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Save,
-                                contentDescription = "保存主题",
-                                tint = STThemePrimary
-                            )
-                        }
-                    },
-                    titleBottomPadding = 4.dp
+                Text(
+                    text = "聊天阅读排版预览",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        letterSpacing = 0.8.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = MaterialTheme.colorScheme.primary
                 )
-
-                STPreviewBanner()
-
-                // Live Preview Card (Live Typography Preview)
-                PremiumCard(
-                    borderColor = Color(0x1AFFFFFF)
-                ) {
-                    Text(
-                        text = "聊天阅读排版预览 (Live Typography Preview)",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            letterSpacing = 0.8.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = STThemePrimary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(previewHeight)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(swatchBg)
-                            .border(1.dp, Color(0x10FFFFFF), RoundedCornerShape(18.dp))
-                            .padding(12.dp)
-                    ) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            // Assistant message bubble
-                            Row(
-                                modifier = Modifier.fillMaxWidth(0.85f),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                // Mini avatar
-                                Box(
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .clip(CircleShape)
-                                        .background(STThemePrimary),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "A",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFF4A2700)
-                                    )
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 14.dp, bottomStart = 14.dp, bottomEnd = 14.dp),
-                                    color = bubbleAsstColor,
-                                    border = bubbleAsstBorder,
-                                    modifier = Modifier.wrapContentSize()
-                                ) {
-                                    Text(
-                                        text = "热可可好啦。今天想加点什么？棉花糖、肉桂、还是都不加？",
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontSize = fontSize.sp,
-                                            lineHeight = (fontSize * 1.4f).sp
-                                        ),
-                                        color = bubbleAsstTextColor,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                                    )
-                                }
-                            }
-
-                            // User message bubble
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(topStart = 14.dp, topEnd = 4.dp, bottomStart = 14.dp, bottomEnd = 14.dp),
-                                    color = bubbleUserColor,
-                                    border = bubbleUserBorder,
-                                    modifier = Modifier.fillMaxWidth(0.75f)
-                                ) {
-                                    Text(
-                                        text = "加肉桂。窗边那个老位置还空着么？",
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontSize = fontSize.sp,
-                                            lineHeight = (fontSize * 1.4f).sp
-                                        ),
-                                        color = bubbleUserTextColor,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Preset Theme Chips
-                PremiumSectionHeader(title = "皮肤配色预设 (Themes Swatches)")
-
-                Row(
+                Spacer(modifier = Modifier.height(10.dp))
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(18.dp))
+                        .padding(12.dp)
                 ) {
-                    val presets = listOf(
-                        "amber" to "暖琥珀 (Warm Amber)",
-                        "midnight" to "午夜蓝 (Midnight Blue)",
-                        "terminal" to "黑客绿 (Terminal Matrix)"
-                    )
-                    for ((id, label) in presets) {
-                        val sel = themePreset == id
-                        FilterChip(
-                            selected = sel,
-                            onClick = {
-                                themePreset = id
-                                toastMessage = "已加载 " + label.substringBefore(" ") + " 样式主题"
-                            },
-                            label = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (sel) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                    }
-                                    Text(label)
-                                }
-                            }
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        AppearancePreviewMessage(
+                            name = "爱丽丝",
+                            text = "热可可好啦。今天想加点什么？棉花糖、肉桂、还是都不加？",
+                            isUser = false,
+                            fontSize = fontSize,
+                            bubbleStyle = bubbleStyle
+                        )
+                        AppearancePreviewMessage(
+                            name = "你",
+                            text = "加肉桂。窗边那个老位置还空着么？",
+                            isUser = true,
+                            fontSize = fontSize,
+                            bubbleStyle = bubbleStyle
                         )
                     }
                 }
+            }
 
-                // Font size slider
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("字体缩放大小", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
-                        Text(text = "${fontSize.toInt()} sp", style = MaterialTheme.typography.titleMedium, color = STThemePrimary, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Slider(
-                        value = fontSize,
-                        onValueChange = onFontSizeChanged,
-                        valueRange = 12f..20f,
-                        steps = 8
+            // ── 外观模式 ──
+            PremiumSectionHeader(title = "外观模式")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val modes = listOf(
+                    ThemeMode.LIGHT to "浅色",
+                    ThemeMode.DARK to "深色",
+                    ThemeMode.AUTO to "跟随系统"
+                )
+                for ((mode, label) in modes) {
+                    AppearanceChoiceChip(
+                        selected = themeMode == mode,
+                        label = label,
+                        onClick = { onThemeModeChanged(mode) }
                     )
                 }
+            }
 
-                HorizontalDivider(color = Color(0x0DFFFFFF), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-
-                PremiumSectionHeader(title = "性能与交互优化")
-
-                STListItem(
-                    headline = "减少动效渲染 (Reduce Motion)",
-                    supporting = "关闭全屏转场、抽屉划过的贝塞尔缓动",
-                    trailing = { Switch(checked = reduceMotion, onCheckedChange = onReduceMotionChanged) },
-                    onClick = { onReduceMotionChanged(!reduceMotion) }
+            // ── 界面配色 ──
+            PremiumSectionHeader(title = "界面配色")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val sources = listOf(
+                    ThemeColorSource.BRAND to "品牌橙",
+                    ThemeColorSource.DYNAMIC to "动态取色"
                 )
+                for ((src, label) in sources) {
+                    AppearanceChoiceChip(
+                        selected = colorSource == src,
+                        label = label,
+                        onClick = { onColorSourceChanged(src) }
+                    )
+                }
+            }
+            Text(
+                text = "动态取色需 Android 12 及以上，低版本会自动回退到品牌配色。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
 
-                STListItem(
-                    headline = "高能效省电模式 (Fast UI Mode)",
-                    supporting = "降低背景图模糊毛玻璃滤镜运算",
-                    trailing = { Switch(checked = fastMode, onCheckedChange = { fastMode = it }) },
-                    onClick = { fastMode = !fastMode }
+            // ── 字号 ──
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("聊天字号", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                    Text(text = "${fontSize.toInt()} sp", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Slider(
+                    value = fontSize,
+                    onValueChange = onFontSizeChanged,
+                    valueRange = 12f..20f,
+                    steps = 7
                 )
             }
 
-            AnimatedToast(
-                message = toastMessage,
-                onDismiss = { toastMessage = null }
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
+
+            // ── 阅读与交互 ──
+            PremiumSectionHeader(title = "阅读与交互")
+            STListItem(
+                headline = "消息冒泡风格",
+                supporting = "关闭则使用全宽文档样式",
+                trailing = { Switch(checked = bubbleStyle, onCheckedChange = onBubbleStyleChanged) },
+                onClick = { onBubbleStyleChanged(!bubbleStyle) }
+            )
+            STListItem(
+                headline = "减少动效渲染",
+                supporting = "关闭全屏转场、抽屉划过的缓动动画",
+                trailing = { Switch(checked = reduceMotion, onCheckedChange = onReduceMotionChanged) },
+                onClick = { onReduceMotionChanged(!reduceMotion) }
+            )
+        }
+    }
+}
+
+// 主题设置屏的选择 chip:选中态带对勾。
+@Composable
+private fun AppearanceChoiceChip(selected: Boolean, label: String, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (selected) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                Text(label)
+            }
+        }
+    )
+}
+
+// 预览用的单条消息:随字号缩放,随 bubbleStyle 在气泡样式与全宽文档样式之间切换,
+// 配色全部取自当前 MaterialTheme,故明暗/配色切换时预览同步变化。
+@Composable
+private fun AppearancePreviewMessage(
+    name: String,
+    text: String,
+    isUser: Boolean,
+    fontSize: Float,
+    bubbleStyle: Boolean
+) {
+    val textStyle = MaterialTheme.typography.bodyMedium.copy(
+        fontSize = fontSize.sp,
+        lineHeight = (fontSize * 1.5f).sp
+    )
+    if (bubbleStyle) {
+        val bubbleColor = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
+        val textColor = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+        ) {
+            Surface(
+                shape = RoundedCornerShape(
+                    topStart = if (isUser) 14.dp else 4.dp,
+                    topEnd = if (isUser) 4.dp else 14.dp,
+                    bottomStart = 14.dp,
+                    bottomEnd = 14.dp
+                ),
+                color = bubbleColor,
+                modifier = Modifier.fillMaxWidth(0.82f)
+            ) {
+                Text(
+                    text = text,
+                    style = textStyle,
+                    color = textColor,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
+        }
+    } else {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(if (isUser) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = name.take(1),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isUser) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = text, style = textStyle, color = MaterialTheme.colorScheme.onSurface)
+            }
         }
     }
 }

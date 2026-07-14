@@ -57,6 +57,7 @@ internal class UpdateManager(
         private const val PREF_DEVELOPER_MODE = "developer_mode"
         private const val PREF_FONT_SIZE = "font_size"
         private const val PREF_REDUCE_MOTION = "reduce_motion"
+        private const val PREF_CHAT_BACKGROUND = "chat_background"
         private const val PREF_FIRST_LAUNCH_MS = "first_launch_ms"
         private const val PREF_AUTO_OPTIN_PROMPT_SHOWN = "auto_optin_prompt_shown"
         private const val PREF_LAST_AUTO_CHECK_MS = "last_auto_check_ms"
@@ -122,6 +123,10 @@ internal class UpdateManager(
     val reduceMotion = mutableStateOf(
         appPrefs.getBoolean(PREF_REDUCE_MOTION, false)
     )
+    // 聊天全局背景壁纸:本地文件路径或 ST 后端背景 URL,空串表示无背景。
+    val chatBackground = mutableStateOf(
+        appPrefs.getString(PREF_CHAT_BACKGROUND, "").orEmpty()
+    )
     val isCheckingForUpdates = mutableStateOf(false)
     private val availableUpdate = mutableStateOf<GithubReleaseInfo?>(null)
     val isDownloadingUpdate = mutableStateOf(false)
@@ -185,6 +190,11 @@ internal class UpdateManager(
     fun setReduceMotion(enabled: Boolean) {
         reduceMotion.value = enabled
         appPrefs.edit().putBoolean(PREF_REDUCE_MOTION, enabled).apply()
+    }
+
+    fun setChatBackground(pathOrUrl: String) {
+        chatBackground.value = pathOrUrl
+        appPrefs.edit().putString(PREF_CHAT_BACKGROUND, pathOrUrl).apply()
     }
 
     fun setThemeMode(mode: ThemeMode) {

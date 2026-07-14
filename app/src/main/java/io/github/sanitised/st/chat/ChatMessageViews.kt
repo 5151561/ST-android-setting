@@ -157,6 +157,7 @@ import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.screens.STAssistPill
 import io.github.sanitised.st.ui.screens.STAvatar
 import io.github.sanitised.st.ui.screens.STGroupAvatar
+import io.github.sanitised.st.ui.theme.LocalChatBubbleStyle
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -482,9 +483,32 @@ internal fun MessageBubble(
     val isToolMessage = message.toolInvocations.isNotEmpty()
     val showHiddenStyle = message.isSystem && !isToolMessage
     val hiddenAlpha = if (showHiddenStyle) 0.5f else 1f
+    // 关闭"消息冒泡风格"时走全宽文档布局:说话人用头像/名字区分,不再左右分栏与限宽。
+    val documentStyle = !LocalChatBubbleStyle.current
 
-    Box(modifier = modifier.fillMaxWidth().alpha(hiddenAlpha), contentAlignment = alignment) {
-        if (isUser) {
+    Box(
+        modifier = modifier.fillMaxWidth().alpha(hiddenAlpha),
+        contentAlignment = if (documentStyle) Alignment.CenterStart else alignment
+    ) {
+        if (documentStyle) {
+            DocumentMessageRow(
+                message = message,
+                characterName = characterName,
+                assistantAvatarUrl = assistantAvatarUrl,
+                baseUrl = baseUrl,
+                port = port,
+                isUser = isUser,
+                textColor = textColor,
+                showHiddenStyle = showHiddenStyle,
+                isToolMessage = isToolMessage,
+                lastAssistant = lastAssistant,
+                onSwipePrevious = onSwipePrevious,
+                onSwipeNext = onSwipeNext,
+                onRegenerate = onRegenerate,
+                onContinue = onContinue,
+                onLongPress = onLongPress
+            )
+        } else if (isUser) {
             ChatBubbleSurface(
                 isUser = true,
                 maxWidth = maxWidth,
@@ -571,6 +595,99 @@ internal fun MessageBubble(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+// 全宽文档样式下的单条消息:用户与 AI 统一为「头像 + 名字 + 全宽正文」,靠名字/颜色区分,
+// 而非气泡形状与左右对齐。气泡样式(默认)仍走 MessageBubble 内的左右分栏分支。
+@Composable
+private fun DocumentMessageRow(
+    message: ChatMessage,
+    characterName: String,
+    assistantAvatarUrl: String,
+    baseUrl: String,
+    port: Int,
+    isUser: Boolean,
+    textColor: androidx.compose.ui.graphics.Color,
+    showHiddenStyle: Boolean,
+    isToolMessage: Boolean,
+    lastAssistant: Boolean,
+    onSwipePrevious: (Int) -> Unit,
+    onSwipeNext: (Int) -> Unit,
+    onRegenerate: () -> Unit,
+    onContinue: () -> Unit,
+    onLongPress: () -> Unit
+) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        val avatarUrl = if (isUser) "" else message.extra.optString("force_avatar").ifBlank { assistantAvatarUrl }
+        val displayName = message.name.ifBlank { if (isUser) "你" else characterName }
+        STAvatar(
+            label = displayName,
+            imageUrl = avatarUrl,
+            baseUrl = baseUrl,
+            size = 36.dp
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 4.dp)
+            ) {
+                Text(
+                    text = displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (showHiddenStyle) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    HiddenMessageBadge()
+                }
+            }
+            ChatBubbleSurface(isUser = isUser, onLongPress = onLongPress) {
+                if (isToolMessage) {
+                    ToolCallGroup(tools = message.toolInvocations)
+                } else {
+                    if (!isUser) {
+                        message.reasoning?.let { reasoning ->
+                            ReasoningSection(
+                                reasoning = reasoning,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+                    }
+                    ChatRichText(text = message.mes, color = textColor)
+                }
+                MessageAttachments(
+                    media = message.mediaAttachments,
+                    files = message.fileAttachments,
+                    port = port,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                if (!isUser) {
+                    BubbleMeta(
+                        hasBookmark = message.bookmarkLink != null,
+                        branchCount = message.branches.size,
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .padding(top = 4.dp)
+                    )
+                }
+            }
+            if (!isUser && lastAssistant) {
+                AssistantMessageControls(
+                    messageId = message.id,
+                    swipeIndex = message.swipeId,
+                    swipeCount = message.swipes.size.coerceAtLeast(1),
+                    onSwipePrevious = onSwipePrevious,
+                    onSwipeNext = onSwipeNext,
+                    onRegenerate = onRegenerate,
+                    onContinue = onContinue,
+                    onMore = onLongPress
+                )
             }
         }
     }
