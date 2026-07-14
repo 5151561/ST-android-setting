@@ -24,6 +24,15 @@
 -dontwarn okhttp3.**
 -dontwarn okio.**
 
+# ── Apache Commons Compress ───────────────────────────────────────────────────
+# commons-compress references optional third-party compression backends (zstd-jni,
+# XZ/tukaani, Brotli) that this app does not depend on. Those code paths are dead
+# for the formats we use, but the class-file references remain and trip R8's
+# missing-class check. Suppress the diagnostics.
+-dontwarn com.github.luben.zstd.**
+-dontwarn org.tukaani.xz.**
+-dontwarn org.brotli.dec.**
+
 # ── Debug symbols ─────────────────────────────────────────────────────────────
 # Retain enough information for readable crash stack traces.
 -keepattributes SourceFile,LineNumberTable
