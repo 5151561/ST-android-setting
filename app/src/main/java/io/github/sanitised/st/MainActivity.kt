@@ -22,6 +22,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -57,7 +58,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,6 +82,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -133,7 +138,9 @@ import io.github.sanitised.st.ui.components.STConfirmDialog
 import io.github.sanitised.st.ui.components.STDialogButtonStyle
 import io.github.sanitised.st.ui.theme.STAppTheme
 import io.github.sanitised.st.chat.*
+import io.github.sanitised.st.chat.engine.ChatEngine
 import io.github.sanitised.st.chat.engine.NativeChatEngine
+import io.github.sanitised.st.ui.screens.STChatItem
 import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.api.CharacterSummary
@@ -309,36 +316,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             val viewModel: MainViewModel = viewModel()
             val navController = rememberNavController()
-            val navBackStackEntry by navController.currentBackStackEntryAsState()
-            val currentRoute = navBackStackEntry?.destination?.route
-            // 子页面路由折叠到抽屉里对应的父条目,保证抽屉高亮正确。
-            val drawerSelectedRoute = when (currentRoute) {
-                STRoutes.CHAT -> STRoutes.HOME
-                STRoutes.CHARACTER_NEW,
-                STRoutes.CHARACTER_DETAIL,
-                STRoutes.CHARACTER_EDIT,
-                STRoutes.CHAR_FORM,
-                STRoutes.CHAR_GREETINGS,
-                STRoutes.CHAR_ADVANCED -> STRoutes.CHARACTERS
-                STRoutes.WORLD_INFO_MANAGE,
-                STRoutes.WORLD_INFO_BOOK,
-                STRoutes.WORLD_INFO_ENTRY,
-                STRoutes.WORLD_INFO_GLOBAL -> STRoutes.WORLD_INFO
-                STRoutes.GROUP_CHAT_DETAIL -> STRoutes.HOME
-                STRoutes.SECRETS -> STRoutes.CONNECTIONS
-                STRoutes.QUICK_REPLIES -> STRoutes.EXTENSIONS
-                STRoutes.BACKGROUNDS,
-                STRoutes.THEME,
-                STRoutes.CHAT_BEHAVIOR -> STRoutes.APPEARANCE
-                STRoutes.LOGS,
-                STRoutes.CONFIG -> STRoutes.MANAGE_ST
-                STRoutes.LICENSE -> STRoutes.LEGAL
-                STRoutes.ACCOUNT -> STRoutes.SETTINGS
-                else -> currentRoute
+            // 只观察「是否在首页」这个布尔(库快照刷新需要它),而不是在根作用域读
+            // navBackStackEntry:后者会让每次导航都整棵重组本作用域(约千行)。
+            // State 值不变不触发重组,所以只有进入/离开首页两个时刻各重组一次。
+            // 抽屉高亮/是否显示外壳的路由推导收进 STAppChrome,随导航重组的只有它。
+            val isOnHome by produceState(initialValue = true, navController) {
+                navController.currentBackStackEntryFlow.collect { entry ->
+                    value = entry.destination.route == STRoutes.HOME
+                }
             }
-            val showNavigationChrome = currentRoute != STRoutes.CHAT &&
-                currentRoute != STRoutes.LOGIN &&
-                currentRoute != STRoutes.ONBOARDING
             val appPaths = remember { AppPaths(this@MainActivity) }
 
             val legalDocs = remember {
@@ -367,9 +353,6 @@ class MainActivity : ComponentActivity() {
             val autoOpenBrowserTriggeredForCurrentRun = rememberSaveable { mutableStateOf(false) }
             val tavernReadyForAutoOpen = remember { mutableStateOf(false) }
             val wasReadyToAutoOpen = remember { mutableStateOf(false) }
-            val stdoutState = remember { mutableStateOf("") }
-            val stderrState = remember { mutableStateOf("") }
-            val serviceState = remember { mutableStateOf("") }
             val pendingDialogState = rememberSaveable(stateSaver = pendingDialogStateSaver()) {
                 mutableStateOf<PendingDialog?>(null)
             }
@@ -457,7 +440,7 @@ class MainActivity : ComponentActivity() {
                 dataRoot = appPaths.dataDir,
                 serverRunning = statusState.value.state == NodeState.RUNNING,
                 baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                refreshKey = statusState.value.state to (currentRoute == STRoutes.HOME)
+                refreshKey = statusState.value.state to isOnHome
             )
 
             val service = nodeServiceState.value
@@ -481,20 +464,6 @@ class MainActivity : ComponentActivity() {
                 onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
 
-            LaunchedEffect(currentRoute) {
-                if (currentRoute != STRoutes.LOGS) return@LaunchedEffect
-                val paths = appPaths
-                while (true) {
-                    val logsDir = paths.logsDir
-                    val stdoutFile = File(logsDir, "node_stdout.log")
-                    val stderrFile = File(logsDir, "node_stderr.log")
-                    val serviceFile = File(logsDir, "service.log")
-                    stdoutState.value = readLogTail(stdoutFile, 16 * 1024)
-                    stderrState.value = readLogTail(stderrFile, 16 * 1024)
-                    serviceState.value = readLogTail(serviceFile, 16 * 1024)
-                    delay(1000)
-                }
-            }
             LaunchedEffect(Unit) {
                 viewModel.maybeAutoCheckForUpdates()
             }
@@ -725,19 +694,11 @@ class MainActivity : ComponentActivity() {
             }
 
             STAppTheme(useDarkTheme = useDarkTheme, colorSource = themeColorSource) {
-                STNavigationScaffold(
+                STAppChrome(
+                    navController = navController,
                     drawerItems = dynamicDrawerItems,
-                    currentRoute = drawerSelectedRoute,
                     onNavigate = navigateMainTab,
-                    showNavigation = showNavigationChrome,
-                    snackbarHost = {
-                        SnackbarHost(
-                            hostState = snackbarHostState,
-                            modifier = Modifier
-                                .statusBarsPadding()
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                        )
-                    },
+                    snackbarHostState = snackbarHostState,
                     drawerHeader = { navigateFromDrawer ->
                         STAppDrawerHeader(
                             stLabel = currentStLabel,
@@ -758,829 +719,980 @@ class MainActivity : ComponentActivity() {
                             .consumeWindowInsets(innerPadding)
                             .fillMaxSize()
                     ) {
-                        NavHost(
+                        STAppNavHost(
                             navController = navController,
-                            startDestination = STRoutes.HOME,
+                            statusState = statusState,
+                            viewModel = viewModel,
+                            chatStore = chatStore,
+                            chatEngine = chatEngine,
+                            nativeChatLoader = nativeChatLoader,
+                            nativeChatRuntime = nativeChatRuntime,
+                            chatSeenStore = chatSeenStore,
+                            appPaths = appPaths,
+                            homeChatItems = homeChatItems,
+                            pendingChatTarget = pendingChatTarget,
+                            currentStLabel = currentStLabel,
+                            nodeLabel = nodeLabel,
+                            versionLabel = versionLabel,
+                            legalDocs = legalDocs,
+                            batteryUnrestrictedState = batteryUnrestrictedState,
+                            pendingDialogState = pendingDialogState,
+                            triggerExport = triggerExport,
+                            triggerImport = triggerImport,
+                            triggerDiagnosticExport = triggerDiagnosticExport,
+                            onLoadCustomZip = {
+                                customZipLauncher.launch(
+                                    arrayOf(
+                                        "application/zip",
+                                        "application/x-zip-compressed",
+                                        "application/octet-stream"
+                                    )
+                                )
+                            },
+                            navigateMainTab = navigateMainTab,
+                            openCharacterChatFromCharacterManagement = openCharacterChatFromCharacterManagement,
+                            openGroupChat = openGroupChat,
                             modifier = Modifier.fillMaxSize()
-                        ) {
-                            composable(STRoutes.HOME) {
-                                // Replaces the old STAndroidApp dashboard with the prototype ChatListScreen.
-                                STChatListScreen(
-                                    status = statusState.value,
-                                    onStart = { startNode() },
-                                    onStop = { stopNode() },
-                                    stLabel = if (viewModel.isCustomInstalled.value) {
-                                        val customLabel = viewModel.customInstallLabel.value
-                                        if (customLabel.isNullOrBlank()) {
-                                            getString(R.string.sillytavern_custom_version)
-                                        } else {
-                                            getString(R.string.sillytavern_custom_with_label, customLabel)
-                                        }
-                                    } else stLabel,
-                                    nodeLabel = nodeLabel,
-                                    chatItems = homeChatItems,
-                                    onOpenChat = { chat ->
-                                        openCharacterChatFromCharacterManagement(chat.characterId, chat.chatFile)
-                                    },
-                                    onOpenGroupChat = { chat ->
-                                        openGroupChat(chat.characterId, chat.chatFile)
-                                    },
-                                    onNewChat = {
-                                        navController.navigate(STRoutes.CHARACTERS)
-                                        viewModel.showTransientMessage("请选择角色开始新对话")
-                                    },
-                                    onNewGroupChat = { navController.navigate("group-chat/new") },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.CHAT) {
-                                // 离开时打「看过」时间戳;若离开时仍在后台生成,
-                                // 生成完成的更新会晚于该时间戳,列表如实标未读。
-                                DisposableEffect(Unit) {
-                                    onDispose {
-                                        if (chatStore.avatarUrl.isNotBlank()) {
-                                            chatSeenStore.markSeen(chatSeenKey(chatStore.avatarUrl, chatStore.chatFile))
-                                        }
-                                    }
-                                }
-                                NativeChatScreen(
-                                    status = statusState.value,
-                                    target = pendingChatTarget,
-                                    store = chatStore,
-                                    engine = chatEngine,
-                                    nativeChatLoadingEnabled = true,
-                                    nativeChatLoader = nativeChatLoader,
-                                    nativeChatRuntime = nativeChatRuntime,
-                                    quickReplyDataRoot = appPaths.dataDir,
-                                    onBackToHome = {
-                                        if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME)
-                                    },
-                                    onOpenPastChats = {
-                                        val avatar = chatStore.avatarUrl
-                                        if (avatar.isNotBlank()) {
-                                            navController.navigate(STRoutes.pastChats(avatar))
-                                        }
-                                    },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.CHARACTERS) {
-                                // The visible route uses the prototype character library surface.
-                                STCharacterLibraryScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onStartService = { startNode() },
-                                    onOpenCharacter = { avatar ->
-                                        navController.navigate(STRoutes.characterDetail(avatar))
-                                    },
-                                    onOpenChat = { avatar ->
-                                        openCharacterChatFromCharacterManagement(avatar, null)
-                                    },
-                                    onCreateCharacter = {
-                                        navController.navigate(STRoutes.CHARACTER_NEW)
-                                    },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.CHARACTER_NEW) {
-                                // CharacterEditScreen remains available for advanced edit routes; creation now uses the prototype CharEdit surface.
-                                STCharacterCreateScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onStartService = { startNode() },
-                                    onBack = { navController.popBackStack() },
-                                    onSaved = { avatar ->
-                                        navController.navigate(STRoutes.characterDetail(avatar)) {
-                                            popUpTo(STRoutes.CHARACTERS)
-                                        }
-                                    },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(
-                                route = STRoutes.CHARACTER_DETAIL,
-                                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
-                            ) { backStackEntry ->
-                                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
-                                if (avatar != null) {
-                                    STCharacterProfileScreen(
-                                        status = statusState.value,
-                                        baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                        avatar = avatar,
-                                        onStartService = { startNode() },
-                                        onBack = { navController.popBackStack() },
-                                        onOpenChat = { chatFile ->
-                                            openCharacterChatFromCharacterManagement(avatar, chatFile)
-                                        },
-                                        onOpenPastChats = {
-                                            navController.navigate(STRoutes.pastChats(avatar))
-                                        },
-                                        onOpenFullEdit = {
-                                            navController.navigate(STRoutes.characterForm(avatar))
-                                        },
-                                        onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                    )
-                                }
-                            }
-
-                            composable(
-                                route = STRoutes.CHARACTER_EDIT,
-                                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
-                            ) { backStackEntry ->
-                                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
-                                if (avatar != null) {
-                                    STCharacterProfileScreen(
-                                        status = statusState.value,
-                                        baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                        avatar = avatar,
-                                        onStartService = { startNode() },
-                                        onBack = { navController.popBackStack() },
-                                        onOpenChat = { chatFile ->
-                                            openCharacterChatFromCharacterManagement(avatar, chatFile)
-                                        },
-                                        onOpenPastChats = {
-                                            navController.navigate(STRoutes.pastChats(avatar))
-                                        },
-                                        onOpenFullEdit = {
-                                            navController.navigate(STRoutes.characterForm(avatar))
-                                        },
-                                        onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                    )
-                                }
-                            }
-
-                            composable(
-                                route = STRoutes.PAST_CHATS,
-                                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
-                            ) { backStackEntry ->
-                                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
-                                if (avatar != null) {
-                                    STPastChatsScreen(
-                                        status = statusState.value,
-                                        baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                        avatar = avatar,
-                                        currentChatFile = chatStore.chatFile,
-                                        onBack = { navController.popBackStack() },
-                                        onOpenChat = { chatFile ->
-                                            openCharacterChatFromCharacterManagement(avatar, chatFile)
-                                        },
-                                        onNewChat = {
-                                            scope.launch {
-                                                runCatching { nativeChatRuntime.createNewChat(avatar) }
-                                                    .onSuccess { newChat ->
-                                                        openCharacterChatFromCharacterManagement(avatar, newChat)
-                                                        viewModel.showTransientMessage("已创建新对话")
-                                                    }
-                                                    .onFailure { error ->
-                                                        viewModel.showTransientMessage(error.message ?: "创建新对话失败")
-                                                    }
-                                            }
-                                        },
-                                        onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                    )
-                                }
-                            }
-
-                            composable(
-                                route = STRoutes.CHAR_FORM,
-                                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
-                            ) { backStackEntry ->
-                                BackHandler { navController.popBackStack() }
-                                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }.orEmpty()
-                                STCharacterFormScreen(
-                                    avatar = avatar,
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onClose = { navController.popBackStack() },
-                                    onOpenGreetings = { navController.navigate(STRoutes.characterGreetings(avatar)) },
-                                    onOpenAdvanced = { navController.navigate(STRoutes.characterAdvanced(avatar)) },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(
-                                route = STRoutes.CHAR_GREETINGS,
-                                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
-                            ) { backStackEntry ->
-                                BackHandler { navController.popBackStack() }
-                                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }.orEmpty()
-                                STAltGreetingsScreen(
-                                    avatar = avatar,
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(
-                                route = STRoutes.CHAR_ADVANCED,
-                                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
-                            ) { backStackEntry ->
-                                BackHandler { navController.popBackStack() }
-                                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }.orEmpty()
-                                STCharacterAdvancedScreen(
-                                    avatar = avatar,
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onClose = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.WORLD_INFO) {
-                                BackHandler { navController.popBackStack() }
-                                STWorldInfoScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onStartService = { startNode() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
-                                    onOpenManage = { navController.navigate(STRoutes.WORLD_INFO_MANAGE) },
-                                    onOpenBook = { name -> navController.navigate(STRoutes.worldInfoBook(name)) },
-                                    onOpenGlobalSettings = { navController.navigate(STRoutes.WORLD_INFO_GLOBAL) }
-                                )
-                            }
-
-                            composable(STRoutes.WORLD_INFO_MANAGE) {
-                                BackHandler { navController.popBackStack() }
-                                STWorldBookManageScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onOpenBook = { name -> navController.navigate(STRoutes.worldInfoBook(name)) },
-                                    onOpenGlobalSettings = { navController.navigate(STRoutes.WORLD_INFO_GLOBAL) },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(
-                                route = STRoutes.WORLD_INFO_BOOK,
-                                arguments = listOf(navArgument("name") { type = NavType.StringType })
-                            ) { backStackEntry ->
-                                BackHandler { navController.popBackStack() }
-                                val name = backStackEntry.arguments?.getString("name").orEmpty()
-                                STLorebookDetailScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    bookName = name,
-                                    onBack = { navController.popBackStack() },
-                                    onOpenEntry = { uid -> navController.navigate(STRoutes.worldInfoEntry(uid, name)) },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(
-                                route = STRoutes.WORLD_INFO_ENTRY,
-                                arguments = listOf(
-                                    navArgument("uid") { type = NavType.IntType; defaultValue = -1 },
-                                    navArgument("book") { type = NavType.StringType; defaultValue = "" }
-                                )
-                            ) { backStackEntry ->
-                                BackHandler { navController.popBackStack() }
-                                STWorldEntryEditScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    entryUid = backStackEntry.arguments?.getInt("uid") ?: -1,
-                                    bookName = backStackEntry.arguments?.getString("book").orEmpty(),
-                                    onClose = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.WORLD_INFO_GLOBAL) {
-                                BackHandler { navController.popBackStack() }
-                                STWIGlobalSettingsScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.PERSONA) {
-                                BackHandler { navController.popBackStack() }
-                                STPersonaScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.PRESETS) {
-                                BackHandler { navController.popBackStack() }
-                                STAISettingsScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
-                                    onSettingsChanged = { }
-                                )
-                            }
-
-                            composable(STRoutes.CONNECTIONS) {
-                                BackHandler { navController.popBackStack() }
-                                STApiConnectionScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onOpenSecrets = { navController.navigate(STRoutes.SECRETS) },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
-                                    onOpenProviderDetail = { providerId ->
-                                        navController.navigate(STRoutes.providerDetail(providerId))
-                                    },
-                                    onSettingsChanged = { }
-                                )
-                            }
-
-                            composable(
-                                route = STRoutes.PROVIDER_DETAIL,
-                                arguments = listOf(navArgument("providerId") { type = NavType.StringType })
-                            ) { backStackEntry ->
-                                val providerId = backStackEntry.arguments?.getString("providerId")?.let { Uri.decode(it) } ?: "anthropic"
-                                BackHandler { navController.popBackStack() }
-                                STProviderDetailScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    providerId = providerId,
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
-                                    onSettingsChanged = { }
-                                )
-                            }
-
-                            composable(STRoutes.CHAT_BACKUPS) {
-                                BackHandler { navController.popBackStack() }
-                                STMemoryScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(
-                                route = STRoutes.GROUP_CHAT_DETAIL,
-                                arguments = listOf(
-                                    navArgument("groupId") { type = NavType.StringType },
-                                    navArgument("chatId") {
-                                        type = NavType.StringType
-                                        defaultValue = ""
-                                    }
-                                )
-                            ) { backStackEntry ->
-                                BackHandler { navController.popBackStack() }
-                                val gid = backStackEntry.arguments?.getString("groupId").orEmpty()
-                                val cid = backStackEntry.arguments?.getString("chatId").orEmpty()
-                                DisposableEffect(gid) {
-                                    onDispose {
-                                        if (gid.isNotBlank()) chatSeenStore.markSeen(groupSeenKey(gid))
-                                    }
-                                }
-                                GroupChatScreen(
-                                    groupId = gid,
-                                    chatId = cid.takeIf { it.isNotBlank() },
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onNavigateToSettings = { navController.navigate(STRoutes.groupSettings(gid)) },
-                                    onNavigateToMembers = { navController.navigate(STRoutes.groupMembers(gid)) },
-                                    onNavigateToNewGroup = { navController.navigate("group-chat/new") },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(
-                                route = STRoutes.GROUP_SETTINGS,
-                                arguments = listOf(navArgument("groupId") { type = NavType.StringType })
-                            ) { backStackEntry ->
-                                BackHandler { navController.popBackStack() }
-                                GroupSettingsScreen(
-                                    groupId = backStackEntry.arguments?.getString("groupId").orEmpty(),
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(
-                                route = STRoutes.GROUP_MEMBERS,
-                                arguments = listOf(navArgument("groupId") { type = NavType.StringType })
-                            ) { backStackEntry ->
-                                BackHandler { navController.popBackStack() }
-                                GroupMembersScreen(
-                                    groupId = backStackEntry.arguments?.getString("groupId").orEmpty(),
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable("group-chat/new") {
-                                BackHandler { navController.popBackStack() }
-                                val newGroupBaseUrl = SillyTavernUrl.localWebUrl(statusState.value.port)
-                                val newGroupScope = rememberCoroutineScope()
-                                var newGroupCharacters by remember { mutableStateOf<List<CharacterSummary>>(emptyList()) }
-                                var newGroupLoading by remember { mutableStateOf(true) }
-                                var creatingGroup by remember { mutableStateOf(false) }
-                                LaunchedEffect(newGroupBaseUrl) {
-                                    newGroupLoading = true
-                                    runCatching { TavernCoreClient(newGroupBaseUrl).listCharacters() }
-                                        .onSuccess { newGroupCharacters = it.sortedBy { c -> c.name.lowercase() } }
-                                        .onFailure { error ->
-                                            viewModel.showTransientMessage(error.message ?: "角色列表加载失败")
-                                        }
-                                    newGroupLoading = false
-                                }
-                                NewGroupScreen(
-                                    characters = newGroupCharacters,
-                                    loading = newGroupLoading,
-                                    onClose = { navController.popBackStack() },
-                                    onCreate = { name, members, strategy ->
-                                        if (creatingGroup) return@NewGroupScreen
-                                        creatingGroup = true
-                                        newGroupScope.launch {
-                                            runCatching {
-                                                TavernCoreClient(newGroupBaseUrl).createGroup(
-                                                    GroupCreateRequest(
-                                                        name = name,
-                                                        members = members,
-                                                        activationStrategy = strategy
-                                                    )
-                                                )
-                                            }.onSuccess { created ->
-                                                viewModel.showTransientMessage("已创建群聊「${created.name}」")
-                                                // 群聊列表页已并入对话页:创建完成直接进入新群聊
-                                                navController.popBackStack()
-                                                openGroupChat(created.id, null)
-                                            }.onFailure { error ->
-                                                viewModel.showTransientMessage(error.message ?: "创建群聊失败")
-                                            }
-                                            creatingGroup = false
-                                        }
-                                    }
-                                )
-                            }
-
-                            composable(STRoutes.SETTINGS) {
-                                STMeScreen(
-                                    autoCheckEnabled = viewModel.autoCheckForUpdates.value,
-                                    onAutoCheckChanged = { enabled -> viewModel.setAutoCheckForUpdates(enabled) },
-                                    autoOpenBrowserEnabled = viewModel.autoOpenBrowserWhenReady.value,
-                                    onAutoOpenBrowserChanged = { enabled -> viewModel.setAutoOpenBrowserWhenReady(enabled) },
-                                    themeMode = themeMode,
-                                    onThemeModeChanged = { mode -> viewModel.setThemeMode(mode) },
-                                    colorSource = themeColorSource,
-                                    onColorSourceChanged = { source -> viewModel.setThemeColorSource(source) },
-                                    isBatteryUnrestricted = batteryUnrestrictedState.value,
-                                    onOpenBatterySettings = { openBatteryOptimizationSettings() },
-                                    channel = viewModel.updateChannel.value,
-                                    onChannelChanged = { channel -> viewModel.setUpdateChannel(channel) },
-                                    onCheckNow = { viewModel.checkForUpdates("manual") },
-                                    isChecking = viewModel.isCheckingForUpdates.value,
-                                    bubbleStyle = viewModel.bubbleStyle.value,
-                                    onBubbleStyleChanged = { enabled -> viewModel.setBubbleStyle(enabled) },
-                                    vibrationFeedback = viewModel.vibrationFeedback.value,
-                                    onVibrationFeedbackChanged = { enabled -> viewModel.setVibrationFeedback(enabled) },
-                                    secondConfirmation = viewModel.secondConfirmation.value,
-                                    onSecondConfirmationChanged = { enabled -> viewModel.setSecondConfirmation(enabled) },
-                                    swipeDrawer = viewModel.swipeDrawer.value,
-                                    onSwipeDrawerChanged = { enabled -> viewModel.setSwipeDrawer(enabled) },
-                                    developerMode = viewModel.developerMode.value,
-                                    onDeveloperModeChanged = { enabled -> viewModel.setDeveloperMode(enabled) },
-                                    onOpenWorldInfo = { navController.navigate(STRoutes.WORLD_INFO) },
-                                    onOpenPersona = { navController.navigate(STRoutes.PERSONA) },
-                                    onOpenPresets = { navController.navigate(STRoutes.PRESETS) },
-                                    onOpenConnections = { navController.navigate(STRoutes.CONNECTIONS) },
-                                    onOpenChatBackups = { navController.navigate(STRoutes.CHAT_BACKUPS) },
-                                    onOpenLogs = { navController.navigate(STRoutes.LOGS) },
-                                    onOpenConfig = { navController.navigate(STRoutes.CONFIG) },
-                                    onOpenManageSt = { navController.navigate(STRoutes.MANAGE_ST) },
-                                    onOpenSecrets = { navController.navigate(STRoutes.SECRETS) },
-                                    onOpenExtensions = { navController.navigate(STRoutes.EXTENSIONS) },
-                                    onOpenAppearance = { navController.navigate(STRoutes.APPEARANCE) },
-                                    onOpenAccount = { navController.navigate(STRoutes.ACCOUNT) },
-                                    onOpenBackgrounds = { navController.navigate(STRoutes.BACKGROUNDS) },
-                                    onOpenTheme = { navController.navigate(STRoutes.THEME) },
-                                    onOpenChatBehavior = { navController.navigate(STRoutes.CHAT_BEHAVIOR) },
-                                    appVersion = versionLabel,
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.LOGIN) {
-                                STLoginScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onClose = { if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME) },
-                                    onLoggedIn = {
-                                        navController.navigate(STRoutes.HOME) {
-                                            popUpTo(STRoutes.HOME) { inclusive = false }
-                                            launchSingleTop = true
-                                        }
-                                    },
-                                    onOnboarding = { navController.navigate(STRoutes.ONBOARDING) }
-                                )
-                            }
-
-                            composable(STRoutes.ONBOARDING) {
-                                val goHome: () -> Unit = {
-                                    navController.navigate(STRoutes.HOME) {
-                                        popUpTo(STRoutes.HOME) { inclusive = false }
-                                        launchSingleTop = true
-                                    }
-                                }
-                                STOnboardingScreen(onFinish = goHome, onSkip = goHome)
-                            }
-
-                            composable(STRoutes.ACCOUNT) {
-                                BackHandler { navController.popBackStack() }
-                                STAccountScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onLogout = {
-                                        navController.navigate(STRoutes.LOGIN) {
-                                            popUpTo(STRoutes.HOME) { inclusive = true }
-                                        }
-                                    },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.BACKGROUNDS) {
-                                BackHandler { navController.popBackStack() }
-                                STBackgroundsScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.THEME) {
-                                BackHandler { navController.popBackStack() }
-                                STThemeScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.CHAT_BEHAVIOR) {
-                                BackHandler { navController.popBackStack() }
-                                STChatBehaviorScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.SECRETS) {
-                                BackHandler { navController.popBackStack() }
-                                STSecretsScreen(
-                                    status = statusState.value,
-                                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.EXTENSIONS) {
-                                BackHandler { navController.popBackStack() }
-                                STExtensionsScreen(
-                                    onBack = { navController.popBackStack() },
-                                    onOpenQuickReplies = { navController.navigate(STRoutes.QUICK_REPLIES) },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.AUTHOR_NOTE) {
-                                BackHandler { navController.popBackStack() }
-                                STAuthorNoteCFGScreen(
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.QUICK_REPLIES) {
-                                BackHandler { navController.popBackStack() }
-                                STQuickReplyScreen(
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.APPEARANCE) {
-                                BackHandler { navController.popBackStack() }
-                                STAppearanceScreen(
-                                    fontSize = viewModel.fontSize.value,
-                                    onFontSizeChanged = { size -> viewModel.setFontSize(size) },
-                                    reduceMotion = viewModel.reduceMotion.value,
-                                    onReduceMotionChanged = { enabled -> viewModel.setReduceMotion(enabled) },
-                                    onBack = { navController.popBackStack() },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.LOGS) {
-                                BackHandler { navController.popBackStack() }
-                                LogsScreen(
-                                    onBack = { navController.popBackStack() },
-                                    onExportDiagnostics = triggerDiagnosticExport,
-                                    stdoutLog = stdoutState.value,
-                                    stderrLog = stderrState.value,
-                                    serviceLog = serviceState.value
-                                )
-                            }
-
-                            composable(STRoutes.CONFIG) {
-                                ConfigScreen(
-                                    onBack = { navController.popBackStack() },
-                                    onOpenDocs = { openConfigDocs() },
-                                    canEdit = statusState.value.state == NodeState.STOPPED || statusState.value.state == NodeState.ERROR,
-                                    configFile = appPaths.configFile,
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-
-                            composable(STRoutes.LEGAL) {
-                                BackHandler { navController.popBackStack() }
-                                LegalScreen(
-                                    onBack = { navController.popBackStack() },
-                                    onOpenUrl = { url -> openUrl(url) },
-                                    legalDocs = legalDocs,
-                                    onOpenLicense = { doc ->
-                                        navController.navigate(
-                                            STRoutes.LICENSE.replace(
-                                                "{assetPath}",
-                                                Uri.encode(doc.assetPath)
-                                            )
-                                        )
-                                    }
-                                )
-                            }
-
-                            composable(STRoutes.LICENSE) { backStackEntry ->
-                                val assetPath = backStackEntry.arguments?.getString("assetPath")
-                                val doc = assetPath?.let { path ->
-                                    val decoded = Uri.decode(path)
-                                    legalDocs.firstOrNull { it.assetPath == decoded }
-                                }
-                                if (doc != null) {
-                                    BackHandler { navController.popBackStack() }
-                                    LicenseTextScreen(
-                                        onBack = { navController.popBackStack() },
-                                        doc = doc
-                                    )
-                                }
-                            }
-
-                            composable(STRoutes.MANAGE_ST) {
-                                BackHandler { navController.popBackStack() }
-                                STStCoreScreen(
-                                    onBack = { navController.popBackStack() },
-                                    status = statusState.value,
-                                    stLabel = currentStLabel,
-                                    nodeLabel = nodeLabel,
-                                    isCustomInstalled = viewModel.isCustomInstalled.value,
-                                    customInstalledLabel = viewModel.customInstallLabel.value,
-                                    busyMessage = viewModel.busyMessage,
-                                    onStartService = { startNode() },
-                                    onStopService = { stopNode() },
-                                    onOpenBrowser = { openSillyTavernInBrowser(statusState.value.port) },
-                                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
-                                    onExport = triggerExport,
-                                    onImport = triggerImport,
-                                    settingsSnapshots = viewModel.settingsSnapshots.value,
-                                    settingsSnapshotsLoading = viewModel.settingsSnapshotsLoading.value,
-                                    settingsSnapshotMessage = viewModel.settingsSnapshotMessage.value,
-                                    onRefreshSettingsSnapshots = {
-                                        viewModel.refreshSettingsSnapshots(statusState.value.port)
-                                    },
-                                    onCreateSettingsSnapshot = {
-                                        viewModel.createSettingsSnapshot(statusState.value.port)
-                                    },
-                                    onRestoreSettingsSnapshot = { name ->
-                                        pendingDialogState.value = PendingDialog.RestoreSettingsSnapshot(name)
-                                    },
-                                    showBackupOperationCard = viewModel.backupOperationCard.value.visible,
-                                    backupOperationTitle = viewModel.backupOperationCard.value.title,
-                                    backupOperationDetails = viewModel.backupOperationCard.value.details,
-                                    backupOperationProgressPercent = viewModel.backupOperationCard.value.progressPercent,
-                                    backupOperationAnchor = viewModel.backupOperationCardAnchor.value,
-                                    showCustomOperationCard = viewModel.customOperationCard.value.visible,
-                                    customOperationTitle = viewModel.customOperationCard.value.title,
-                                    customOperationDetails = viewModel.customOperationCard.value.details,
-                                    customOperationProgressPercent = viewModel.customOperationCard.value.progressPercent,
-                                    customOperationCancelable = viewModel.customOperationCard.value.cancelable,
-                                    customOperationAnchor = viewModel.customOperationCardAnchor.value,
-                                    onCancelCustomOperation = { viewModel.cancelCustomSourceDownload() },
-                                    autoStartService = viewModel.autoStartService.value,
-                                    onAutoStartServiceChanged = { enabled -> viewModel.setAutoStartService(enabled) },
-                                    autoOpenBrowser = viewModel.autoOpenBrowserWhenReady.value,
-                                    onAutoOpenBrowserChanged = { enabled -> viewModel.setAutoOpenBrowserWhenReady(enabled) },
-                                    onLoadCustomZip = {
-                                        customZipLauncher.launch(
-                                            arrayOf(
-                                                "application/zip",
-                                                "application/x-zip-compressed",
-                                                "application/octet-stream"
-                                            )
-                                        )
-                                    },
-                                    onResetToDefault = { pendingDialogState.value = PendingDialog.ResetToDefault },
-                                    onRemoveUserData = { pendingDialogState.value = PendingDialog.RemoveUserData },
-                                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
-                                )
-                            }
-                        }
+                        )
                     }
 
-                    // Dialogs are rendered above the NavHost
-                    when (val dialog = pendingDialogState.value) {
-                        PendingDialog.ResetToDefault -> {
-                            STConfirmDialog(
-                                title = getString(R.string.dialog_reset_title),
-                                confirmLabel = getString(R.string.reset),
-                                onConfirm = {
-                                    pendingDialogState.value = null
-                                    viewModel.resetToDefault()
-                                },
-                                onDismiss = { pendingDialogState.value = null },
-                                body = { Text(text = getString(R.string.dialog_reset_body)) },
-                                buttonStyle = STDialogButtonStyle.FILLED
-                            )
-                        }
-
-                        PendingDialog.RemoveUserData -> {
-                            STConfirmDialog(
-                                title = getString(R.string.dialog_remove_data_title),
-                                confirmLabel = getString(R.string.remove),
-                                onConfirm = {
-                                    pendingDialogState.value = null
-                                    viewModel.removeUserData()
-                                },
-                                onDismiss = { pendingDialogState.value = null },
-                                body = { Text(text = getString(R.string.dialog_remove_data_body)) },
-                                buttonStyle = STDialogButtonStyle.FILLED
-                            )
-                        }
-
-                        is PendingDialog.RestoreSettingsSnapshot -> {
-                            STConfirmDialog(
-                                title = getString(R.string.settings_snapshot_restore_title),
-                                confirmLabel = getString(R.string.settings_snapshot_restore),
-                                onConfirm = {
-                                    val snapshotName = dialog.name
-                                    pendingDialogState.value = null
-                                    viewModel.restoreSettingsSnapshot(statusState.value.port, snapshotName)
-                                },
-                                onDismiss = { pendingDialogState.value = null },
-                                body = {
-                                    Text(text = getString(R.string.settings_snapshot_restore_body, dialog.name))
-                                },
-                                buttonStyle = STDialogButtonStyle.FILLED
-                            )
-                        }
-
-                        is PendingDialog.CheckingImport -> {
-                            STConfirmDialog(
-                                title = getString(R.string.dialog_import_title),
-                                confirmLabel = getString(R.string.import_action),
-                                onConfirm = {},
-                                onDismiss = { pendingDialogState.value = null },
-                                body = { Text(text = getString(R.string.dialog_import_checking_body)) },
-                                confirmEnabled = false,
-                                buttonStyle = STDialogButtonStyle.FILLED
-                            )
-                        }
-
-                        is PendingDialog.ConfirmImport -> {
-                            STConfirmDialog(
-                                title = getString(R.string.dialog_import_title),
-                                confirmLabel = getString(R.string.import_action),
-                                onConfirm = {
-                                    val importUri = dialog.uri
-                                    pendingDialogState.value = null
-                                    viewModel.import(importUri)
-                                },
-                                onDismiss = { pendingDialogState.value = null },
-                                body = { Text(text = dialog.previewText) },
-                                confirmEnabled = dialog.canImport,
-                                buttonStyle = STDialogButtonStyle.FILLED
-                            )
-                        }
-
-                        null -> Unit
-                    }
+                    // 全局确认对话框浮在 NavHost 之上
+                    STAppDialogs(
+                        pendingDialogState = pendingDialogState,
+                        statusState = statusState,
+                        viewModel = viewModel
+                    )
                 }
             }
+        }
+    }
+
+
+    /**
+     * 导航外壳:路由 → 抽屉高亮/是否显示外壳的推导收在这里。
+     * navBackStackEntry 的读取只让本作用域随导航重组,
+     * setContent 根作用域不再因为每次导航整棵重跑。
+     */
+    @Composable
+    private fun STAppChrome(
+        navController: NavHostController,
+        drawerItems: List<DrawerNavItem>,
+        onNavigate: (String) -> Unit,
+        snackbarHostState: SnackbarHostState,
+        drawerHeader: @Composable ((String) -> Unit) -> Unit,
+        content: @Composable (PaddingValues) -> Unit,
+    ) {
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = navBackStackEntry?.destination?.route
+        // 子页面路由折叠到抽屉里对应的父条目,保证抽屉高亮正确。
+        val drawerSelectedRoute = when (currentRoute) {
+            STRoutes.CHAT -> STRoutes.HOME
+            STRoutes.CHARACTER_NEW,
+            STRoutes.CHARACTER_DETAIL,
+            STRoutes.CHARACTER_EDIT,
+            STRoutes.CHAR_FORM,
+            STRoutes.CHAR_GREETINGS,
+            STRoutes.CHAR_ADVANCED -> STRoutes.CHARACTERS
+            STRoutes.WORLD_INFO_MANAGE,
+            STRoutes.WORLD_INFO_BOOK,
+            STRoutes.WORLD_INFO_ENTRY,
+            STRoutes.WORLD_INFO_GLOBAL -> STRoutes.WORLD_INFO
+            STRoutes.GROUP_CHAT_DETAIL -> STRoutes.HOME
+            STRoutes.SECRETS -> STRoutes.CONNECTIONS
+            STRoutes.QUICK_REPLIES -> STRoutes.EXTENSIONS
+            STRoutes.BACKGROUNDS,
+            STRoutes.THEME,
+            STRoutes.CHAT_BEHAVIOR -> STRoutes.APPEARANCE
+            STRoutes.LOGS,
+            STRoutes.CONFIG -> STRoutes.MANAGE_ST
+            STRoutes.LICENSE -> STRoutes.LEGAL
+            STRoutes.ACCOUNT -> STRoutes.SETTINGS
+            else -> currentRoute
+        }
+        val showNavigationChrome = currentRoute != STRoutes.CHAT &&
+            currentRoute != STRoutes.LOGIN &&
+            currentRoute != STRoutes.ONBOARDING
+        STNavigationScaffold(
+            drawerItems = drawerItems,
+            currentRoute = drawerSelectedRoute,
+            onNavigate = onNavigate,
+            showNavigation = showNavigationChrome,
+            snackbarHost = {
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+            },
+            drawerHeader = drawerHeader,
+            content = content
+        )
+    }
+
+
+    /**
+     * NavHost 与全部路由目的地。从 setContent 根作用域抽出成独立组件:
+     * 目的地内部的状态读取(statusState.value 等)只重组各自的目的地作用域,
+     * 根作用域不再随之整棵重跑。
+     */
+    @Composable
+    private fun STAppNavHost(
+        navController: NavHostController,
+        statusState: State<NodeStatus>,
+        viewModel: MainViewModel,
+        chatStore: ChatStore,
+        chatEngine: ChatEngine,
+        nativeChatLoader: NativeChatLoader,
+        nativeChatRuntime: NativeChatRuntime,
+        chatSeenStore: ChatSeenStore,
+        appPaths: AppPaths,
+        homeChatItems: List<STChatItem>,
+        pendingChatTarget: ChatTarget,
+        currentStLabel: String,
+        nodeLabel: String,
+        versionLabel: String,
+        legalDocs: List<LegalDoc>,
+        batteryUnrestrictedState: State<Boolean>,
+        pendingDialogState: MutableState<PendingDialog?>,
+        triggerExport: () -> Unit,
+        triggerImport: () -> Unit,
+        triggerDiagnosticExport: () -> Unit,
+        onLoadCustomZip: () -> Unit,
+        navigateMainTab: (String) -> Unit,
+        openCharacterChatFromCharacterManagement: (String, String?) -> Unit,
+        openGroupChat: (String, String?) -> Unit,
+        modifier: Modifier = Modifier,
+    ) {
+        val scope = rememberCoroutineScope()
+
+        NavHost(
+            navController = navController,
+            startDestination = STRoutes.HOME,
+            modifier = modifier
+        ) {
+            composable(STRoutes.HOME) {
+                // Replaces the old STAndroidApp dashboard with the prototype ChatListScreen.
+                STChatListScreen(
+                    status = statusState.value,
+                    onStart = { startNode() },
+                    onStop = { stopNode() },
+                    stLabel = currentStLabel,
+                    nodeLabel = nodeLabel,
+                    chatItems = homeChatItems,
+                    onOpenChat = { chat ->
+                        openCharacterChatFromCharacterManagement(chat.characterId, chat.chatFile)
+                    },
+                    onOpenGroupChat = { chat ->
+                        openGroupChat(chat.characterId, chat.chatFile)
+                    },
+                    onNewChat = {
+                        navController.navigate(STRoutes.CHARACTERS)
+                        viewModel.showTransientMessage("请选择角色开始新对话")
+                    },
+                    onNewGroupChat = { navController.navigate("group-chat/new") },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.CHAT) {
+                // 离开时打「看过」时间戳;若离开时仍在后台生成,
+                // 生成完成的更新会晚于该时间戳,列表如实标未读。
+                DisposableEffect(Unit) {
+                    onDispose {
+                        if (chatStore.avatarUrl.isNotBlank()) {
+                            chatSeenStore.markSeen(chatSeenKey(chatStore.avatarUrl, chatStore.chatFile))
+                        }
+                    }
+                }
+                NativeChatScreen(
+                    status = statusState.value,
+                    target = pendingChatTarget,
+                    store = chatStore,
+                    engine = chatEngine,
+                    nativeChatLoadingEnabled = true,
+                    nativeChatLoader = nativeChatLoader,
+                    nativeChatRuntime = nativeChatRuntime,
+                    quickReplyDataRoot = appPaths.dataDir,
+                    onBackToHome = {
+                        if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME)
+                    },
+                    onOpenPastChats = {
+                        val avatar = chatStore.avatarUrl
+                        if (avatar.isNotBlank()) {
+                            navController.navigate(STRoutes.pastChats(avatar))
+                        }
+                    },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.CHARACTERS) {
+                // The visible route uses the prototype character library surface.
+                STCharacterLibraryScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onStartService = { startNode() },
+                    onOpenCharacter = { avatar ->
+                        navController.navigate(STRoutes.characterDetail(avatar))
+                    },
+                    onOpenChat = { avatar ->
+                        openCharacterChatFromCharacterManagement(avatar, null)
+                    },
+                    onCreateCharacter = {
+                        navController.navigate(STRoutes.CHARACTER_NEW)
+                    },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.CHARACTER_NEW) {
+                // CharacterEditScreen remains available for advanced edit routes; creation now uses the prototype CharEdit surface.
+                STCharacterCreateScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onStartService = { startNode() },
+                    onBack = { navController.popBackStack() },
+                    onSaved = { avatar ->
+                        navController.navigate(STRoutes.characterDetail(avatar)) {
+                            popUpTo(STRoutes.CHARACTERS)
+                        }
+                    },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(
+                route = STRoutes.CHARACTER_DETAIL,
+                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
+                if (avatar != null) {
+                    STCharacterProfileScreen(
+                        status = statusState.value,
+                        baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                        avatar = avatar,
+                        onStartService = { startNode() },
+                        onBack = { navController.popBackStack() },
+                        onOpenChat = { chatFile ->
+                            openCharacterChatFromCharacterManagement(avatar, chatFile)
+                        },
+                        onOpenPastChats = {
+                            navController.navigate(STRoutes.pastChats(avatar))
+                        },
+                        onOpenFullEdit = {
+                            navController.navigate(STRoutes.characterForm(avatar))
+                        },
+                        onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                    )
+                }
+            }
+
+            composable(
+                route = STRoutes.CHARACTER_EDIT,
+                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
+                if (avatar != null) {
+                    STCharacterProfileScreen(
+                        status = statusState.value,
+                        baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                        avatar = avatar,
+                        onStartService = { startNode() },
+                        onBack = { navController.popBackStack() },
+                        onOpenChat = { chatFile ->
+                            openCharacterChatFromCharacterManagement(avatar, chatFile)
+                        },
+                        onOpenPastChats = {
+                            navController.navigate(STRoutes.pastChats(avatar))
+                        },
+                        onOpenFullEdit = {
+                            navController.navigate(STRoutes.characterForm(avatar))
+                        },
+                        onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                    )
+                }
+            }
+
+            composable(
+                route = STRoutes.PAST_CHATS,
+                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }
+                if (avatar != null) {
+                    STPastChatsScreen(
+                        status = statusState.value,
+                        baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                        avatar = avatar,
+                        currentChatFile = chatStore.chatFile,
+                        onBack = { navController.popBackStack() },
+                        onOpenChat = { chatFile ->
+                            openCharacterChatFromCharacterManagement(avatar, chatFile)
+                        },
+                        onNewChat = {
+                            scope.launch {
+                                runCatching { nativeChatRuntime.createNewChat(avatar) }
+                                    .onSuccess { newChat ->
+                                        openCharacterChatFromCharacterManagement(avatar, newChat)
+                                        viewModel.showTransientMessage("已创建新对话")
+                                    }
+                                    .onFailure { error ->
+                                        viewModel.showTransientMessage(error.message ?: "创建新对话失败")
+                                    }
+                            }
+                        },
+                        onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                    )
+                }
+            }
+
+            composable(
+                route = STRoutes.CHAR_FORM,
+                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
+            ) { backStackEntry ->
+                BackHandler { navController.popBackStack() }
+                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }.orEmpty()
+                STCharacterFormScreen(
+                    avatar = avatar,
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onClose = { navController.popBackStack() },
+                    onOpenGreetings = { navController.navigate(STRoutes.characterGreetings(avatar)) },
+                    onOpenAdvanced = { navController.navigate(STRoutes.characterAdvanced(avatar)) },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(
+                route = STRoutes.CHAR_GREETINGS,
+                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
+            ) { backStackEntry ->
+                BackHandler { navController.popBackStack() }
+                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }.orEmpty()
+                STAltGreetingsScreen(
+                    avatar = avatar,
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(
+                route = STRoutes.CHAR_ADVANCED,
+                arguments = listOf(navArgument("avatar") { type = NavType.StringType })
+            ) { backStackEntry ->
+                BackHandler { navController.popBackStack() }
+                val avatar = backStackEntry.arguments?.getString("avatar")?.let { Uri.decode(it) }.orEmpty()
+                STCharacterAdvancedScreen(
+                    avatar = avatar,
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onClose = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.WORLD_INFO) {
+                BackHandler { navController.popBackStack() }
+                STWorldInfoScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onStartService = { startNode() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
+                    onOpenManage = { navController.navigate(STRoutes.WORLD_INFO_MANAGE) },
+                    onOpenBook = { name -> navController.navigate(STRoutes.worldInfoBook(name)) },
+                    onOpenGlobalSettings = { navController.navigate(STRoutes.WORLD_INFO_GLOBAL) }
+                )
+            }
+
+            composable(STRoutes.WORLD_INFO_MANAGE) {
+                BackHandler { navController.popBackStack() }
+                STWorldBookManageScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onOpenBook = { name -> navController.navigate(STRoutes.worldInfoBook(name)) },
+                    onOpenGlobalSettings = { navController.navigate(STRoutes.WORLD_INFO_GLOBAL) },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(
+                route = STRoutes.WORLD_INFO_BOOK,
+                arguments = listOf(navArgument("name") { type = NavType.StringType })
+            ) { backStackEntry ->
+                BackHandler { navController.popBackStack() }
+                val name = backStackEntry.arguments?.getString("name").orEmpty()
+                STLorebookDetailScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    bookName = name,
+                    onBack = { navController.popBackStack() },
+                    onOpenEntry = { uid -> navController.navigate(STRoutes.worldInfoEntry(uid, name)) },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(
+                route = STRoutes.WORLD_INFO_ENTRY,
+                arguments = listOf(
+                    navArgument("uid") { type = NavType.IntType; defaultValue = -1 },
+                    navArgument("book") { type = NavType.StringType; defaultValue = "" }
+                )
+            ) { backStackEntry ->
+                BackHandler { navController.popBackStack() }
+                STWorldEntryEditScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    entryUid = backStackEntry.arguments?.getInt("uid") ?: -1,
+                    bookName = backStackEntry.arguments?.getString("book").orEmpty(),
+                    onClose = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.WORLD_INFO_GLOBAL) {
+                BackHandler { navController.popBackStack() }
+                STWIGlobalSettingsScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.PERSONA) {
+                BackHandler { navController.popBackStack() }
+                STPersonaScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.PRESETS) {
+                BackHandler { navController.popBackStack() }
+                STAISettingsScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
+                    onSettingsChanged = { }
+                )
+            }
+
+            composable(STRoutes.CONNECTIONS) {
+                BackHandler { navController.popBackStack() }
+                STApiConnectionScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onOpenSecrets = { navController.navigate(STRoutes.SECRETS) },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
+                    onOpenProviderDetail = { providerId ->
+                        navController.navigate(STRoutes.providerDetail(providerId))
+                    },
+                    onSettingsChanged = { }
+                )
+            }
+
+            composable(
+                route = STRoutes.PROVIDER_DETAIL,
+                arguments = listOf(navArgument("providerId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val providerId = backStackEntry.arguments?.getString("providerId")?.let { Uri.decode(it) } ?: "anthropic"
+                BackHandler { navController.popBackStack() }
+                STProviderDetailScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    providerId = providerId,
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) },
+                    onSettingsChanged = { }
+                )
+            }
+
+            composable(STRoutes.CHAT_BACKUPS) {
+                BackHandler { navController.popBackStack() }
+                STMemoryScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(
+                route = STRoutes.GROUP_CHAT_DETAIL,
+                arguments = listOf(
+                    navArgument("groupId") { type = NavType.StringType },
+                    navArgument("chatId") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    }
+                )
+            ) { backStackEntry ->
+                BackHandler { navController.popBackStack() }
+                val gid = backStackEntry.arguments?.getString("groupId").orEmpty()
+                val cid = backStackEntry.arguments?.getString("chatId").orEmpty()
+                DisposableEffect(gid) {
+                    onDispose {
+                        if (gid.isNotBlank()) chatSeenStore.markSeen(groupSeenKey(gid))
+                    }
+                }
+                GroupChatScreen(
+                    groupId = gid,
+                    chatId = cid.takeIf { it.isNotBlank() },
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onNavigateToSettings = { navController.navigate(STRoutes.groupSettings(gid)) },
+                    onNavigateToMembers = { navController.navigate(STRoutes.groupMembers(gid)) },
+                    onNavigateToNewGroup = { navController.navigate("group-chat/new") },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(
+                route = STRoutes.GROUP_SETTINGS,
+                arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                BackHandler { navController.popBackStack() }
+                GroupSettingsScreen(
+                    groupId = backStackEntry.arguments?.getString("groupId").orEmpty(),
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(
+                route = STRoutes.GROUP_MEMBERS,
+                arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                BackHandler { navController.popBackStack() }
+                GroupMembersScreen(
+                    groupId = backStackEntry.arguments?.getString("groupId").orEmpty(),
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable("group-chat/new") {
+                BackHandler { navController.popBackStack() }
+                val newGroupBaseUrl = SillyTavernUrl.localWebUrl(statusState.value.port)
+                val newGroupScope = rememberCoroutineScope()
+                var newGroupCharacters by remember { mutableStateOf<List<CharacterSummary>>(emptyList()) }
+                var newGroupLoading by remember { mutableStateOf(true) }
+                var creatingGroup by remember { mutableStateOf(false) }
+                LaunchedEffect(newGroupBaseUrl) {
+                    newGroupLoading = true
+                    runCatching { TavernCoreClient(newGroupBaseUrl).listCharacters() }
+                        .onSuccess { newGroupCharacters = it.sortedBy { c -> c.name.lowercase() } }
+                        .onFailure { error ->
+                            viewModel.showTransientMessage(error.message ?: "角色列表加载失败")
+                        }
+                    newGroupLoading = false
+                }
+                NewGroupScreen(
+                    characters = newGroupCharacters,
+                    loading = newGroupLoading,
+                    onClose = { navController.popBackStack() },
+                    onCreate = { name, members, strategy ->
+                        if (creatingGroup) return@NewGroupScreen
+                        creatingGroup = true
+                        newGroupScope.launch {
+                            runCatching {
+                                TavernCoreClient(newGroupBaseUrl).createGroup(
+                                    GroupCreateRequest(
+                                        name = name,
+                                        members = members,
+                                        activationStrategy = strategy
+                                    )
+                                )
+                            }.onSuccess { created ->
+                                viewModel.showTransientMessage("已创建群聊「${created.name}」")
+                                // 群聊列表页已并入对话页:创建完成直接进入新群聊
+                                navController.popBackStack()
+                                openGroupChat(created.id, null)
+                            }.onFailure { error ->
+                                viewModel.showTransientMessage(error.message ?: "创建群聊失败")
+                            }
+                            creatingGroup = false
+                        }
+                    }
+                )
+            }
+
+            composable(STRoutes.SETTINGS) {
+                STMeScreen(
+                    autoCheckEnabled = viewModel.autoCheckForUpdates.value,
+                    onAutoCheckChanged = { enabled -> viewModel.setAutoCheckForUpdates(enabled) },
+                    autoOpenBrowserEnabled = viewModel.autoOpenBrowserWhenReady.value,
+                    onAutoOpenBrowserChanged = { enabled -> viewModel.setAutoOpenBrowserWhenReady(enabled) },
+                    themeMode = viewModel.themeMode.value,
+                    onThemeModeChanged = { mode -> viewModel.setThemeMode(mode) },
+                    colorSource = viewModel.themeColorSource.value,
+                    onColorSourceChanged = { source -> viewModel.setThemeColorSource(source) },
+                    isBatteryUnrestricted = batteryUnrestrictedState.value,
+                    onOpenBatterySettings = { openBatteryOptimizationSettings() },
+                    channel = viewModel.updateChannel.value,
+                    onChannelChanged = { channel -> viewModel.setUpdateChannel(channel) },
+                    onCheckNow = { viewModel.checkForUpdates("manual") },
+                    isChecking = viewModel.isCheckingForUpdates.value,
+                    bubbleStyle = viewModel.bubbleStyle.value,
+                    onBubbleStyleChanged = { enabled -> viewModel.setBubbleStyle(enabled) },
+                    vibrationFeedback = viewModel.vibrationFeedback.value,
+                    onVibrationFeedbackChanged = { enabled -> viewModel.setVibrationFeedback(enabled) },
+                    secondConfirmation = viewModel.secondConfirmation.value,
+                    onSecondConfirmationChanged = { enabled -> viewModel.setSecondConfirmation(enabled) },
+                    swipeDrawer = viewModel.swipeDrawer.value,
+                    onSwipeDrawerChanged = { enabled -> viewModel.setSwipeDrawer(enabled) },
+                    developerMode = viewModel.developerMode.value,
+                    onDeveloperModeChanged = { enabled -> viewModel.setDeveloperMode(enabled) },
+                    onOpenWorldInfo = { navController.navigate(STRoutes.WORLD_INFO) },
+                    onOpenPersona = { navController.navigate(STRoutes.PERSONA) },
+                    onOpenPresets = { navController.navigate(STRoutes.PRESETS) },
+                    onOpenConnections = { navController.navigate(STRoutes.CONNECTIONS) },
+                    onOpenChatBackups = { navController.navigate(STRoutes.CHAT_BACKUPS) },
+                    onOpenLogs = { navController.navigate(STRoutes.LOGS) },
+                    onOpenConfig = { navController.navigate(STRoutes.CONFIG) },
+                    onOpenManageSt = { navController.navigate(STRoutes.MANAGE_ST) },
+                    onOpenSecrets = { navController.navigate(STRoutes.SECRETS) },
+                    onOpenExtensions = { navController.navigate(STRoutes.EXTENSIONS) },
+                    onOpenAppearance = { navController.navigate(STRoutes.APPEARANCE) },
+                    onOpenAccount = { navController.navigate(STRoutes.ACCOUNT) },
+                    onOpenBackgrounds = { navController.navigate(STRoutes.BACKGROUNDS) },
+                    onOpenTheme = { navController.navigate(STRoutes.THEME) },
+                    onOpenChatBehavior = { navController.navigate(STRoutes.CHAT_BEHAVIOR) },
+                    appVersion = versionLabel,
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.LOGIN) {
+                STLoginScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onClose = { if (!navController.popBackStack()) navigateMainTab(STRoutes.HOME) },
+                    onLoggedIn = {
+                        navController.navigate(STRoutes.HOME) {
+                            popUpTo(STRoutes.HOME) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    },
+                    onOnboarding = { navController.navigate(STRoutes.ONBOARDING) }
+                )
+            }
+
+            composable(STRoutes.ONBOARDING) {
+                val goHome: () -> Unit = {
+                    navController.navigate(STRoutes.HOME) {
+                        popUpTo(STRoutes.HOME) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                }
+                STOnboardingScreen(onFinish = goHome, onSkip = goHome)
+            }
+
+            composable(STRoutes.ACCOUNT) {
+                BackHandler { navController.popBackStack() }
+                STAccountScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onLogout = {
+                        navController.navigate(STRoutes.LOGIN) {
+                            popUpTo(STRoutes.HOME) { inclusive = true }
+                        }
+                    },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.BACKGROUNDS) {
+                BackHandler { navController.popBackStack() }
+                STBackgroundsScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.THEME) {
+                BackHandler { navController.popBackStack() }
+                STThemeScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.CHAT_BEHAVIOR) {
+                BackHandler { navController.popBackStack() }
+                STChatBehaviorScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.SECRETS) {
+                BackHandler { navController.popBackStack() }
+                STSecretsScreen(
+                    status = statusState.value,
+                    baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.EXTENSIONS) {
+                BackHandler { navController.popBackStack() }
+                STExtensionsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenQuickReplies = { navController.navigate(STRoutes.QUICK_REPLIES) },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.AUTHOR_NOTE) {
+                BackHandler { navController.popBackStack() }
+                STAuthorNoteCFGScreen(
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.QUICK_REPLIES) {
+                BackHandler { navController.popBackStack() }
+                STQuickReplyScreen(
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.APPEARANCE) {
+                BackHandler { navController.popBackStack() }
+                STAppearanceScreen(
+                    fontSize = viewModel.fontSize.value,
+                    onFontSizeChanged = { size -> viewModel.setFontSize(size) },
+                    reduceMotion = viewModel.reduceMotion.value,
+                    onReduceMotionChanged = { enabled -> viewModel.setReduceMotion(enabled) },
+                    onBack = { navController.popBackStack() },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.LOGS) {
+                BackHandler { navController.popBackStack() }
+                // 日志轮询只在本页存活:原先 3 个 state 挂在 setContent
+                // 根作用域,停在日志页时每秒 3 次状态写入会牵动整棵根作用域重组。
+                var stdoutLog by remember { mutableStateOf("") }
+                var stderrLog by remember { mutableStateOf("") }
+                var serviceLog by remember { mutableStateOf("") }
+                LaunchedEffect(Unit) {
+                    val logsDir = appPaths.logsDir
+                    while (true) {
+                        stdoutLog = readLogTail(File(logsDir, "node_stdout.log"), 16 * 1024)
+                        stderrLog = readLogTail(File(logsDir, "node_stderr.log"), 16 * 1024)
+                        serviceLog = readLogTail(File(logsDir, "service.log"), 16 * 1024)
+                        delay(1000)
+                    }
+                }
+                LogsScreen(
+                    onBack = { navController.popBackStack() },
+                    onExportDiagnostics = triggerDiagnosticExport,
+                    stdoutLog = stdoutLog,
+                    stderrLog = stderrLog,
+                    serviceLog = serviceLog
+                )
+            }
+
+            composable(STRoutes.CONFIG) {
+                ConfigScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenDocs = { openConfigDocs() },
+                    canEdit = statusState.value.state == NodeState.STOPPED || statusState.value.state == NodeState.ERROR,
+                    configFile = appPaths.configFile,
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+
+            composable(STRoutes.LEGAL) {
+                BackHandler { navController.popBackStack() }
+                LegalScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenUrl = { url -> openUrl(url) },
+                    legalDocs = legalDocs,
+                    onOpenLicense = { doc ->
+                        navController.navigate(
+                            STRoutes.LICENSE.replace(
+                                "{assetPath}",
+                                Uri.encode(doc.assetPath)
+                            )
+                        )
+                    }
+                )
+            }
+
+            composable(STRoutes.LICENSE) { backStackEntry ->
+                val assetPath = backStackEntry.arguments?.getString("assetPath")
+                val doc = assetPath?.let { path ->
+                    val decoded = Uri.decode(path)
+                    legalDocs.firstOrNull { it.assetPath == decoded }
+                }
+                if (doc != null) {
+                    BackHandler { navController.popBackStack() }
+                    LicenseTextScreen(
+                        onBack = { navController.popBackStack() },
+                        doc = doc
+                    )
+                }
+            }
+
+            composable(STRoutes.MANAGE_ST) {
+                BackHandler { navController.popBackStack() }
+                STStCoreScreen(
+                    onBack = { navController.popBackStack() },
+                    status = statusState.value,
+                    stLabel = currentStLabel,
+                    nodeLabel = nodeLabel,
+                    isCustomInstalled = viewModel.isCustomInstalled.value,
+                    customInstalledLabel = viewModel.customInstallLabel.value,
+                    busyMessage = viewModel.busyMessage,
+                    onStartService = { startNode() },
+                    onStopService = { stopNode() },
+                    onOpenBrowser = { openSillyTavernInBrowser(statusState.value.port) },
+                    onShowLogs = { navController.navigate(STRoutes.LOGS) },
+                    onExport = triggerExport,
+                    onImport = triggerImport,
+                    settingsSnapshots = viewModel.settingsSnapshots.value,
+                    settingsSnapshotsLoading = viewModel.settingsSnapshotsLoading.value,
+                    settingsSnapshotMessage = viewModel.settingsSnapshotMessage.value,
+                    onRefreshSettingsSnapshots = {
+                        viewModel.refreshSettingsSnapshots(statusState.value.port)
+                    },
+                    onCreateSettingsSnapshot = {
+                        viewModel.createSettingsSnapshot(statusState.value.port)
+                    },
+                    onRestoreSettingsSnapshot = { name ->
+                        pendingDialogState.value = PendingDialog.RestoreSettingsSnapshot(name)
+                    },
+                    showBackupOperationCard = viewModel.backupOperationCard.value.visible,
+                    backupOperationTitle = viewModel.backupOperationCard.value.title,
+                    backupOperationDetails = viewModel.backupOperationCard.value.details,
+                    backupOperationProgressPercent = viewModel.backupOperationCard.value.progressPercent,
+                    backupOperationAnchor = viewModel.backupOperationCardAnchor.value,
+                    showCustomOperationCard = viewModel.customOperationCard.value.visible,
+                    customOperationTitle = viewModel.customOperationCard.value.title,
+                    customOperationDetails = viewModel.customOperationCard.value.details,
+                    customOperationProgressPercent = viewModel.customOperationCard.value.progressPercent,
+                    customOperationCancelable = viewModel.customOperationCard.value.cancelable,
+                    customOperationAnchor = viewModel.customOperationCardAnchor.value,
+                    onCancelCustomOperation = { viewModel.cancelCustomSourceDownload() },
+                    autoStartService = viewModel.autoStartService.value,
+                    onAutoStartServiceChanged = { enabled -> viewModel.setAutoStartService(enabled) },
+                    autoOpenBrowser = viewModel.autoOpenBrowserWhenReady.value,
+                    onAutoOpenBrowserChanged = { enabled -> viewModel.setAutoOpenBrowserWhenReady(enabled) },
+                    onLoadCustomZip = onLoadCustomZip,
+                    onResetToDefault = { pendingDialogState.value = PendingDialog.ResetToDefault },
+                    onRemoveUserData = { pendingDialogState.value = PendingDialog.RemoveUserData },
+                    onShowMessage = { message -> viewModel.showTransientMessage(message) }
+                )
+            }
+        }
+    }
+
+
+    /** 备份/恢复等全局确认对话框:独立作用域,弹窗状态变化不再牵动根作用域。 */
+    @Composable
+    private fun STAppDialogs(
+        pendingDialogState: MutableState<PendingDialog?>,
+        statusState: State<NodeStatus>,
+        viewModel: MainViewModel,
+    ) {
+
+        when (val dialog = pendingDialogState.value) {
+            PendingDialog.ResetToDefault -> {
+                STConfirmDialog(
+                    title = getString(R.string.dialog_reset_title),
+                    confirmLabel = getString(R.string.reset),
+                    onConfirm = {
+                        pendingDialogState.value = null
+                        viewModel.resetToDefault()
+                    },
+                    onDismiss = { pendingDialogState.value = null },
+                    body = { Text(text = getString(R.string.dialog_reset_body)) },
+                    buttonStyle = STDialogButtonStyle.FILLED
+                )
+            }
+
+            PendingDialog.RemoveUserData -> {
+                STConfirmDialog(
+                    title = getString(R.string.dialog_remove_data_title),
+                    confirmLabel = getString(R.string.remove),
+                    onConfirm = {
+                        pendingDialogState.value = null
+                        viewModel.removeUserData()
+                    },
+                    onDismiss = { pendingDialogState.value = null },
+                    body = { Text(text = getString(R.string.dialog_remove_data_body)) },
+                    buttonStyle = STDialogButtonStyle.FILLED
+                )
+            }
+
+            is PendingDialog.RestoreSettingsSnapshot -> {
+                STConfirmDialog(
+                    title = getString(R.string.settings_snapshot_restore_title),
+                    confirmLabel = getString(R.string.settings_snapshot_restore),
+                    onConfirm = {
+                        val snapshotName = dialog.name
+                        pendingDialogState.value = null
+                        viewModel.restoreSettingsSnapshot(statusState.value.port, snapshotName)
+                    },
+                    onDismiss = { pendingDialogState.value = null },
+                    body = {
+                        Text(text = getString(R.string.settings_snapshot_restore_body, dialog.name))
+                    },
+                    buttonStyle = STDialogButtonStyle.FILLED
+                )
+            }
+
+            is PendingDialog.CheckingImport -> {
+                STConfirmDialog(
+                    title = getString(R.string.dialog_import_title),
+                    confirmLabel = getString(R.string.import_action),
+                    onConfirm = {},
+                    onDismiss = { pendingDialogState.value = null },
+                    body = { Text(text = getString(R.string.dialog_import_checking_body)) },
+                    confirmEnabled = false,
+                    buttonStyle = STDialogButtonStyle.FILLED
+                )
+            }
+
+            is PendingDialog.ConfirmImport -> {
+                STConfirmDialog(
+                    title = getString(R.string.dialog_import_title),
+                    confirmLabel = getString(R.string.import_action),
+                    onConfirm = {
+                        val importUri = dialog.uri
+                        pendingDialogState.value = null
+                        viewModel.import(importUri)
+                    },
+                    onDismiss = { pendingDialogState.value = null },
+                    body = { Text(text = dialog.previewText) },
+                    confirmEnabled = dialog.canImport,
+                    buttonStyle = STDialogButtonStyle.FILLED
+                )
+            }
+
+            null -> Unit
         }
     }
 
