@@ -1,6 +1,5 @@
 FROM ghcr.io/cirruslabs/android-sdk:36-ndk
 
-ARG GRADLE_VERSION=9.6.1
 ARG NODE_VERSION=24.13.0
 
 RUN apt-get update \
@@ -20,11 +19,8 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-l
 
 ENV PATH="/opt/node/bin:${PATH}"
 
-RUN curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip \
-    && unzip -q /tmp/gradle.zip -d /opt/gradle \
-    && rm /tmp/gradle.zip
-
-ENV PATH="/opt/gradle/gradle-${GRADLE_VERSION}/bin:${PATH}"
+# Gradle 由项目的 ./gradlew wrapper 提供（版本见 gradle-wrapper.properties），
+# 不在镜像里预装，避免与 wrapper 版本不同步。
 
 RUN yes | sdkmanager --licenses > /dev/null 2>&1 || true \
     && sdkmanager "build-tools;34.0.0"

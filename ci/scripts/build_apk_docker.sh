@@ -110,10 +110,11 @@ docker run --rm \
     if [ -z "$GRADLE_JAVA_HOME" ] || [ ! -x "$GRADLE_JAVA_HOME/bin/java" ]; then \
       GRADLE_JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"; \
     fi; \
+    chmod +x ./gradlew; \
     if [ "$BUILD_MODE" = "release" ]; then \
-      gradle :app:assembleRelease -Dorg.gradle.java.home="$GRADLE_JAVA_HOME" --stacktrace --no-daemon; \
+      ./gradlew :app:assembleRelease -Dorg.gradle.java.home="$GRADLE_JAVA_HOME" --stacktrace --no-daemon; \
     else \
-      gradle :app:assembleDebug -Dorg.gradle.java.home="$GRADLE_JAVA_HOME" --stacktrace --no-daemon; \
+      ./gradlew :app:assembleDebug -Dorg.gradle.java.home="$GRADLE_JAVA_HOME" --stacktrace --no-daemon; \
     fi; \
   '
 
