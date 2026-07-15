@@ -17,7 +17,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        # 单元测试不需要 SillyTavern / node 子模块，跳过以加速
+
+      - name: Fetch SillyTavern submodule
+        # ConfigFormToolsTest 读 SillyTavern/default/config.yaml 做契约校验；
+        # 只浅拉这一个子模块，跳过体积巨大的 node 源码子模块。
+        run: git submodule update --init --depth 1 SillyTavern
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
