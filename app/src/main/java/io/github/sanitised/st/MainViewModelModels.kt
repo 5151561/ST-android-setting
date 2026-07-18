@@ -9,6 +9,11 @@ internal enum class BusyOperation {
     EXPORTING, IMPORTING, INSTALLING, RESETTING, REMOVING_DATA, DOWNLOADING_CUSTOM_SOURCE
 }
 
+data class AppUiMessage(
+    val id: Long,
+    val text: String,
+)
+
 enum class CustomOperationAnchor {
     GITHUB_INSTALL,
     ZIP_INSTALL,

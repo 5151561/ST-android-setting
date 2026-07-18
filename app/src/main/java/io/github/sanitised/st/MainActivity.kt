@@ -80,6 +80,7 @@ import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -138,15 +139,14 @@ import io.github.sanitised.st.ui.components.STDialogButtonStyle
 import io.github.sanitised.st.ui.theme.STAppTheme
 import io.github.sanitised.st.chat.*
 import io.github.sanitised.st.chat.engine.ChatEngine
-import io.github.sanitised.st.chat.engine.NativeChatEngine
 import io.github.sanitised.st.ui.screens.STChatItem
 import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.data.CharacterRepository
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.GroupCreateRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -322,8 +322,14 @@ class MainActivity : ComponentActivity() {
             if (nodeValue.isNullOrBlank()) getString(R.string.node_unknown) else getString(R.string.node_label, nodeValue)
         } ?: getString(R.string.node_unknown)
         val symlinkSupported = isSymlinkSupported()
+        val appContainer = (application as STApplication).container.apply {
+            updateLocalPort(readConfiguredPort())
+        }
         setContent {
             val viewModel: MainViewModel = viewModel()
+            val chatViewModel: ChatViewModel = viewModel(
+                factory = ChatViewModel.factory(appContainer.tavernClientProvider::get)
+            )
             val navController = rememberNavController()
             // 只观察「是否在首页」这个布尔(库快照刷新需要它),而不是在根作用域读
             // navBackStackEntry:后者会让每次导航都整棵重组本作用域(约千行)。
@@ -371,6 +377,7 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             val lifecycleOwner = LocalLifecycleOwner.current
             val snackbarHostState = remember { SnackbarHostState() }
+            val userMessage by viewModel.userMessage.collectAsStateWithLifecycle()
             
             var connectedCount by remember { mutableStateOf(0) }
             var drawerAccount by remember { mutableStateOf<STDrawerAccount?>(null) }
@@ -433,6 +440,7 @@ class MainActivity : ComponentActivity() {
             val listener = remember {
                 object : NodeStatusListener {
                     override fun onStatus(status: NodeStatus) {
+                        appContainer.updateLocalPort(status.port)
                         scope.launch(Dispatchers.Main) {
                             val previousState = statusState.value.state
                             if (previousState == NodeState.RUNNING && status.state != NodeState.RUNNING) {
@@ -476,9 +484,10 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 viewModel.maybeAutoCheckForUpdates()
             }
-            LaunchedEffect(viewModel) {
-                viewModel.snackbarMessages.collectLatest { message ->
-                    snackbarHostState.showSnackbar(message)
+            LaunchedEffect(userMessage?.id) {
+                userMessage?.let { message ->
+                    snackbarHostState.showSnackbar(message.text)
+                    viewModel.messageShown(message.id)
                 }
             }
             LaunchedEffect(notificationGrantedState.value, notificationAutoPromptAttempted.value) {
@@ -589,26 +598,10 @@ class MainActivity : ComponentActivity() {
                     .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
                 diagnosticExportLauncher.launch("sillytavern-diagnostics-$stamp.zip")
             }
-            val chatStore = remember { ChatStore() }
-            val chatScope = rememberCoroutineScope()
-            val nativeChatLoader = remember(chatStore) {
-                NativeChatLoader(
-                    store = chatStore,
-                    clientProvider = { TavernCoreClient(SillyTavernUrl.localWebUrl(statusState.value.port)) }
-                )
-            }
-            val nativeChatRuntime = remember(chatStore) {
-                NativeChatRuntime(chatStore) {
-                    TavernNativeChatDataSource(TavernCoreClient(SillyTavernUrl.localWebUrl(statusState.value.port)))
-                }
-            }
-            val chatEngine = remember(chatStore) {
-                NativeChatEngine(
-                    scope = chatScope,
-                    store = chatStore,
-                    clientProvider = { TavernCoreClient(SillyTavernUrl.localWebUrl(statusState.value.port)) }
-                )
-            }
+            val chatStore = chatViewModel.store
+            val nativeChatLoader = chatViewModel.loader
+            val nativeChatRuntime = chatViewModel.runtime
+            val chatEngine = chatViewModel.engine
             var pendingChatTarget by rememberSaveable(stateSaver = chatTargetSaver()) {
                 mutableStateOf<ChatTarget>(ChatTarget.Current)
             }
@@ -743,6 +736,7 @@ class MainActivity : ComponentActivity() {
                             nativeChatRuntime = nativeChatRuntime,
                             chatSeenStore = chatSeenStore,
                             appPaths = appPaths,
+                            characterRepository = appContainer.characterRepository,
                             homeChatItems = homeChatItems,
                             pendingChatTarget = pendingChatTarget,
                             currentStLabel = currentStLabel,
@@ -860,6 +854,7 @@ class MainActivity : ComponentActivity() {
         nativeChatRuntime: NativeChatRuntime,
         chatSeenStore: ChatSeenStore,
         appPaths: AppPaths,
+        characterRepository: CharacterRepository,
         homeChatItems: List<STChatItem>,
         pendingChatTarget: ChatTarget,
         currentStLabel: String,
@@ -946,6 +941,7 @@ class MainActivity : ComponentActivity() {
                 STCharacterLibraryScreen(
                     status = statusState.value,
                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    repository = characterRepository,
                     onStartService = { startNode() },
                     onOpenCharacter = { avatar ->
                         navController.navigate(STRoutes.characterDetail(avatar))
@@ -965,6 +961,7 @@ class MainActivity : ComponentActivity() {
                 STCharacterCreateScreen(
                     status = statusState.value,
                     baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                    repository = characterRepository,
                     onStartService = { startNode() },
                     onBack = { navController.popBackStackSafely() },
                     onSaved = { avatar ->
@@ -985,6 +982,7 @@ class MainActivity : ComponentActivity() {
                     STCharacterProfileScreen(
                         status = statusState.value,
                         baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                        repository = characterRepository,
                         avatar = avatar,
                         onStartService = { startNode() },
                         onBack = { navController.popBackStackSafely() },
@@ -1011,6 +1009,7 @@ class MainActivity : ComponentActivity() {
                     STCharacterProfileScreen(
                         status = statusState.value,
                         baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
+                        repository = characterRepository,
                         avatar = avatar,
                         onStartService = { startNode() },
                         onBack = { navController.popBackStackSafely() },

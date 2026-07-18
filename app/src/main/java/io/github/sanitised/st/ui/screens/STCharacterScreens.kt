@@ -77,14 +77,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import io.github.sanitised.st.AppPaths
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.CharacterDetail
-import io.github.sanitised.st.api.CharacterSaveRequest
-import io.github.sanitised.st.api.CharacterSummary
-import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.data.CharacterImport
+import io.github.sanitised.st.data.CharacterRepository
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 import io.github.sanitised.st.ui.screens.readPickedDocument
 import java.io.File
@@ -103,6 +104,7 @@ private val characterImportMimeTypes = arrayOf(
 fun STCharacterLibraryScreen(
     status: NodeStatus,
     baseUrl: String,
+    repository: CharacterRepository,
     onStartService: () -> Unit,
     onOpenCharacter: (String) -> Unit,
     onOpenChat: (String) -> Unit,
@@ -112,56 +114,42 @@ fun STCharacterLibraryScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val viewModel: CharacterLibraryViewModel = viewModel(
+        factory = CharacterLibraryViewModel.factory(repository)
+    )
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val openDrawer = LocalSTOpenDrawer.current
     val serverRunning = status.state == NodeState.RUNNING
     var selectedFilter by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(false) }
-    var characters by remember { mutableStateOf<List<CharacterSummary>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var refreshKey by remember { mutableIntStateOf(0) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         scope.launch {
             runCatching {
-                val client = TavernCoreClient(baseUrl = baseUrl)
-                uris.forEach { uri ->
+                uris.map { uri ->
                     val doc = context.readPickedDocument(uri)
-                    client.importCharacter(doc.fileName, doc.bytes)
+                    CharacterImport(doc.fileName, doc.bytes)
                 }
-            }.onSuccess {
-                onShowMessage("角色导入成功")
-                refreshKey++
+            }.onSuccess { documents ->
+                viewModel.importCharacters(documents)
             }.onFailure { err ->
                 onShowMessage(err.message ?: "角色导入失败")
             }
         }
     }
 
-    LaunchedEffect(serverRunning, baseUrl, refreshKey) {
-        if (!serverRunning) {
-            loading = true
-            val paths = io.github.sanitised.st.AppPaths(context)
-            val reader = io.github.sanitised.st.data.LocalTavernLibraryReader(paths.dataDir)
-            runCatching { reader.listCharacters() }
-                .onSuccess {
-                    characters = it
-                    error = null
-                }
-                .onFailure { error = it.message ?: "本地角色读取失败" }
-            loading = false
-            return@LaunchedEffect
-        }
-        loading = true
-        runCatching { TavernCoreClient(baseUrl = baseUrl).listCharacters() }
-            .onSuccess {
-                characters = it
-                error = null
-            }
-            .onFailure { error = it.message ?: "角色加载失败" }
-        loading = false
+    LaunchedEffect(serverRunning, status.port) {
+        viewModel.refresh(serverRunning)
     }
+    LaunchedEffect(uiState.message?.id) {
+        uiState.message?.let { message ->
+            onShowMessage(message.text)
+            viewModel.messageShown(message.id)
+        }
+    }
+
+    val characters = uiState.characters
 
     val tagFilters = remember(characters) {
         stCharacterTagFilters(characters)
@@ -240,8 +228,8 @@ fun STCharacterLibraryScreen(
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 8.dp)
                 )
                 when {
-                    loading -> STInfoBlock("正在加载角色库…", "请稍候，正在从本地 SillyTavern 读取角色。")
-                    error != null -> STInfoBlock("角色加载失败", error.orEmpty())
+                    uiState.loading -> STInfoBlock("正在加载角色库…", "请稍候，正在从本地 SillyTavern 读取角色。")
+                    uiState.error != null -> STInfoBlock("角色加载失败", uiState.error.orEmpty())
                     !serverRunning && characters.isEmpty() -> STOfflineBlock(onStartService = onStartService)
                     else -> LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
@@ -303,6 +291,7 @@ fun STCharacterLibraryScreen(
 fun STCharacterProfileScreen(
     status: NodeStatus,
     baseUrl: String,
+    repository: CharacterRepository,
     avatar: String?,
     onStartService: () -> Unit,
     onBack: () -> Unit,
@@ -312,25 +301,21 @@ fun STCharacterProfileScreen(
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
+    val viewModel: CharacterProfileViewModel = viewModel(
+        factory = CharacterProfileViewModel.factory(repository)
+    )
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val serverRunning = status.state == NodeState.RUNNING
-    var detail by remember(avatar) { mutableStateOf<CharacterDetail?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var favorite by remember(avatar) { mutableStateOf(false) }
 
     LaunchedEffect(serverRunning, baseUrl, avatar) {
-        detail = null
-        favorite = false
-        if (!serverRunning || avatar.isNullOrBlank()) return@LaunchedEffect
-        loading = true
-        runCatching { TavernCoreClient(baseUrl = baseUrl).getCharacter(avatar) }
-            .onSuccess {
-                detail = it
-                favorite = it.isFavorite
-            }
-            .onFailure { onShowMessage(it.message ?: "角色详情加载失败") }
-        loading = false
+        avatar?.takeIf { it.isNotBlank() }?.let { viewModel.load(serverRunning, it) }
+    }
+    LaunchedEffect(uiState.message?.id) {
+        uiState.message?.let { message ->
+            onShowMessage(message.text)
+            viewModel.messageShown(message.id)
+        }
     }
 
     val fallback = remember(context, avatar) {
@@ -351,7 +336,8 @@ fun STCharacterProfileScreen(
             gradient = stGradientFor(avatar.hashCode())
         )
     }
-    val card = detail?.toSTCharacterCard(0) ?: fallback
+    val card = uiState.detail?.toSTCharacterCard(0) ?: fallback
+    val favorite = uiState.detail?.isFavorite ?: false
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(
@@ -404,21 +390,8 @@ fun STCharacterProfileScreen(
                         Text("开始对话")
                     }
                     IconButton(
-                        onClick = {
-                            val target = avatar
-                            if (!serverRunning || target.isNullOrBlank()) {
-                                favorite = !favorite
-                                return@IconButton
-                            }
-                            scope.launch {
-                                val next = !favorite
-                                runCatching {
-                                    TavernCoreClient(baseUrl = baseUrl).mergeCharacterAttributes(target, isFavorite = next)
-                                }.onSuccess {
-                                    favorite = next
-                                }.onFailure { onShowMessage(it.message ?: "收藏状态保存失败") }
-                            }
-                        }
+                        enabled = serverRunning && uiState.detail != null && !uiState.savingFavorite,
+                        onClick = viewModel::toggleFavorite,
                     ) {
                         Icon(
                             imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
@@ -476,10 +449,12 @@ fun STCharacterProfileScreen(
                 }
                 if (!serverRunning) {
                     STOfflineBlock(onStartService = onStartService)
-                } else if (loading) {
+                } else if (uiState.loading) {
                     STInfoBlock("正在读取角色…", "从 SillyTavern 加载角色卡内容。")
+                } else if (uiState.error != null) {
+                    STInfoBlock("角色详情加载失败", uiState.error.orEmpty())
                 }
-                CharacterDetailSections(detail = detail, fallback = card)
+                CharacterDetailSections(detail = uiState.detail, fallback = card)
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
@@ -490,19 +465,31 @@ fun STCharacterProfileScreen(
 fun STCharacterCreateScreen(
     status: NodeStatus,
     baseUrl: String,
+    repository: CharacterRepository,
     onStartService: () -> Unit,
     onBack: () -> Unit,
     onSaved: (String) -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
+    val viewModel: CharacterCreateViewModel = viewModel(
+        factory = CharacterCreateViewModel.factory(repository)
+    )
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val running = status.state == NodeState.RUNNING
-    var name by remember { mutableStateOf("") }
-    var subtitle by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var greeting by remember { mutableStateOf("") }
-    var saving by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.message?.id) {
+        uiState.message?.let { message ->
+            onShowMessage(message.text)
+            viewModel.messageShown(message.id)
+        }
+    }
+    LaunchedEffect(uiState.createdAvatar) {
+        uiState.createdAvatar?.let { avatar ->
+            onSaved(avatar)
+            viewModel.creationHandled(avatar)
+        }
+    }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(
@@ -521,30 +508,10 @@ fun STCharacterCreateScreen(
                 STIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onBack)
                 Spacer(Modifier.weight(1f))
                 Button(
-                    enabled = running && name.isNotBlank() && !saving,
-                    onClick = {
-                        saving = true
-                        scope.launch {
-                            runCatching {
-                                TavernCoreClient(baseUrl).createCharacter(
-                                    CharacterSaveRequest(
-                                        name = name.trim(),
-                                        description = description.trim().ifBlank { subtitle.trim() },
-                                        firstMessage = greeting.trim(),
-                                        creatorNotes = subtitle.trim()
-                                    )
-                                )
-                            }.onSuccess { avatar ->
-                                onShowMessage("角色已创建")
-                                onSaved(avatar)
-                            }.onFailure { error ->
-                                onShowMessage(error.message ?: "角色创建失败")
-                            }
-                            saving = false
-                        }
-                    }
+                    enabled = running && uiState.name.isNotBlank() && !uiState.saving,
+                    onClick = { viewModel.save(running) }
                 ) {
-                    Text(if (saving) "保存中…" else "保存")
+                    Text(if (uiState.saving) "保存中…" else "保存")
                 }
                 Spacer(Modifier.width(8.dp))
             }
@@ -552,10 +519,10 @@ fun STCharacterCreateScreen(
                 CharacterHero(
                     card = STCharacterCard(
                         id = "new",
-                        name = name.ifBlank { "新角色" },
-                        subtitle = subtitle.ifBlank { "给这张角色卡写一句简介" },
+                        name = uiState.name.ifBlank { "新角色" },
+                        subtitle = uiState.subtitle.ifBlank { "给这张角色卡写一句简介" },
                         tags = listOf("新建"),
-                        initial = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "+",
+                        initial = uiState.name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "+",
                         messageCount = 0,
                         favorite = false,
                         gradient = stGradientFor(4)
@@ -568,29 +535,29 @@ fun STCharacterCreateScreen(
                 STSectionHeader("基本信息")
                 Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
+                        value = uiState.name,
+                        onValueChange = viewModel::setName,
                         label = { Text("角色名") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
-                        value = subtitle,
-                        onValueChange = { subtitle = it },
+                        value = uiState.subtitle,
+                        onValueChange = viewModel::setSubtitle,
                         label = { Text("一句话简介") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it },
+                        value = uiState.description,
+                        onValueChange = viewModel::setDescription,
                         label = { Text("角色描述") },
                         minLines = 4,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
-                        value = greeting,
-                        onValueChange = { greeting = it },
+                        value = uiState.greeting,
+                        onValueChange = viewModel::setGreeting,
                         label = { Text("开场白") },
                         minLines = 3,
                         modifier = Modifier.fillMaxWidth()

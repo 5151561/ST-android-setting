@@ -38,7 +38,8 @@ git submodule update --init --recursive
 
 - `NodeService` — foreground service，启动 Node.js 进程运行 SillyTavern，通过 `NodeStatusListener` 回调通信。
 - `NodePayload` — 首次运行时从 APK assets 解压 Node 二进制和 SillyTavern 源码。管理自定义 ST 安装（GitHub 仓库/分支/ZIP）。
-- `MainViewModel` — 中心 ViewModel，委托给 `BackupManager`、`CustomInstallManager`、`UpdateManager`、`BatteryPromptManager`。UI 状态以 `MutableState` 字段暴露。
+- `STApplication` / `AppContainer` — 应用级依赖入口，统一持有本地 API provider 与 Repository。
+- `MainViewModel` — 中心 ViewModel，委托给 `BackupManager`、`CustomInstallManager`、`UpdateManager`、`BatteryPromptManager`。Manager 状态以只读 `State` 暴露，用户提示使用可确认消费的 `StateFlow`。
 - `AppPaths` — 所有文件路径的单一来源（`stDir`、`dataDir`、`configDir` 等）。
 
 ### 导航与 UI
@@ -55,6 +56,8 @@ git submodule update --init --recursive
 
 聊天生成完全在原生侧完成，不再依赖 SillyTavern Web 前端：
 
+- **`ChatViewModel`** — 持有 `ChatStore`、loader、runtime 和 engine；生成任务运行在 `viewModelScope`，不再绑定 Activity 的 Compose scope。
+
 - **`chat/engine/`**：
   - `NativeChatEngine` — 唯一 `ChatEngine` 实现：设备端组装 prompt，经 `TavernCoreClient` 调 `/api/backends/*/generate`（SSE 流式，含非流式 fallback）。
   - `NativeGenerationRouter` — 连接页 provider 到 chat/text completion 路由的映射。
@@ -68,6 +71,7 @@ git submodule update --init --recursive
 
 - **API 路径**：`api/TavernCoreApi.kt` 中的 `TavernCoreClient`，通过 OkHttp 调用本地 SillyTavern HTTP API。JSON 编解码用 `api/StJson.kt`（基于 kotlinx.serialization，不用 Gson/Moshi），解析结果保持旧 SnakeYAML 路径的宽松形态（`Map<String, Any?>` / `List<Any?>` / 基本类型），序列化经 `jsonObject()`、`jsonValue()` 委托给 `StJson.encode*`。CSRF token 自动获取。
 - **本地文件路径**：`data/LocalTavernLibraryReader` 直接读取 `data/<user>/` 下的角色 PNG 和聊天 JSONL，作为服务未运行时的 fallback。
+- **角色 Repository**：`data/CharacterRepository.kt` 封装角色列表、详情、收藏、创建和导入；角色页面只通过对应的 StateFlow ViewModel 调用它。
 
 ### 主题
 

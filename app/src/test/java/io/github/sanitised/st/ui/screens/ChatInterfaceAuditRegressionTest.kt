@@ -68,9 +68,14 @@ class ChatInterfaceAuditRegressionTest {
     @Test
     fun characterLibraryUsesRealTagsAndGuardsOfflineReader() {
         val source = File("src/main/java/io/github/sanitised/st/ui/screens/STCharacterScreens.kt").readText()
+        val repository = File("src/main/java/io/github/sanitised/st/data/CharacterRepository.kt").readText()
+        val stateHolder = File("src/main/java/io/github/sanitised/st/ui/screens/CharacterViewModels.kt").readText()
 
         assertTrue(source.contains("stCharacterTagFilters(characters)"))
-        assertTrue(source.contains("runCatching { reader.listCharacters() }"))
+        assertTrue(repository.contains("if (serverRunning) clientProvider().listCharacters() else localReader.listCharacters()"))
+        assertTrue(stateHolder.contains("runCatching { repository.listCharacters(serverRunning) }"))
+        assertFalse(source.contains("LocalTavernLibraryReader("))
+        assertFalse(source.contains("TavernCoreClient("))
         assertFalse(source.contains("listOf(\"全部\", \"收藏\", \"最近\", \"日常\", \"奇幻\", \"科幻\", \"历史\")"))
     }
 

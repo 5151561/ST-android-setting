@@ -19,8 +19,8 @@ ST-android 是一个第三方 SillyTavern Android 客户端。它在设备本地
 │                      Android App                           │
 │                                                            │
 │  ┌──────────────┐  ┌────────────────┐  ┌──────────────┐  │
-│  │  Compose UI  │  │ Native Chat    │  │ MainViewModel│  │
-│  │  (原生界面)   │  │ Runtime        │  │  (中心状态)   │  │
+│  │  Compose UI  │  │ ChatViewModel  │  │ MainViewModel│  │
+│  │  (原生界面)   │  │ + Chat Runtime │  │  (应用状态)   │  │
 │  └──────┬───────┘  └───────┬────────┘  └──────┬───────┘  │
 │         │                  │                  │          │
 │         │   ┌──────────────┴──────────────┐   │          │
@@ -31,8 +31,8 @@ ST-android 是一个第三方 SillyTavern Android 客户端。它在设备本地
 │         │                  │                  │          │
 │  ┌──────┴──────────────────┴──────────────────┴──────┐   │
 │  │              数据访问层                               │   │
-│  │  TavernCoreClient (HTTP API)                        │   │
-│  │  LocalTavernLibraryReader (本地文件)                  │   │
+│  │  CharacterRepository / TavernCoreClient             │   │
+│  │  LocalTavernLibraryReader (本地文件 fallback)         │   │
 │  └─────────────────────┬───────────────────────────────┘   │
 │                        │                                    │
 │  ┌─────────────────────┴───────────────────────────────┐   │
@@ -95,6 +95,10 @@ ACTION_STOP  → 终止 Node.js 进程 → 停止 service
 ## 二、数据访问层
 
 ST-android 采用**双路径**数据访问策略：
+
+应用级依赖由 `STApplication` 中的 `AppContainer` 统一持有。角色功能通过
+`CharacterRepository` 访问数据，页面和 ViewModel 不直接创建 HTTP 客户端；
+`LocalTavernClientProvider` 根据当前端口提供本地 API，并保留本地文件 fallback。
 
 ### 路径 1：HTTP API — `TavernCoreApi` / `TavernCoreClient`
 
@@ -269,7 +273,10 @@ UI 唯一入口，保留四个动作：
 
 **文件**：`chat/ChatStore.kt`
 
-聊天状态容器，所有字段都是 Compose `MutableState`，驱动 UI 自动更新：
+聊天状态容器，目前仍以 Compose `MutableState` 驱动 UI。它由 `ChatViewModel`
+持有，聊天加载、生成和停止任务运行在 `viewModelScope` 中，因此 Activity
+配置变更不会再取消正在进行的生成。`ChatStore` 是迁移期兼容层，后续会改为
+不可变 `UiState` + `StateFlow`：
 
 | 状态字段 | 类型 | 说明 |
 |------|------|------|
@@ -401,6 +408,23 @@ UI 唯一入口，保留四个动作：
 
 ## 五、ViewModel 层
 
+### ChatViewModel
+
+**文件**：`chat/ChatViewModel.kt`
+
+持有单一 `ChatStore`、`NativeChatLoader`、`NativeChatRuntime` 和
+`NativeChatEngine`。引擎使用 `viewModelScope` 执行生成任务，使聊天会话状态和
+任务生命周期脱离 Compose 组合与 Activity 实例。
+
+### 角色 ViewModel
+
+**文件**：`ui/screens/CharacterViewModels.kt`
+
+角色列表、详情和创建页面分别由 `CharacterLibraryViewModel`、
+`CharacterProfileViewModel`、`CharacterCreateViewModel` 管理。它们对外暴露不可变
+`StateFlow<UiState>`，页面使用 `collectAsStateWithLifecycle()` 收集，并通过
+`CharacterRepository` 访问数据。
+
 ### MainViewModel
 
 **文件**：`MainViewModel.kt`
@@ -414,7 +438,26 @@ UI 唯一入口，保留四个动作：
 | `UpdateManager` | 应用更新检查、UI 偏好设置 |
 | `BatteryPromptManager` | 电池优化提示 |
 
-所有 UI 状态通过 `MutableState` 字段暴露，Compose 自动订阅变化。
+Manager 内部仍可写的 Compose 状态只以只读 `State` 暴露；一次性用户提示改为
+可确认消费的 `StateFlow<AppUiMessage?>`，避免页面暂未收集时丢失消息。
+
+### 现代架构迁移状态（2026-07-18）
+
+已完成：
+
+- 应用级 `AppContainer` 和本地 API provider，集中管理共享依赖与端口变化。
+- 聊天运行时移入 `ChatViewModel`，生成协程由 `viewModelScope` 管理。
+- 角色功能建立 Repository 边界，三个页面采用不可变 `UiState` + `StateFlow`。
+- 页面使用生命周期感知收集，主页面用户提示由可消费状态承载。
+
+仍需渐进迁移：
+
+- 将 `MainViewModel` 从 `AndroidViewModel` / Compose `State` 完整迁移为普通
+  `ViewModel` + `StateFlow`，并把 Android 依赖下沉到数据层。
+- 为角色之外的页面继续建立 Repository，清除 UI 层剩余的
+  `TavernCoreClient` 直接创建。
+- 将 `ChatStore` 迁移为不可变 `ChatUiState`，进一步收紧单一事实来源。
+- 将字符串路由迁移为类型安全导航，并补充关键导航与生命周期的仪器测试。
 
 ---
 
@@ -424,6 +467,7 @@ UI 唯一入口，保留四个动作：
 app/src/main/
 ├── java/io/github/sanitised/st/
 │   ├── MainActivity.kt          # 入口 Activity
+│   ├── STApplication.kt         # Application 与应用级容器入口
 │   ├── MainViewModel.kt         # 中心 ViewModel
 │   ├── MainViewModelModels.kt   # ViewModel 相关数据模型
 │   ├── NodeService.kt           # Node.js 前台服务

@@ -3,23 +3,24 @@ package io.github.sanitised.st
 import android.app.Application
 import android.content.Context
 import android.net.Uri
-import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.sanitised.st.api.SettingsSnapshot
 import io.github.sanitised.st.api.TavernCoreClient
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     internal val busyOperation = mutableStateOf<BusyOperation?>(null)
-    private val _snackbarMessages = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    val snackbarMessages = _snackbarMessages.asSharedFlow()
+    private val _userMessage = MutableStateFlow<AppUiMessage?>(null)
+    val userMessage = _userMessage.asStateFlow()
+    private var userMessageId = 0L
 
     // Updated by MainActivity when the service connection changes.
     var nodeService: NodeService? = null
@@ -53,41 +54,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         postUserMessage = { message -> postUserMessage(message) }
     )
 
-    val isCustomInstalled: MutableState<Boolean> = customInstallManager.isCustomInstalled
-    val customInstallLabel: MutableState<String?> = customInstallManager.customInstallLabel
-    val customRepoInput: MutableState<String> = customInstallManager.customRepoInput
-    val isLoadingCustomRefs: MutableState<Boolean> = customInstallManager.isLoadingCustomRefs
-    val customRepoValidationMessage: MutableState<String> = customInstallManager.customRepoValidationMessage
-    val customInstallValidationMessage: MutableState<String> = customInstallManager.customInstallValidationMessage
-    val customFeaturedRefs: MutableState<List<CustomRepoRefOption>> = customInstallManager.customFeaturedRefs
-    val customAllRefs: MutableState<List<CustomRepoRefOption>> = customInstallManager.customAllRefs
-    val selectedCustomRefKey: MutableState<String?> = customInstallManager.selectedCustomRefKey
-    val customOperationCard: MutableState<OperationCardState> = customInstallManager.customOperationCard
-    val customOperationCardAnchor: MutableState<CustomOperationAnchor> = customInstallManager.customOperationCardAnchor
-    val backupOperationCard: MutableState<OperationCardState> = backupManager.backupOperationCard
-    val backupOperationCardAnchor: MutableState<BackupOperationAnchor> = backupManager.backupOperationCardAnchor
-    val settingsSnapshots = mutableStateOf<List<SettingsSnapshot>>(emptyList())
-    val settingsSnapshotsLoading = mutableStateOf(false)
-    val settingsSnapshotMessage = mutableStateOf("")
+    val isCustomInstalled: State<Boolean> = customInstallManager.isCustomInstalled
+    val customInstallLabel: State<String?> = customInstallManager.customInstallLabel
+    val customRepoInput: State<String> = customInstallManager.customRepoInput
+    val isLoadingCustomRefs: State<Boolean> = customInstallManager.isLoadingCustomRefs
+    val customRepoValidationMessage: State<String> = customInstallManager.customRepoValidationMessage
+    val customInstallValidationMessage: State<String> = customInstallManager.customInstallValidationMessage
+    val customFeaturedRefs: State<List<CustomRepoRefOption>> = customInstallManager.customFeaturedRefs
+    val customAllRefs: State<List<CustomRepoRefOption>> = customInstallManager.customAllRefs
+    val selectedCustomRefKey: State<String?> = customInstallManager.selectedCustomRefKey
+    val customOperationCard: State<OperationCardState> = customInstallManager.customOperationCard
+    val customOperationCardAnchor: State<CustomOperationAnchor> = customInstallManager.customOperationCardAnchor
+    val backupOperationCard: State<OperationCardState> = backupManager.backupOperationCard
+    val backupOperationCardAnchor: State<BackupOperationAnchor> = backupManager.backupOperationCardAnchor
+    private val _settingsSnapshots = mutableStateOf<List<SettingsSnapshot>>(emptyList())
+    val settingsSnapshots: State<List<SettingsSnapshot>> = _settingsSnapshots
+    private val _settingsSnapshotsLoading = mutableStateOf(false)
+    val settingsSnapshotsLoading: State<Boolean> = _settingsSnapshotsLoading
+    private val _settingsSnapshotMessage = mutableStateOf("")
+    val settingsSnapshotMessage: State<String> = _settingsSnapshotMessage
 
-    val bubbleStyle: MutableState<Boolean> = updateManager.bubbleStyle
-    val vibrationFeedback: MutableState<Boolean> = updateManager.vibrationFeedback
-    val secondConfirmation: MutableState<Boolean> = updateManager.secondConfirmation
-    val swipeDrawer: MutableState<Boolean> = updateManager.swipeDrawer
-    val developerMode: MutableState<Boolean> = updateManager.developerMode
-    val fontSize: MutableState<Float> = updateManager.fontSize
-    val reduceMotion: MutableState<Boolean> = updateManager.reduceMotion
-    val chatBackground: MutableState<String> = updateManager.chatBackground
-    val autoCheckForUpdates: MutableState<Boolean> = updateManager.autoCheckForUpdates
-    val autoOpenBrowserWhenReady: MutableState<Boolean> = updateManager.autoOpenBrowserWhenReady
-    val autoStartService: MutableState<Boolean> = updateManager.autoStartService
-    val themeMode: MutableState<ThemeMode> = updateManager.themeMode
-    val themeColorSource: MutableState<ThemeColorSource> = updateManager.themeColorSource
-    val updateChannel: MutableState<UpdateChannel> = updateManager.updateChannel
-    val isCheckingForUpdates: MutableState<Boolean> = updateManager.isCheckingForUpdates
-    val isDownloadingUpdate: MutableState<Boolean> = updateManager.isDownloadingUpdate
-    val downloadProgressPercent: MutableState<Int?> = updateManager.downloadProgressPercent
-    val updateBannerMessage: MutableState<String> = updateManager.updateBannerMessage
+    val bubbleStyle: State<Boolean> = updateManager.bubbleStyle
+    val vibrationFeedback: State<Boolean> = updateManager.vibrationFeedback
+    val secondConfirmation: State<Boolean> = updateManager.secondConfirmation
+    val swipeDrawer: State<Boolean> = updateManager.swipeDrawer
+    val developerMode: State<Boolean> = updateManager.developerMode
+    val fontSize: State<Float> = updateManager.fontSize
+    val reduceMotion: State<Boolean> = updateManager.reduceMotion
+    val chatBackground: State<String> = updateManager.chatBackground
+    val autoCheckForUpdates: State<Boolean> = updateManager.autoCheckForUpdates
+    val autoOpenBrowserWhenReady: State<Boolean> = updateManager.autoOpenBrowserWhenReady
+    val autoStartService: State<Boolean> = updateManager.autoStartService
+    val themeMode: State<ThemeMode> = updateManager.themeMode
+    val themeColorSource: State<ThemeColorSource> = updateManager.themeColorSource
+    val updateChannel: State<UpdateChannel> = updateManager.updateChannel
+    val isCheckingForUpdates: State<Boolean> = updateManager.isCheckingForUpdates
+    val isDownloadingUpdate: State<Boolean> = updateManager.isDownloadingUpdate
+    val downloadProgressPercent: State<Int?> = updateManager.downloadProgressPercent
+    val updateBannerMessage: State<String> = updateManager.updateBannerMessage
 
     override fun onCleared() {
         updateManager.onCleared()
@@ -115,25 +119,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshSettingsSnapshots(port: Int) {
-        settingsSnapshotsLoading.value = true
-        settingsSnapshotMessage.value = ""
+        _settingsSnapshotsLoading.value = true
+        _settingsSnapshotMessage.value = ""
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     TavernCoreClient(baseUrl = SillyTavernUrl.localWebUrl(port)).listSettingsSnapshots()
                 }
             }
-            settingsSnapshotsLoading.value = false
+            _settingsSnapshotsLoading.value = false
             result
                 .onSuccess { snapshots ->
-                    settingsSnapshots.value = snapshots.sortedByDescending { it.date }
-                    settingsSnapshotMessage.value = getApplication<Application>().getString(
+                    _settingsSnapshots.value = snapshots.sortedByDescending { it.date }
+                    _settingsSnapshotMessage.value = getApplication<Application>().getString(
                         R.string.settings_snapshot_loaded,
                         snapshots.size
                     )
                 }
                 .onFailure { error ->
-                    settingsSnapshotMessage.value = getApplication<Application>().getString(
+                    _settingsSnapshotMessage.value = getApplication<Application>().getString(
                         R.string.settings_snapshot_failed,
                         error.message ?: getApplication<Application>().getString(R.string.unknown_error)
                     )
@@ -142,22 +146,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun createSettingsSnapshot(port: Int) {
-        settingsSnapshotsLoading.value = true
-        settingsSnapshotMessage.value = ""
+        _settingsSnapshotsLoading.value = true
+        _settingsSnapshotMessage.value = ""
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     TavernCoreClient(baseUrl = SillyTavernUrl.localWebUrl(port)).makeSettingsSnapshot()
                 }
             }
-            settingsSnapshotsLoading.value = false
+            _settingsSnapshotsLoading.value = false
             result
                 .onSuccess {
-                    settingsSnapshotMessage.value = getApplication<Application>().getString(R.string.settings_snapshot_created)
+                    _settingsSnapshotMessage.value = getApplication<Application>().getString(R.string.settings_snapshot_created)
                     refreshSettingsSnapshots(port)
                 }
                 .onFailure { error ->
-                    settingsSnapshotMessage.value = getApplication<Application>().getString(
+                    _settingsSnapshotMessage.value = getApplication<Application>().getString(
                         R.string.settings_snapshot_failed,
                         error.message ?: getApplication<Application>().getString(R.string.unknown_error)
                     )
@@ -166,22 +170,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun restoreSettingsSnapshot(port: Int, name: String) {
-        settingsSnapshotsLoading.value = true
-        settingsSnapshotMessage.value = ""
+        _settingsSnapshotsLoading.value = true
+        _settingsSnapshotMessage.value = ""
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     TavernCoreClient(baseUrl = SillyTavernUrl.localWebUrl(port)).restoreSettingsSnapshot(name)
                 }
             }
-            settingsSnapshotsLoading.value = false
+            _settingsSnapshotsLoading.value = false
             result
                 .onSuccess {
-                    settingsSnapshotMessage.value = getApplication<Application>().getString(R.string.settings_snapshot_restored)
+                    _settingsSnapshotMessage.value = getApplication<Application>().getString(R.string.settings_snapshot_restored)
                     refreshSettingsSnapshots(port)
                 }
                 .onFailure { error ->
-                    settingsSnapshotMessage.value = getApplication<Application>().getString(
+                    _settingsSnapshotMessage.value = getApplication<Application>().getString(
                         R.string.settings_snapshot_failed,
                         error.message ?: getApplication<Application>().getString(R.string.unknown_error)
                     )
@@ -382,13 +386,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         postUserMessage(message)
     }
 
+    fun messageShown(id: Long) {
+        if (_userMessage.value?.id == id) {
+            _userMessage.value = null
+        }
+    }
+
     private fun postUserMessage(message: String) {
         if (message.isBlank()) return
-        if (!_snackbarMessages.tryEmit(message)) {
-            viewModelScope.launch {
-                _snackbarMessages.emit(message)
-            }
-        }
+        userMessageId += 1
+        _userMessage.value = AppUiMessage(userMessageId, message)
     }
 
     private suspend fun appendServiceLog(message: String) {
