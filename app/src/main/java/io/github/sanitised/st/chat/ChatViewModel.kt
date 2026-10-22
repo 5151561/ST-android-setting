@@ -3,9 +3,12 @@ package io.github.sanitised.st.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.sanitised.st.api.TavernCoreApi
 import io.github.sanitised.st.chat.engine.ChatEngine
 import io.github.sanitised.st.chat.engine.NativeChatEngine
+import io.github.sanitised.st.data.LocalTavernClientProvider
+import javax.inject.Inject
 
 /**
  * 聊天目的地的业务状态容器。
@@ -14,9 +17,12 @@ import io.github.sanitised.st.chat.engine.NativeChatEngine
  * 因而不会在 Activity 配置重建时被重新创建或取消。后续切片会把公开可变字段
  * 收敛为不可变 ChatUiState/StateFlow。
  */
+@HiltViewModel
 class ChatViewModel(
     clientProvider: () -> TavernCoreApi,
 ) : ViewModel() {
+    @Inject
+    constructor(tavernClientProvider: LocalTavernClientProvider) : this(tavernClientProvider::get)
     val store = ChatStore()
     val loader = NativeChatLoader(store, clientProvider)
     val runtime = NativeChatRuntime(store) {

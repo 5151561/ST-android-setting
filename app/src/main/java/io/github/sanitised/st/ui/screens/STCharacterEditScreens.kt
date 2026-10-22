@@ -52,8 +52,12 @@ import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.CharacterDetail
 import io.github.sanitised.st.api.CharacterSaveRequest
-import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.data.CharacterRepository
+import io.github.sanitised.st.data.DefaultCharacterRepository
+import io.github.sanitised.st.data.LocalTavernLibraryReader
+import io.github.sanitised.st.data.tavernApi
 import kotlinx.coroutines.launch
+import java.io.File
 
 // ─────────────────────────────────────────────────────────────────────────────
 // P0 · 角色完整编辑（设计稿 screens/CharEditFull.jsx，画板 07–09）
@@ -101,6 +105,12 @@ fun STCharacterFormScreen(
     onOpenGreetings: () -> Unit,
     onOpenAdvanced: () -> Unit,
     onShowMessage: (String) -> Unit = {},
+    characterRepository: CharacterRepository = remember(baseUrl) {
+        DefaultCharacterRepository(
+            clientProvider = { tavernApi(baseUrl) },
+            localReader = LocalTavernLibraryReader(File("")),
+        )
+    },
 ) {
     BackHandler(onBack = onClose)
     val running = status.state == NodeState.RUNNING
@@ -117,10 +127,10 @@ fun STCharacterFormScreen(
     var firstMessage by remember { mutableStateOf("") }
     var example by remember { mutableStateOf("") }
 
-    LaunchedEffect(running, baseUrl, avatar) {
+    LaunchedEffect(running, baseUrl, avatar, characterRepository) {
         if (!running) { loading = false; return@LaunchedEffect }
         loading = true
-        runCatching { TavernCoreClient(baseUrl).getCharacter(avatar) }
+        runCatching { characterRepository.getCharacter(avatar) }
             .onSuccess { d ->
                 detail = d
                 name = d.name; tags = d.tags.joinToString(", "); creator = d.creator; version = d.characterVersion
@@ -134,7 +144,7 @@ fun STCharacterFormScreen(
         val d = detail ?: return
         scope.launch {
             runCatching {
-                TavernCoreClient(baseUrl).updateCharacter(
+                characterRepository.updateCharacter(
                     d.toSaveRequest(avatar).copy(
                         name = name, tags = commaList(tags), creator = creator, characterVersion = version,
                         creatorNotes = notes, description = description, firstMessage = firstMessage, messageExample = example
@@ -226,6 +236,12 @@ fun STAltGreetingsScreen(
     baseUrl: String,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit = {},
+    characterRepository: CharacterRepository = remember(baseUrl) {
+        DefaultCharacterRepository(
+            clientProvider = { tavernApi(baseUrl) },
+            localReader = LocalTavernLibraryReader(File("")),
+        )
+    },
 ) {
     BackHandler(onBack = onBack)
     val running = status.state == NodeState.RUNNING
@@ -235,10 +251,10 @@ fun STAltGreetingsScreen(
     var mainGreeting by remember { mutableStateOf("") }
     val greetings = remember { mutableStateListOf<String>() }
 
-    LaunchedEffect(running, baseUrl, avatar) {
+    LaunchedEffect(running, baseUrl, avatar, characterRepository) {
         if (!running) { loading = false; return@LaunchedEffect }
         loading = true
-        runCatching { TavernCoreClient(baseUrl).getCharacter(avatar) }
+        runCatching { characterRepository.getCharacter(avatar) }
             .onSuccess { d -> detail = d; mainGreeting = d.firstMessage; greetings.clear(); greetings.addAll(d.alternateGreetings) }
             .onFailure { onShowMessage(it.message ?: "角色加载失败") }
         loading = false
@@ -248,7 +264,7 @@ fun STAltGreetingsScreen(
         val d = detail ?: return
         scope.launch {
             runCatching {
-                TavernCoreClient(baseUrl).updateCharacter(
+                characterRepository.updateCharacter(
                     d.toSaveRequest(avatar).copy(firstMessage = mainGreeting, alternateGreetings = greetings.toList())
                 )
             }.onSuccess { onShowMessage("已保存"); onBack() }.onFailure { onShowMessage(it.message ?: "保存失败") }
@@ -319,6 +335,12 @@ fun STCharacterAdvancedScreen(
     baseUrl: String,
     onClose: () -> Unit,
     onShowMessage: (String) -> Unit = {},
+    characterRepository: CharacterRepository = remember(baseUrl) {
+        DefaultCharacterRepository(
+            clientProvider = { tavernApi(baseUrl) },
+            localReader = LocalTavernLibraryReader(File("")),
+        )
+    },
 ) {
     BackHandler(onBack = onClose)
     val running = status.state == NodeState.RUNNING
@@ -335,10 +357,10 @@ fun STCharacterAdvancedScreen(
     var scenario by remember { mutableStateOf("") }
     var talkativeness by remember { mutableFloatStateOf(0.5f) }
 
-    LaunchedEffect(running, baseUrl, avatar) {
+    LaunchedEffect(running, baseUrl, avatar, characterRepository) {
         if (!running) { loading = false; return@LaunchedEffect }
         loading = true
-        runCatching { TavernCoreClient(baseUrl).getCharacter(avatar) }
+        runCatching { characterRepository.getCharacter(avatar) }
             .onSuccess { d ->
                 detail = d
                 systemPrompt = d.systemPrompt; postHistory = d.postHistoryInstructions; depthPrompt = d.depthPrompt
@@ -354,7 +376,7 @@ fun STCharacterAdvancedScreen(
         val d = detail ?: return
         scope.launch {
             runCatching {
-                TavernCoreClient(baseUrl).updateCharacter(
+                characterRepository.updateCharacter(
                     d.toSaveRequest(avatar).copy(
                         systemPrompt = systemPrompt, postHistoryInstructions = postHistory,
                         depthPrompt = depthPrompt, depthPromptDepth = depthValue,

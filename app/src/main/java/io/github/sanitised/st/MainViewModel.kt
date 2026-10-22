@@ -7,8 +7,13 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.sanitised.st.api.SettingsSnapshot
-import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.data.LocalTavernClientProvider
+import io.github.sanitised.st.data.preferences.UserPreferencesRepository
+import io.github.sanitised.st.data.repository.ConnectionRepository
+import io.github.sanitised.st.data.repository.DefaultConnectionRepository
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,7 +21,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class MainViewModel @Inject constructor(
+    application: Application,
+    val userPreferencesRepository: UserPreferencesRepository,
+    private val localTavernClientProvider: LocalTavernClientProvider,
+    private val connectionRepository: ConnectionRepository,
+) : AndroidViewModel(application) {
+    constructor(application: Application) : this(
+        application = application,
+        userPreferencesRepository = (application as? STApplication)?.container?.userPreferencesRepository
+            ?: UserPreferencesRepository(application),
+        localTavernClientProvider = (application as? STApplication)?.container?.tavernClientProvider
+            ?: LocalTavernClientProvider(),
+        connectionRepository = (application as? STApplication)?.container?.connectionRepository
+            ?: DefaultConnectionRepository(LocalTavernClientProvider()::get),
+    )
+
     internal val busyOperation = mutableStateOf<BusyOperation?>(null)
     private val _userMessage = MutableStateFlow<AppUiMessage?>(null)
     val userMessage = _userMessage.asStateFlow()
@@ -46,7 +67,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         application = application,
         scope = viewModelScope,
         postUserMessage = { message -> postUserMessage(message) },
-        appendServiceLog = { message -> appendServiceLog(message) }
+        appendServiceLog = { message -> appendServiceLog(message) },
+        userPreferencesRepository = userPreferencesRepository
     )
 
     private val batteryPromptManager = BatteryPromptManager(
@@ -124,7 +146,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    TavernCoreClient(baseUrl = SillyTavernUrl.localWebUrl(port)).listSettingsSnapshots()
+                    localTavernClientProvider.updatePort(port)
+                    connectionRepository.listSettingsSnapshots()
                 }
             }
             _settingsSnapshotsLoading.value = false
@@ -151,7 +174,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    TavernCoreClient(baseUrl = SillyTavernUrl.localWebUrl(port)).makeSettingsSnapshot()
+                    localTavernClientProvider.updatePort(port)
+                    connectionRepository.makeSettingsSnapshot()
                 }
             }
             _settingsSnapshotsLoading.value = false
@@ -175,7 +199,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    TavernCoreClient(baseUrl = SillyTavernUrl.localWebUrl(port)).restoreSettingsSnapshot(name)
+                    localTavernClientProvider.updatePort(port)
+                    connectionRepository.restoreSettingsSnapshot(name)
                 }
             }
             _settingsSnapshotsLoading.value = false

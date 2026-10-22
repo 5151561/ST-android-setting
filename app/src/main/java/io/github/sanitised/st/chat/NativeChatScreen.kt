@@ -145,7 +145,7 @@ import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.chat.engine.ChatEngine
 import io.github.sanitised.st.api.GroupSummary
-import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.data.tavernApiForPort
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.screens.STAssistPill
@@ -375,7 +375,7 @@ fun NativeChatScreen(
                     scope.launch {
                         runCatching {
                             DataBankRepository {
-                                TavernCoreClient("http://127.0.0.1:${status.port}")
+                                tavernApiForPort(status.port)
                             }.load(store.avatarUrl, store.chatFile)
                         }.onSuccess { bank ->
                             store.applyDataBank(bank)

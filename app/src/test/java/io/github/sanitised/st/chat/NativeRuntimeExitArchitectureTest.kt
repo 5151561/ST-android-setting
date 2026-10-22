@@ -6,10 +6,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeRuntimeExitArchitectureTest {
+    private fun mainActivityAndNavigationSources(): String = listOf(
+        "src/main/java/io/github/sanitised/st/MainActivity.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppChrome.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppNavHost.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppDialogs.kt"
+    ).joinToString("\n") { path -> File(path).readText() }
 
     @Test
     fun chatRouteDoesNotCreateOrReferenceHiddenWebViewRuntime() {
-        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val mainActivity = mainActivityAndNavigationSources()
 
         listOf(
             "ChatWebViewScreen",
@@ -46,7 +52,7 @@ class NativeRuntimeExitArchitectureTest {
 
     @Test
     fun pastChatsNewChatActionIsNativeInsteadOfPlaceholder() {
-        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val mainActivity = mainActivityAndNavigationSources()
         val pastChatsRoute = mainActivity
             .substringAfter("route = STRoutes.PAST_CHATS")
             .substringBefore("route = STRoutes.CHAR_FORM")

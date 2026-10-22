@@ -138,9 +138,11 @@ import io.github.sanitised.st.api.PersonaProfile
 import io.github.sanitised.st.api.SecretProviderState
 import io.github.sanitised.st.api.SettingsSnapshot
 import io.github.sanitised.st.api.ConnectionTestResult
-import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoSummary
+import io.github.sanitised.st.data.repository.ConnectionRepository
+import io.github.sanitised.st.data.repository.DefaultConnectionRepository
+import io.github.sanitised.st.data.tavernApi
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,7 +155,10 @@ fun STApiConnectionScreen(
     modifier: Modifier = Modifier,
     onOpenSecrets: (() -> Unit)? = null,
     onOpenProviderDetail: (String) -> Unit = {},
-    onSettingsChanged: () -> Unit = {}
+    onSettingsChanged: () -> Unit = {},
+    connectionRepository: ConnectionRepository = remember(baseUrl) {
+        DefaultConnectionRepository { tavernApi(baseUrl) }
+    },
 ) {
     val scope = rememberCoroutineScope()
     var profiles by remember { mutableStateOf<List<ConnectionProfile>>(emptyList()) }
@@ -164,14 +169,13 @@ fun STApiConnectionScreen(
     var activeMode by remember { mutableStateOf("cc") }
     var activeProviderId by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(running, baseUrl) {
+    LaunchedEffect(running, baseUrl, connectionRepository) {
         if (running) {
             runCatching {
-                val client = TavernCoreClient(baseUrl)
-                profiles = client.listConnectionProfiles()
-                val secretsList = client.listSecrets()
+                profiles = connectionRepository.listConnectionProfiles()
+                val secretsList = connectionRepository.listSecrets()
                 secrets = secretsList
-                val coreSettings = client.getSettings()
+                val coreSettings = connectionRepository.getSettings()
                 settings = coreSettings
 
                 val loadedState = buildApiConnectionUiState(
@@ -257,12 +261,11 @@ fun STApiConnectionScreen(
                     if (running && firstProvider != null) {
                         scope.launch {
                             runCatching {
-                                val client = TavernCoreClient(baseUrl)
                                 val updated = settingsWithSelectedApiProvider(
                                     settings = settings,
                                     provider = firstProvider
                                 )
-                                client.saveSettings(updated)
+                                connectionRepository.saveSettings(updated)
                                 settings = updated
                                 onSettingsChanged()
                                 onShowMessage("已切换至 ${firstProvider.label}")
@@ -326,12 +329,11 @@ fun STApiConnectionScreen(
                     if (running) {
                         scope.launch {
                             runCatching {
-                                val client = TavernCoreClient(baseUrl)
                                 val updated = settingsWithSelectedApiProvider(
                                     settings = settings,
                                     provider = provider.definition
                                 )
-                                client.saveSettings(updated)
+                                connectionRepository.saveSettings(updated)
                                 settings = updated
                                 onSettingsChanged()
                                 onShowMessage("已切换 API 提供商为 ${provider.label}")
@@ -388,7 +390,7 @@ fun STApiConnectionScreen(
                             if (profile != null) {
                                 scope.launch {
                                     runCatching {
-                                        TavernCoreClient(baseUrl).saveConnectionProfile(profile.copy(
+                                        connectionRepository.saveConnectionProfile(profile.copy(
                                             lastConnection = System.currentTimeMillis()
                                         ))
                                         onShowMessage("已选择服务器：$name")

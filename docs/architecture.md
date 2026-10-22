@@ -441,23 +441,24 @@ UI 唯一入口，保留四个动作：
 Manager 内部仍可写的 Compose 状态只以只读 `State` 暴露；一次性用户提示改为
 可确认消费的 `StateFlow<AppUiMessage?>`，避免页面暂未收集时丢失消息。
 
-### 现代架构迁移状态（2026-07-18）
+### 现代架构迁移状态（2026-10-22）
 
 已完成：
 
-- 应用级 `AppContainer` 和本地 API provider，集中管理共享依赖与端口变化。
-- 聊天运行时移入 `ChatViewModel`，生成协程由 `viewModelScope` 管理。
-- 角色功能建立 Repository 边界，三个页面采用不可变 `UiState` + `StateFlow`。
-- 页面使用生命周期感知收集，主页面用户提示由可消费状态承载。
+- **引入 Hilt 依赖注入（`di/AppModule.kt`）**：`@HiltAndroidApp` 标注 `STApplication`，`@AndroidEntryPoint` 标注 `MainActivity`，`@HiltViewModel` 标注 `MainViewModel`、`ChatViewModel`、`WorldInfoViewModel`、`PersonaPresetViewModel`、`ConnectionSecretsViewModel`。
+- **拆分四大上帝文件**：
+  - `api/TavernCoreApi.kt`（1,852 行 → 359 行门面 + `TavernHttpTransport.kt`、`TavernCharacterEndpoints.kt`、`TavernWorldPersonaEndpoints.kt`、`TavernPresetSecretEndpoints.kt`）。
+  - `MainActivity.kt`（1,987 行 → 471 行宿主 + `ui/navigation/STAppChrome.kt`、`STAppNavHost.kt`、`STAppDialogs.kt`）。
+  - `ui/screens/STAdvancedScreens.kt`（2,605 行）与 `STSystemScreens.kt`（1,435 行）已彻底拆分为 12 个单一职责屏幕与共享组件文件并删除原文件。
+- **全领域 Repository 与偏好仓库**：
+  - 建立 `UserPreferencesRepository`（`StateFlow<UserPreferences>`），将 `UpdateManager` 中混杂的 13+ 项 UI/应用偏好彻底解耦。
+  - 建立 `CharacterRepository`、`WorldInfoRepository`、`ConnectionRepository`、`PersonaPresetRepository`、`GroupChatRepository` 及统一 API 入口 `tavernApi` / `tavernApiForPort`。
+  - **彻底清零 `ui/` 与 `chat/` 层对 `TavernCoreClient` 的直接实例化**，并由 `ArchitectureBoundaryContractTest` 自动守卫。
 
-仍需渐进迁移：
+后续演进方向：
 
-- 将 `MainViewModel` 从 `AndroidViewModel` / Compose `State` 完整迁移为普通
-  `ViewModel` + `StateFlow`，并把 Android 依赖下沉到数据层。
-- 为角色之外的页面继续建立 Repository，清除 UI 层剩余的
-  `TavernCoreClient` 直接创建。
-- 将 `ChatStore` 迁移为不可变 `ChatUiState`，进一步收紧单一事实来源。
-- 将字符串路由迁移为类型安全导航，并补充关键导航与生命周期的仪器测试。
+- 将 `ChatStore` 逐步收敛为完全不可变的 `ChatUiState` + `StateFlow`。
+- 将字符串路由逐步演进为 Kotlin Serialization 类型安全路由，并补充关键导航与生命周期的仪器测试。
 
 ---
 

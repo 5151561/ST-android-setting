@@ -6,6 +6,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class Material3NativeUiContractTest {
+    private fun mainActivityAndNavigationSources(): String = listOf(
+        "src/main/java/io/github/sanitised/st/MainActivity.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppChrome.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppNavHost.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppDialogs.kt"
+    ).joinToString("\n") { path -> File(path).readText() }
+
     @Test
     fun nativePagesUseMaterialColorSchemeInsteadOfLegacySTColors() {
         val sourceRoot = File("src/main/java/io/github/sanitised/st")
@@ -64,7 +71,7 @@ class Material3NativeUiContractTest {
 
     @Test
     fun mainActivityAutoOpensBrowserWhenServiceBecomesReadyAndPreferenceIsEnabled() {
-        val mainActivityFile = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val mainActivityFile = mainActivityAndNavigationSources()
 
         assertTrue(mainActivityFile.contains("val tavernReadyForAutoOpen = remember { mutableStateOf(false) }"))
         assertTrue(mainActivityFile.contains("client.healthCheck().ok"))

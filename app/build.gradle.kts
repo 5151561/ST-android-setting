@@ -2,6 +2,8 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("com.google.devtools.ksp")
+    id("com.google.dagger.hilt.android")
 }
 
 val fallbackVersionName = "0.4.0"
@@ -131,6 +133,11 @@ dependencies {
 
     // Navigation Compose
     implementation("androidx.navigation:navigation-compose:2.9.8")
+
+    // Hilt Dependency Injection
+    implementation("com.google.dagger:hilt-android:2.60.1")
+    ksp("com.google.dagger:hilt-compiler:2.60.1")
+    implementation("androidx.hilt:hilt-navigation-compose:1.3.0")
 
     // OkHttp for TavernApiAdapter
     implementation("com.squareup.okhttp3:okhttp:5.4.0")

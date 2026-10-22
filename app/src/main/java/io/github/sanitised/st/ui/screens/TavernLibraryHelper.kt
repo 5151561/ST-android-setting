@@ -6,7 +6,9 @@ import androidx.compose.runtime.produceState
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.api.GroupSummary
+import io.github.sanitised.st.api.TavernCoreApi
 import io.github.sanitised.st.data.LocalTavernLibraryReader
+import io.github.sanitised.st.data.tavernApi
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,7 +28,8 @@ fun rememberLocalTavernLibrarySnapshot(
     dataRoot: File,
     serverRunning: Boolean,
     baseUrl: String,
-    refreshKey: Any?
+    refreshKey: Any?,
+    clientProvider: () -> TavernCoreApi = { tavernApi(baseUrl) }
 ): State<LocalTavernLibrarySnapshot> {
     return produceState(
         initialValue = LocalTavernLibrarySnapshot(),
@@ -39,7 +42,7 @@ fun rememberLocalTavernLibrarySnapshot(
             val reader = LocalTavernLibraryReader(dataRoot)
             if (serverRunning) {
                 runCatching {
-                    val client = io.github.sanitised.st.api.TavernCoreClient(baseUrl = baseUrl)
+                    val client = clientProvider()
                     val characters = client.listCharacters().ifEmpty { reader.listCharacters() }
                     val recentChats = client.listRecentChats().ifEmpty { reader.listRecentChats(RECENT_CHAT_LIMIT) }
                     val groups = runCatching { client.listGroups() }

@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.sanitised.st.SecondaryTopAppBar
 import io.github.sanitised.st.api.GroupSummary
-import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.data.tavernApi
 import kotlinx.coroutines.launch
 
 // generation_mode: 0=swap, 1=join(exclude muted), 2=join_all(include muted)
@@ -72,7 +72,7 @@ fun GroupSettingsScreen(
     val membersMockList = remember { mutableStateListOf<GroupMember>() }
 
     LaunchedEffect(groupId) {
-        val client = TavernCoreClient(baseUrl)
+        val client = tavernApi(baseUrl)
         val group = runCatching { client.listGroups().find { it.id == groupId } }.getOrNull()
         if (group == null) {
             onShowMessage("找不到群聊")
@@ -114,7 +114,7 @@ fun GroupSettingsScreen(
         val updated = current ?: return@LaunchedEffect
         if (!loaded || updated == base) return@LaunchedEffect
         kotlinx.coroutines.delay(400)
-        runCatching { TavernCoreClient(baseUrl).editGroup(updated) }
+        runCatching { tavernApi(baseUrl).editGroup(updated) }
             .onSuccess { base = updated }
             .onFailure { onShowMessage(it.message ?: "保存群设置失败") }
     }
@@ -128,7 +128,7 @@ fun GroupSettingsScreen(
                 TextButton(onClick = {
                     showDeleteDialog = false
                     scope.launch {
-                        runCatching { TavernCoreClient(baseUrl).deleteGroup(groupId) }
+                        runCatching { tavernApi(baseUrl).deleteGroup(groupId) }
                             .onSuccess { onShowMessage("已删除群聊"); onBack() }
                             .onFailure { onShowMessage(it.message ?: "删除失败") }
                     }

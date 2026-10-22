@@ -73,8 +73,11 @@ import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.CharacterChatSummary
 import io.github.sanitised.st.api.ChatExportFormat
-import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.chat.isNativeChatBackupName
+import io.github.sanitised.st.data.CharacterRepository
+import io.github.sanitised.st.data.DefaultCharacterRepository
+import io.github.sanitised.st.data.LocalTavernLibraryReader
+import io.github.sanitised.st.data.tavernApi
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -89,7 +92,13 @@ fun STPastChatsScreen(
     onOpenChat: (String?) -> Unit,
     onNewChat: () -> Unit,
     onShowMessage: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    characterRepository: CharacterRepository = remember(baseUrl) {
+        DefaultCharacterRepository(
+            clientProvider = { tavernApi(baseUrl) },
+            localReader = LocalTavernLibraryReader(File("")),
+        )
+    },
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -108,19 +117,19 @@ fun STPastChatsScreen(
         if (!serverRunning) return
         scope.launch {
             loading = true
-            runCatching { TavernCoreClient(baseUrl = baseUrl).listCharacterChats(avatar) }
+            runCatching { characterRepository.listCharacterChats(avatar) }
                 .onSuccess { chatFiles = filterVisibleCharacterChats(it) }
                 .onFailure { onShowMessage(it.message ?: "加载聊天列表失败") }
             loading = false
         }
     }
 
-    LaunchedEffect(serverRunning, baseUrl, avatar) {
+    LaunchedEffect(serverRunning, baseUrl, avatar, characterRepository) {
         if (!serverRunning) {
             loading = false
             return@LaunchedEffect
         }
-        runCatching { TavernCoreClient(baseUrl = baseUrl).getCharacter(avatar) }
+        runCatching { characterRepository.getCharacter(avatar) }
             .onSuccess { characterName = it.name }
         refreshList()
     }
@@ -253,13 +262,13 @@ fun STPastChatsScreen(
             onExportJsonl = {
                 actionTarget = null
                 scope.launch {
-                    exportAndShare(context, baseUrl, avatar, file.fileName, ChatExportFormat.JSONL, onShowMessage)
+                    exportAndShare(context, characterRepository, avatar, file.fileName, ChatExportFormat.JSONL, onShowMessage)
                 }
             },
             onExportTxt = {
                 actionTarget = null
                 scope.launch {
-                    exportAndShare(context, baseUrl, avatar, file.fileName, ChatExportFormat.TXT, onShowMessage)
+                    exportAndShare(context, characterRepository, avatar, file.fileName, ChatExportFormat.TXT, onShowMessage)
                 }
             },
             onDelete = {
@@ -276,7 +285,7 @@ fun STPastChatsScreen(
                 renameTarget = null
                 scope.launch {
                     runCatching {
-                        TavernCoreClient(baseUrl = baseUrl).renameCharacterChat(
+                        characterRepository.renameCharacterChat(
                             avatar = avatar,
                             originalFile = file.fileName,
                             renamedFile = newName
@@ -301,7 +310,7 @@ fun STPastChatsScreen(
                 deleteTarget = null
                 scope.launch {
                     runCatching {
-                        TavernCoreClient(baseUrl = baseUrl).deleteCharacterChat(avatar, file.fileName)
+                        characterRepository.deleteCharacterChat(avatar, file.fileName)
                     }.onSuccess {
                         refreshList()
                         if (isCurrent) {
@@ -764,14 +773,14 @@ private fun formatChatTimestamp(timestamp: String): String {
 
 private suspend fun exportAndShare(
     context: Context,
-    baseUrl: String,
+    characterRepository: CharacterRepository,
     avatar: String,
     chatFile: String,
     format: ChatExportFormat,
     onShowMessage: (String) -> Unit
 ) {
     runCatching {
-        val exported = TavernCoreClient(baseUrl = baseUrl).exportCharacterChat(avatar, chatFile, format)
+        val exported = characterRepository.exportCharacterChat(avatar, chatFile, format)
         val cacheDir = File(context.cacheDir, "chat_exports")
         cacheDir.mkdirs()
         val outFile = File(cacheDir, exported.fileName)

@@ -85,7 +85,10 @@ import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.StCurrentUser
 import io.github.sanitised.st.api.StUserView
-import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.api.TavernCoreApi
+import io.github.sanitised.st.data.repository.ConnectionRepository
+import io.github.sanitised.st.data.repository.DefaultConnectionRepository
+import io.github.sanitised.st.data.tavernApi
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -233,6 +236,7 @@ fun STLoginScreen(
     onOnboarding: () -> Unit,
     onShowMessage: (String) -> Unit = {},
     serverEndpoint: String = "127.0.0.1:8000",
+    clientProvider: () -> TavernCoreApi = { tavernApi(baseUrl) },
 ) {
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
@@ -248,7 +252,7 @@ fun STLoginScreen(
     LaunchedEffect(running, baseUrl) {
         if (!running) { loading = false; multiUser = false; return@LaunchedEffect }
         loading = true
-        runCatching { TavernCoreClient(baseUrl).listUsers() }
+        runCatching { clientProvider().listUsers() }
             .onSuccess { users = it; multiUser = it.isNotEmpty() }
             .onFailure { multiUser = false }
         loading = false
@@ -263,7 +267,7 @@ fun STLoginScreen(
         if (busy) return
         busy = true
         scope.launch {
-            runCatching { TavernCoreClient(baseUrl).loginUser(handle, password) }
+            runCatching { clientProvider().loginUser(handle, password) }
                 .onSuccess { busy = false; onLoggedIn() }
                 .onFailure { busy = false; onShowMessage(it.message ?: "登录失败") }
         }
@@ -355,13 +359,13 @@ fun STLoginScreen(
             LoginStage.Recovery -> {
                 LoginRecovery(
                     user = selected,
-                    baseUrl = baseUrl,
+                    clientProvider = clientProvider,
                     onCancel = { stage = LoginStage.Password },
                     onReset = { code, pwd ->
                         val u = selected ?: return@LoginRecovery
                         scope.launch {
                             runCatching {
-                                val client = TavernCoreClient(baseUrl)
+                                val client = clientProvider()
                                 client.recoverPasswordStep2(u.handle, code, pwd)
                                 client.loginUser(u.handle, pwd)
                             }.onSuccess { onLoggedIn() }.onFailure { onShowMessage(it.message ?: "恢复失败") }
@@ -440,7 +444,7 @@ private fun ColumnScope.LoginPassword(
 @Composable
 private fun ColumnScope.LoginRecovery(
     user: StUserView?,
-    baseUrl: String,
+    clientProvider: () -> TavernCoreApi,
     onCancel: () -> Unit,
     onReset: (String, String) -> Unit,
     onShowMessage: (String) -> Unit,
@@ -450,7 +454,7 @@ private fun ColumnScope.LoginRecovery(
     // 进入时请求服务器把恢复码打印到控制台。
     LaunchedEffect(user?.handle) {
         val h = user?.handle ?: return@LaunchedEffect
-        runCatching { TavernCoreClient(baseUrl).recoverPasswordStep1(h) }
+        runCatching { clientProvider().recoverPasswordStep1(h) }
             .onFailure { onShowMessage(it.message ?: "请求恢复码失败") }
     }
     Spacer(Modifier.height(48.dp))
@@ -563,6 +567,10 @@ fun STAccountScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
     onShowMessage: (String) -> Unit = {},
+    clientProvider: () -> TavernCoreApi = { tavernApi(baseUrl) },
+    connectionRepository: ConnectionRepository = remember(baseUrl) {
+        DefaultConnectionRepository(clientProvider)
+    },
 ) {
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
@@ -572,7 +580,7 @@ fun STAccountScreen(
 
     LaunchedEffect(running, baseUrl) {
         if (!running) return@LaunchedEffect
-        runCatching { TavernCoreClient(baseUrl).getCurrentUser() }
+        runCatching { clientProvider().getCurrentUser() }
             .onSuccess { user = it }
             .onFailure { /* 单用户/未启用：保留样例展示 */ }
     }
@@ -592,7 +600,7 @@ fun STAccountScreen(
                 STIconButton(Icons.AutoMirrored.Filled.Logout, "退出登录", {
                     // 先向后端注销并清本地会话 cookie，再回登录页（避免沿用旧账户会话）。
                     scope.launch {
-                        if (running) runCatching { TavernCoreClient(baseUrl).logoutUser() }
+                        if (running) runCatching { clientProvider().logoutUser() }
                         onLogout()
                     }
                 })
@@ -640,7 +648,7 @@ fun STAccountScreen(
                 onClick = {
                     if (!running) { onShowMessage("请先启动服务"); return@STListItem }
                     scope.launch {
-                        runCatching { TavernCoreClient(baseUrl).makeSettingsSnapshot() }
+                        runCatching { connectionRepository.makeSettingsSnapshot() }
                             .onSuccess { onShowMessage("已保存设置快照") }
                             .onFailure { onShowMessage(it.message ?: "快照失败") }
                     }
@@ -656,7 +664,7 @@ fun STAccountScreen(
                 onCancel = { showPasswordSheet = false },
                 onSave = { old, new ->
                     scope.launch {
-                        runCatching { TavernCoreClient(baseUrl).changeUserPassword(handle, old, new) }
+                        runCatching { clientProvider().changeUserPassword(handle, old, new) }
                             .onSuccess { showPasswordSheet = false; onShowMessage("密码已更新") }
                             .onFailure { onShowMessage(it.message ?: "修改失败") }
                     }

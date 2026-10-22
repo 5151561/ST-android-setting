@@ -29,7 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sanitised.st.api.GroupSummary
-import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.data.tavernApi
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,7 +51,7 @@ fun GroupMembersScreen(
     val context = LocalContext.current
 
     LaunchedEffect(groupId) {
-        val client = TavernCoreClient(baseUrl)
+        val client = tavernApi(baseUrl)
         val group = runCatching { client.listGroups().find { it.id == groupId } }.getOrNull()
         if (group == null) {
             onShowMessage("找不到群聊")
@@ -87,7 +87,7 @@ fun GroupMembersScreen(
             disabledMembers = activeMembers.filter { it.muted }.map { it.id }
         )
         scope.launch {
-            runCatching { TavernCoreClient(baseUrl).editGroup(updated) }
+            runCatching { tavernApi(baseUrl).editGroup(updated) }
                 .onSuccess { base = updated; then() }
                 .onFailure { onShowMessage(it.message ?: "保存成员失败") }
         }

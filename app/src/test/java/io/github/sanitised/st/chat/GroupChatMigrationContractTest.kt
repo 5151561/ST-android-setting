@@ -6,6 +6,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GroupChatMigrationContractTest {
+    private fun mainActivityAndNavigationSources(): String = listOf(
+        "src/main/java/io/github/sanitised/st/MainActivity.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppChrome.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppNavHost.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppDialogs.kt"
+    ).joinToString("\n") { path -> File(path).readText() }
+
     // 群聊界面已按职责拆分为多文件(GroupChatScreen + Components/Messages/Sheets/Data),
     // 契约标记散落其中,守卫读取拆分后的全部群聊源文件。
     private fun groupChatSources(): String = listOf(
@@ -96,7 +103,7 @@ class GroupChatMigrationContractTest {
         )
 
         // The detail route must pass the nav args through to the screen.
-        val activity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val activity = mainActivityAndNavigationSources()
         val detailRoute = activity.substringAfter("route = STRoutes.GROUP_CHAT_DETAIL")
             .substringBefore("composable(")
         assertTrue(detailRoute.contains("groupId = gid"))
@@ -166,7 +173,7 @@ class GroupChatMigrationContractTest {
         // Regression for the full-device report: the create button used to be
         // onCreate = { _, _, _ -> navController.popBackStack() }, so no group was
         // ever persisted. The route must load real characters and call createGroup.
-        val activity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val activity = mainActivityAndNavigationSources()
 
         assertFalse(
             "New group create handler must not discard its arguments.",

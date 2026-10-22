@@ -147,7 +147,7 @@ import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.chat.engine.ChatEngine
 import io.github.sanitised.st.api.GroupSummary
-import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.data.tavernApiForPort
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.screens.STAssistPill
@@ -554,7 +554,7 @@ internal suspend fun uploadPickedAttachment(
     if (port <= 0) error("SillyTavern 服务尚未运行")
     val file = withContext(Dispatchers.IO) { readPickedAttachmentFile(context, uri) }
     val base64 = Base64.encodeToString(file.bytes, Base64.NO_WRAP)
-    val uploadedPath = TavernCoreClient(baseUrl = "http://127.0.0.1:$port/")
+    val uploadedPath = tavernApiForPort(port)
         .uploadFile(name = file.name, base64Data = base64)
     PendingAttachment(
         url = uploadedPath,

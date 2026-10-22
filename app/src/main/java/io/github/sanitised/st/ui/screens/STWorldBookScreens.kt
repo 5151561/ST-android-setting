@@ -65,10 +65,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
-import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoEntry
 import io.github.sanitised.st.api.WorldInfoSummary
+import io.github.sanitised.st.data.repository.DefaultWorldInfoRepository
+import io.github.sanitised.st.data.repository.WorldInfoRepository
+import io.github.sanitised.st.data.tavernApi
 import kotlinx.coroutines.launch
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,6 +146,7 @@ fun STWorldBookManageScreen(
     onOpenBook: (String) -> Unit,
     onOpenGlobalSettings: () -> Unit,
     onShowMessage: (String) -> Unit = {},
+    worldInfoRepository: WorldInfoRepository = remember(baseUrl) { DefaultWorldInfoRepository { tavernApi(baseUrl) } },
 ) {
     BackHandler(onBack = onBack)
     val running = status.state == NodeState.RUNNING
@@ -155,13 +158,12 @@ fun STWorldBookManageScreen(
     var actionsForBook by remember { mutableStateOf<WorldInfoSummary?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    LaunchedEffect(running, baseUrl, reloadKey) {
+    LaunchedEffect(running, baseUrl, reloadKey, worldInfoRepository) {
         if (!running) return@LaunchedEffect
         loading = true
         runCatching {
-            val client = TavernCoreClient(baseUrl)
-            books = client.listWorldInfos().sortedBy { it.name.lowercase() }
-            globalSelect = globalSelectOf(client.getSettings())
+            books = worldInfoRepository.listWorldInfos().sortedBy { it.name.lowercase() }
+            globalSelect = globalSelectOf(worldInfoRepository.getSettings())
         }.onFailure { onShowMessage(it.message ?: "世界书加载失败") }
         loading = false
     }
@@ -170,10 +172,10 @@ fun STWorldBookManageScreen(
         if (!running) return
         scope.launch {
             runCatching {
-                val client = TavernCoreClient(baseUrl)
-                val current = globalSelectOf(client.getSettings())
+                val settings = worldInfoRepository.getSettings()
+                val current = globalSelectOf(settings)
                 val next = if (on) (current + name).distinct() else current - name
-                client.saveSettings(settingsWithGlobalSelect(client.getSettings(), next))
+                worldInfoRepository.saveSettings(settingsWithGlobalSelect(settings, next))
             }.onSuccess { reloadKey++ }.onFailure { onShowMessage(it.message ?: "保存失败") }
         }
     }
@@ -262,7 +264,7 @@ fun STWorldBookManageScreen(
                     scope.launch {
                         runCatching {
                             val name = "新世界书 ${System.currentTimeMillis() % 100000}"
-                            TavernCoreClient(baseUrl).saveWorldInfo(WorldInfoBook(name = name, entries = emptyList(), rawData = mapOf("entries" to emptyMap<String, Any?>()), fileId = name))
+                            worldInfoRepository.saveWorldInfo(WorldInfoBook(name = name, entries = emptyList(), rawData = mapOf("entries" to emptyMap<String, Any?>()), fileId = name))
                             name
                         }.onSuccess { onShowMessage("已创建「$it」"); reloadKey++ }.onFailure { onShowMessage(it.message ?: "新建失败") }
                     }
@@ -306,7 +308,7 @@ fun STWorldBookManageScreen(
             P0SheetItem(Icons.Filled.Delete, "删除世界书", danger = true) {
                 actionsForBook = null
                 scope.launch {
-                    runCatching { TavernCoreClient(baseUrl).deleteWorldInfo(book.id) }
+                    runCatching { worldInfoRepository.deleteWorldInfo(book.id) }
                         .onSuccess { onShowMessage("已删除「${book.name}」"); reloadKey++ }
                         .onFailure { onShowMessage(it.message ?: "删除失败") }
                 }
@@ -325,6 +327,7 @@ fun STLorebookDetailScreen(
     onBack: () -> Unit,
     onOpenEntry: (Int) -> Unit,
     onShowMessage: (String) -> Unit = {},
+    worldInfoRepository: WorldInfoRepository = remember(baseUrl) { DefaultWorldInfoRepository { tavernApi(baseUrl) } },
 ) {
     BackHandler(onBack = onBack)
     val running = status.state == NodeState.RUNNING
@@ -335,10 +338,10 @@ fun STLorebookDetailScreen(
     var page by remember { mutableIntStateOf(0) }
     val pageSize = 20
 
-    LaunchedEffect(running, baseUrl, bookName, reloadKey) {
+    LaunchedEffect(running, baseUrl, bookName, reloadKey, worldInfoRepository) {
         if (!running) return@LaunchedEffect
         loading = true
-        runCatching { book = TavernCoreClient(baseUrl).getWorldInfo(bookName) }
+        runCatching { book = worldInfoRepository.getWorldInfo(bookName) }
             .onFailure { onShowMessage(it.message ?: "条目加载失败") }
         loading = false
     }
@@ -348,7 +351,7 @@ fun STLorebookDetailScreen(
         scope.launch {
             runCatching {
                 val updated = b.copy(entries = b.entries.map { if (it.uid == entry.uid) it.copy(disabled = !on) else it })
-                TavernCoreClient(baseUrl).saveWorldInfo(updated)
+                worldInfoRepository.saveWorldInfo(updated)
             }.onSuccess { reloadKey++ }.onFailure { onShowMessage(it.message ?: "保存失败") }
         }
     }
@@ -452,6 +455,7 @@ fun STWorldEntryEditScreen(
     entryUid: Int,
     onClose: () -> Unit,
     onShowMessage: (String) -> Unit = {},
+    worldInfoRepository: WorldInfoRepository = remember(baseUrl) { DefaultWorldInfoRepository { tavernApi(baseUrl) } },
 ) {
     BackHandler(onBack = onClose)
     val running = status.state == NodeState.RUNNING
@@ -463,11 +467,11 @@ fun STWorldEntryEditScreen(
     val draft = remember { mutableStateMapOf<String, Any?>() }
     var draftUid by remember { mutableIntStateOf(entryUid) }
 
-    LaunchedEffect(running, baseUrl, bookName, entryUid) {
+    LaunchedEffect(running, baseUrl, bookName, entryUid, worldInfoRepository) {
         if (!running) { loading = false; return@LaunchedEffect }
         loading = true
         runCatching {
-            val b = TavernCoreClient(baseUrl).getWorldInfo(bookName)
+            val b = worldInfoRepository.getWorldInfo(bookName)
             book = b
             val entry = b.entries.firstOrNull { it.uid == entryUid }
             draft.clear()
@@ -525,7 +529,7 @@ fun STWorldEntryEditScreen(
                 )
                 val exists = bk.entries.any { it.uid == draftUid }
                 val nextEntries = if (exists) bk.entries.map { if (it.uid == draftUid) entry else it } else bk.entries + entry
-                TavernCoreClient(baseUrl).saveWorldInfo(bk.copy(entries = nextEntries))
+                worldInfoRepository.saveWorldInfo(bk.copy(entries = nextEntries))
             }.onSuccess { onShowMessage("条目已保存"); onClose() }.onFailure { onShowMessage(it.message ?: "保存失败") }
         }
     }
@@ -640,6 +644,7 @@ fun STWIGlobalSettingsScreen(
     baseUrl: String,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit = {},
+    worldInfoRepository: WorldInfoRepository = remember(baseUrl) { DefaultWorldInfoRepository { tavernApi(baseUrl) } },
 ) {
     BackHandler(onBack = onBack)
     val running = status.state == NodeState.RUNNING
@@ -648,11 +653,11 @@ fun STWIGlobalSettingsScreen(
     var rawSettings by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
     val wi = remember { mutableStateMapOf<String, Any?>() }
 
-    LaunchedEffect(running, baseUrl) {
+    LaunchedEffect(running, baseUrl, worldInfoRepository) {
         if (!running) { loading = false; return@LaunchedEffect }
         loading = true
         runCatching {
-            val settings = TavernCoreClient(baseUrl).getSettings()
+            val settings = worldInfoRepository.getSettings()
             rawSettings = settings
             wi.clear()
             wi.putAll(anyMap(anyMap(settings["world_info_settings"]).filterKeys { it != "world_info" }))
@@ -672,7 +677,7 @@ fun STWIGlobalSettingsScreen(
                 wi.forEach { (k, v) -> wis[k] = v }
                 if (globalSelect != null) wis["world_info"] = globalSelect
                 out["world_info_settings"] = wis
-                TavernCoreClient(baseUrl).saveSettings(out)
+                worldInfoRepository.saveSettings(out)
             }.onSuccess { onShowMessage("全局设置已保存"); onBack() }.onFailure { onShowMessage(it.message ?: "保存失败") }
         }
     }

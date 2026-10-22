@@ -117,7 +117,12 @@ class ConfigFormToolsTest {
 
     @Test
     fun defaultSillyTavernConfigCanBeParsedAndWrittenFromForm() {
-        val configText = File("../SillyTavern/default/config.yaml").readText(Charsets.UTF_8)
+        val configFile = File("../SillyTavern/default/config.yaml")
+        org.junit.Assume.assumeTrue(
+            "Initialize SillyTavern submodule to run default config.yaml contract test.",
+            configFile.exists()
+        )
+        val configText = configFile.readText(Charsets.UTF_8)
         val document = ConfigFormTools.parse(configText)
 
         val saved = ConfigFormTools.writeYaml(document, document.initialValues)

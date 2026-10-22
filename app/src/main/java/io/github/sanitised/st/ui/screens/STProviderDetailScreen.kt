@@ -138,9 +138,11 @@ import io.github.sanitised.st.api.PersonaProfile
 import io.github.sanitised.st.api.SecretProviderState
 import io.github.sanitised.st.api.SettingsSnapshot
 import io.github.sanitised.st.api.ConnectionTestResult
-import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoSummary
+import io.github.sanitised.st.data.repository.ConnectionRepository
+import io.github.sanitised.st.data.repository.DefaultConnectionRepository
+import io.github.sanitised.st.data.tavernApi
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
 
 @Composable
@@ -151,7 +153,10 @@ fun STProviderDetailScreen(
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit,
     onSettingsChanged: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    connectionRepository: ConnectionRepository = remember(baseUrl) {
+        DefaultConnectionRepository { tavernApi(baseUrl) }
+    },
 ) {
     val scope = rememberCoroutineScope()
     var settings by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
@@ -179,11 +184,10 @@ fun STProviderDetailScreen(
         mutableStateOf<ApiConnectionProviderState?>(null)
     }
     
-    LaunchedEffect(running, baseUrl, providerId) {
+    LaunchedEffect(running, baseUrl, providerId, connectionRepository) {
         if (running) {
             runCatching {
-                val client = TavernCoreClient(baseUrl)
-                val coreSettings = client.getSettings()
+                val coreSettings = connectionRepository.getSettings()
                 settings = coreSettings
                 
                 val group = providerDefinition.modelSettingsGroup
@@ -210,7 +214,7 @@ fun STProviderDetailScreen(
                     else -> 4096f
                 }
                 
-                val secretsList = client.listSecrets()
+                val secretsList = connectionRepository.listSecrets()
                 providerState = buildApiConnectionUiState(
                     settings = coreSettings,
                     secrets = secretsList,
@@ -232,7 +236,7 @@ fun STProviderDetailScreen(
                 initialApiKey = apiKey
                 
                 isLoadingModels = true
-                modelsList = client.fetchModels(
+                modelsList = connectionRepository.fetchModels(
                     mode = providerDefinition.mode,
                     sourceValue = providerDefinition.sourceValue.orEmpty(),
                     apiServer = customUrl
@@ -257,7 +261,6 @@ fun STProviderDetailScreen(
                 onClick = {
                     scope.launch {
                         runCatching {
-                            val client = TavernCoreClient(baseUrl)
                             val updatedSettings = settingsWithSelectedApiProvider(
                                 settings = settings,
                                 provider = providerDefinition
@@ -298,10 +301,10 @@ fun STProviderDetailScreen(
                                 updatedSettings[modelGroup] = groupSettings
                             }
 
-                            client.saveSettings(updatedSettings)
+                            connectionRepository.saveSettings(updatedSettings)
 
                             if (apiKey != initialApiKey && providerDefinition.secretKeys.isNotEmpty()) {
-                                client.writeSecret(providerDefinition.secretKeys.first(), apiKey, "默认密钥")
+                                connectionRepository.writeSecret(providerDefinition.secretKeys.first(), apiKey, "默认密钥")
                             }
 
                             onSettingsChanged()
@@ -415,12 +418,11 @@ fun STProviderDetailScreen(
                         verifyStatus = ConnectionVerifyStatus.TESTING
                         verifyErrorMessage = null
                         runCatching {
-                            val client = TavernCoreClient(baseUrl)
                             if (apiKey != initialApiKey && providerDefinition.secretKeys.isNotEmpty() && apiKey.isNotBlank()) {
-                                client.writeSecret(providerDefinition.secretKeys.first(), apiKey, "默认密钥")
+                                connectionRepository.writeSecret(providerDefinition.secretKeys.first(), apiKey, "默认密钥")
                                 initialApiKey = apiKey
                             }
-                            client.testConnection(
+                            connectionRepository.testConnection(
                                 mode = providerDefinition.mode,
                                 sourceValue = providerDefinition.sourceValue.orEmpty(),
                                 apiServer = customUrl
@@ -516,8 +518,7 @@ fun STProviderDetailScreen(
                                     animationSpec = tween(800, easing = LinearEasing)
                                 )
                                 runCatching {
-                                    val client = TavernCoreClient(baseUrl)
-                                    modelsList = client.fetchModels(
+                                    modelsList = connectionRepository.fetchModels(
                                         mode = providerDefinition.mode,
                                         sourceValue = providerDefinition.sourceValue.orEmpty(),
                                         apiServer = customUrl

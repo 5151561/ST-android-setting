@@ -6,6 +6,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatInterfaceAuditRegressionTest {
+    private fun mainActivityAndNavigationSources(): String = listOf(
+        "src/main/java/io/github/sanitised/st/MainActivity.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppChrome.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppNavHost.kt",
+        "src/main/java/io/github/sanitised/st/ui/navigation/STAppDialogs.kt"
+    ).joinToString("\n") { path -> File(path).readText() }
+
     @Test
     fun nativeChatScreenDoesNotShowHardcodedFakeRuntimeOrDateData() {
         val source = File("src/main/java/io/github/sanitised/st/chat/NativeChatScreen.kt").readText()
@@ -35,7 +42,7 @@ class ChatInterfaceAuditRegressionTest {
 
     @Test
     fun drawerBadgesAreComputedInsteadOfStaticSTNumbers() {
-        val source = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val source = mainActivityAndNavigationSources()
 
         assertFalse(source.contains("badgeText = \"23\""))
         assertFalse(source.contains("badgeText = \"247\""))
@@ -106,7 +113,7 @@ class ChatInterfaceAuditRegressionTest {
         // 未读/进行中曾是原型里的假状态,禁止渲染;现在有真实数据源后放开,
         // 但必须接在真实来源上:进行中 = chatStore.isGenerating,未读 = ChatSeenStore 打点。
         val home = File("src/main/java/io/github/sanitised/st/ui/screens/STHomeScreen.kt").readText()
-        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val mainActivity = mainActivityAndNavigationSources()
         val models = File("src/main/java/io/github/sanitised/st/ui/screens/STModels.kt").readText()
 
         assertTrue(home.contains("item.inProgress"))
@@ -120,7 +127,7 @@ class ChatInterfaceAuditRegressionTest {
     fun groupHubScreenStaysMergedIntoUnifiedChatList() {
         // 群聊列表页与对话页功能重复,已删除;群聊入口只保留在对话页
         // (列表混排 + 长按「新对话」创建群聊)。不允许旧的独立群聊 hub 回流。
-        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val mainActivity = mainActivityAndNavigationSources()
         val routes = File("src/main/java/io/github/sanitised/st/ui/navigation/STNavGraph.kt").readText()
 
         assertFalse(File("src/main/java/io/github/sanitised/st/ui/screens/STGroupChatScreen.kt").exists())
@@ -132,7 +139,7 @@ class ChatInterfaceAuditRegressionTest {
     @Test
     fun homeFabLongPressOpensGroupCreationAndEntersCreatedGroup() {
         val home = File("src/main/java/io/github/sanitised/st/ui/screens/STHomeScreen.kt").readText()
-        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val mainActivity = mainActivityAndNavigationSources()
 
         assertTrue(home.contains("onLongClick = { showNewChatMenu = true }"))
         assertTrue(home.contains("Text(\"创建群聊\")"))
@@ -143,7 +150,7 @@ class ChatInterfaceAuditRegressionTest {
     @Test
     fun groupListSelectionOpensGroupChatDetailInsteadOfGenericChatRoute() {
         val routes = File("src/main/java/io/github/sanitised/st/ui/navigation/STNavGraph.kt").readText()
-        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val mainActivity = mainActivityAndNavigationSources()
         val openGroupChatBlock = mainActivity
             .substringAfter("val openGroupChat: (String, String?) -> Unit = { groupId, chatId ->")
             .substringBefore("val dynamicDrawerItems")
@@ -182,7 +189,7 @@ class ChatInterfaceAuditRegressionTest {
     @Test
     fun nativeChatHydratesCharacterChatThroughNativeLoader() {
         val nativeChat = File("src/main/java/io/github/sanitised/st/chat/NativeChatScreen.kt").readText()
-        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val mainActivity = mainActivityAndNavigationSources()
 
         assertTrue(nativeChat.contains("nativeChatLoader?.openCharacter"))
         assertTrue(nativeChat.contains("val nativeReadyForTarget = nativeChatLoadingEnabled && targetMatched"))
@@ -200,7 +207,7 @@ class ChatInterfaceAuditRegressionTest {
 
     @Test
     fun mainActivityDoesNotCreateHiddenChatRuntimeHost() {
-        val mainActivity = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+        val mainActivity = mainActivityAndNavigationSources()
 
         assertFalse(mainActivity.contains("ChatWebViewScreen"))
         assertFalse(mainActivity.contains("chatRuntimeActivated"))

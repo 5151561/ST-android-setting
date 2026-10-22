@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.compose.runtime.mutableStateOf
+import io.github.sanitised.st.data.preferences.UserPreferencesRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,25 +40,13 @@ internal class UpdateManager(
     private val application: Application,
     private val scope: CoroutineScope,
     private val postUserMessage: (String) -> Unit,
-    private val appendServiceLog: suspend (String) -> Unit
+    private val appendServiceLog: suspend (String) -> Unit,
+    private val userPreferencesRepository: UserPreferencesRepository = UserPreferencesRepository(application)
 ) {
     companion object {
         private const val TAG = "UpdateCheck"
-        private const val APP_PREFS_NAME = "updates"
-        private const val PREF_AUTO_CHECK = "auto_check"
-        private const val PREF_AUTO_OPEN_BROWSER = "auto_open_browser"
-        private const val PREF_AUTO_START_SERVICE = "auto_start_service"
-        private const val PREF_THEME_MODE = "theme_mode"
-        private const val PREF_THEME_COLOR_SOURCE = "theme_color_source"
-        private const val PREF_CHANNEL = "channel"
-        private const val PREF_BUBBLE_STYLE = "bubble_style"
-        private const val PREF_VIBRATION_FEEDBACK = "vibration_feedback"
-        private const val PREF_SECOND_CONFIRMATION = "second_confirmation"
-        private const val PREF_SWIPE_DRAWER = "swipe_drawer"
-        private const val PREF_DEVELOPER_MODE = "developer_mode"
-        private const val PREF_FONT_SIZE = "font_size"
-        private const val PREF_REDUCE_MOTION = "reduce_motion"
-        private const val PREF_CHAT_BACKGROUND = "chat_background"
+        private const val APP_PREFS_NAME = UserPreferencesRepository.APP_PREFS_NAME
+        private const val PREF_CHANNEL = UserPreferencesRepository.KEY_CHANNEL
         private const val PREF_FIRST_LAUNCH_MS = "first_launch_ms"
         private const val PREF_AUTO_OPTIN_PROMPT_SHOWN = "auto_optin_prompt_shown"
         private const val PREF_LAST_AUTO_CHECK_MS = "last_auto_check_ms"
@@ -75,24 +64,14 @@ internal class UpdateManager(
     private var autoCheckAttempted = false
     private var updateDownloadJob: Job? = null
 
-    val autoCheckForUpdates = mutableStateOf(
-        appPrefs.getBoolean(PREF_AUTO_CHECK, false)
-    )
-    val autoOpenBrowserWhenReady = mutableStateOf(
-        appPrefs.getBoolean(PREF_AUTO_OPEN_BROWSER, false)
-    )
-    val autoStartService = mutableStateOf(
-        appPrefs.getBoolean(PREF_AUTO_START_SERVICE, true)
-    )
-    val themeMode = mutableStateOf(
-        resolveInitialThemeMode()
-    )
-    val themeColorSource = mutableStateOf(
-        resolveInitialThemeColorSource()
-    )
-    val updateChannel = mutableStateOf(
-        resolveInitialUpdateChannel()
-    )
+    private val initialPrefs = userPreferencesRepository.preferences.value
+
+    val autoCheckForUpdates = mutableStateOf(initialPrefs.autoCheckUpdates)
+    val autoOpenBrowserWhenReady = mutableStateOf(initialPrefs.autoOpenBrowser)
+    val autoStartService = mutableStateOf(initialPrefs.autoStartService)
+    val themeMode = mutableStateOf(initialPrefs.themeMode)
+    val themeColorSource = mutableStateOf(initialPrefs.themeColorSource)
+    val updateChannel = mutableStateOf(resolveInitialUpdateChannel())
     private val autoOptInPromptShown = mutableStateOf(
         appPrefs.getBoolean(PREF_AUTO_OPTIN_PROMPT_SHOWN, false)
     )
@@ -102,31 +81,15 @@ internal class UpdateManager(
     private val updateDismissedUntilMs = mutableStateOf(
         appPrefs.getLong(PREF_UPDATE_DISMISSED_UNTIL_MS, 0L)
     )
-    val bubbleStyle = mutableStateOf(
-        appPrefs.getBoolean(PREF_BUBBLE_STYLE, true)
-    )
-    val vibrationFeedback = mutableStateOf(
-        appPrefs.getBoolean(PREF_VIBRATION_FEEDBACK, false)
-    )
-    val secondConfirmation = mutableStateOf(
-        appPrefs.getBoolean(PREF_SECOND_CONFIRMATION, true)
-    )
-    val swipeDrawer = mutableStateOf(
-        appPrefs.getBoolean(PREF_SWIPE_DRAWER, true)
-    )
-    val developerMode = mutableStateOf(
-        appPrefs.getBoolean(PREF_DEVELOPER_MODE, false)
-    )
-    val fontSize = mutableStateOf(
-        appPrefs.getFloat(PREF_FONT_SIZE, 14f)
-    )
-    val reduceMotion = mutableStateOf(
-        appPrefs.getBoolean(PREF_REDUCE_MOTION, false)
-    )
+    val bubbleStyle = mutableStateOf(initialPrefs.bubbleStyle)
+    val vibrationFeedback = mutableStateOf(initialPrefs.vibrationFeedback)
+    val secondConfirmation = mutableStateOf(initialPrefs.secondConfirmation)
+    val swipeDrawer = mutableStateOf(initialPrefs.swipeDrawer)
+    val developerMode = mutableStateOf(initialPrefs.developerMode)
+    val fontSize = mutableStateOf(initialPrefs.fontSize)
+    val reduceMotion = mutableStateOf(initialPrefs.reduceMotion)
     // 聊天全局背景壁纸:本地文件路径或 ST 后端背景 URL,空串表示无背景。
-    val chatBackground = mutableStateOf(
-        appPrefs.getString(PREF_CHAT_BACKGROUND, "").orEmpty()
-    )
+    val chatBackground = mutableStateOf(initialPrefs.chatBackground)
     val isCheckingForUpdates = mutableStateOf(false)
     private val availableUpdate = mutableStateOf<GithubReleaseInfo?>(null)
     val isDownloadingUpdate = mutableStateOf(false)
@@ -144,72 +107,72 @@ internal class UpdateManager(
 
     fun setAutoCheckForUpdates(enabled: Boolean) {
         autoCheckForUpdates.value = enabled
-        appPrefs.edit().putBoolean(PREF_AUTO_CHECK, enabled).apply()
+        userPreferencesRepository.setAutoCheckUpdates(enabled)
     }
 
     fun setAutoOpenBrowserWhenReady(enabled: Boolean) {
         autoOpenBrowserWhenReady.value = enabled
-        appPrefs.edit().putBoolean(PREF_AUTO_OPEN_BROWSER, enabled).apply()
+        userPreferencesRepository.setAutoOpenBrowser(enabled)
     }
 
     fun setAutoStartService(enabled: Boolean) {
         autoStartService.value = enabled
-        appPrefs.edit().putBoolean(PREF_AUTO_START_SERVICE, enabled).apply()
+        userPreferencesRepository.setAutoStartService(enabled)
     }
 
     fun setBubbleStyle(enabled: Boolean) {
         bubbleStyle.value = enabled
-        appPrefs.edit().putBoolean(PREF_BUBBLE_STYLE, enabled).apply()
+        userPreferencesRepository.setBubbleStyle(enabled)
     }
 
     fun setVibrationFeedback(enabled: Boolean) {
         vibrationFeedback.value = enabled
-        appPrefs.edit().putBoolean(PREF_VIBRATION_FEEDBACK, enabled).apply()
+        userPreferencesRepository.setVibrationFeedback(enabled)
     }
 
     fun setSecondConfirmation(enabled: Boolean) {
         secondConfirmation.value = enabled
-        appPrefs.edit().putBoolean(PREF_SECOND_CONFIRMATION, enabled).apply()
+        userPreferencesRepository.setSecondConfirmation(enabled)
     }
 
     fun setSwipeDrawer(enabled: Boolean) {
         swipeDrawer.value = enabled
-        appPrefs.edit().putBoolean(PREF_SWIPE_DRAWER, enabled).apply()
+        userPreferencesRepository.setSwipeDrawer(enabled)
     }
 
     fun setDeveloperMode(enabled: Boolean) {
         developerMode.value = enabled
-        appPrefs.edit().putBoolean(PREF_DEVELOPER_MODE, enabled).apply()
+        userPreferencesRepository.setDeveloperMode(enabled)
     }
 
     fun setFontSize(size: Float) {
         fontSize.value = size
-        appPrefs.edit().putFloat(PREF_FONT_SIZE, size).apply()
+        userPreferencesRepository.setFontSize(size)
     }
 
     fun setReduceMotion(enabled: Boolean) {
         reduceMotion.value = enabled
-        appPrefs.edit().putBoolean(PREF_REDUCE_MOTION, enabled).apply()
+        userPreferencesRepository.setReduceMotion(enabled)
     }
 
     fun setChatBackground(pathOrUrl: String) {
         chatBackground.value = pathOrUrl
-        appPrefs.edit().putString(PREF_CHAT_BACKGROUND, pathOrUrl).apply()
+        userPreferencesRepository.setChatBackground(pathOrUrl)
     }
 
     fun setThemeMode(mode: ThemeMode) {
         themeMode.value = mode
-        appPrefs.edit().putString(PREF_THEME_MODE, mode.storageValue).apply()
+        userPreferencesRepository.setThemeMode(mode)
     }
 
     fun setThemeColorSource(source: ThemeColorSource) {
         themeColorSource.value = source
-        appPrefs.edit().putString(PREF_THEME_COLOR_SOURCE, source.storageValue).apply()
+        userPreferencesRepository.setThemeColorSource(source)
     }
 
     fun setUpdateChannel(channel: UpdateChannel) {
         updateChannel.value = channel
-        appPrefs.edit().putString(PREF_CHANNEL, channel.storageValue).apply()
+        userPreferencesRepository.setUpdateChannel(channel)
     }
 
     fun maybeAutoCheckForUpdates() {
@@ -444,14 +407,6 @@ internal class UpdateManager(
                 isCheckingForUpdates.value = false
             }
         }
-    }
-
-    private fun resolveInitialThemeMode(): ThemeMode {
-        return ThemeMode.fromStorage(appPrefs.getString(PREF_THEME_MODE, null))
-    }
-
-    private fun resolveInitialThemeColorSource(): ThemeColorSource {
-        return ThemeColorSource.fromStorage(appPrefs.getString(PREF_THEME_COLOR_SOURCE, null))
     }
 
     private fun ensureFirstLaunchTimestamp(): Long {

@@ -60,7 +60,9 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
-import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.data.repository.DefaultPersonaPresetRepository
+import io.github.sanitised.st.data.repository.PersonaPresetRepository
+import io.github.sanitised.st.data.tavernApi
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
 
@@ -113,6 +115,7 @@ fun STBackgroundsScreen(
     onShowMessage: (String) -> Unit = {},
     chatBackground: String = "",
     onChatBackgroundChanged: (String) -> Unit = {},
+    personaPresetRepository: PersonaPresetRepository = remember(baseUrl) { DefaultPersonaPresetRepository { tavernApi(baseUrl) } },
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -138,10 +141,10 @@ fun STBackgroundsScreen(
         }
     }
 
-    LaunchedEffect(running, baseUrl, reloadKey) {
+    LaunchedEffect(running, baseUrl, reloadKey, personaPresetRepository) {
         if (!running) { loading = false; return@LaunchedEffect }
         loading = true
-        runCatching { TavernCoreClient(baseUrl).listBackgrounds() }
+        runCatching { personaPresetRepository.listBackgrounds() }
             .onSuccess { backgrounds = it }
             .onFailure { onShowMessage(it.message ?: "背景加载失败") }
         loading = false
@@ -254,14 +257,14 @@ fun STBackgroundsScreen(
                     runCatching {
                         val dot = bg.lastIndexOf('.')
                         val newName = if (dot > 0) bg.substring(0, dot) + "_1" + bg.substring(dot) else bg + "_1"
-                        TavernCoreClient(baseUrl).renameBackground(bg, newName)
+                        personaPresetRepository.renameBackground(bg, newName)
                     }.onSuccess { onShowMessage("已重命名"); reloadKey++ }.onFailure { onShowMessage(it.message ?: "重命名失败") }
                 }
             }
             P0SheetItem(Icons.Filled.Delete, "删除", danger = true) {
                 actionsFor = null
                 scope.launch {
-                    runCatching { TavernCoreClient(baseUrl).deleteBackground(bg) }
+                    runCatching { personaPresetRepository.deleteBackground(bg) }
                         .onSuccess { onShowMessage("已删除「$bg」"); reloadKey++ }
                         .onFailure { onShowMessage(it.message ?: "删除失败") }
                 }
@@ -300,6 +303,7 @@ fun STChatBehaviorScreen(
     baseUrl: String,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit = {},
+    personaPresetRepository: PersonaPresetRepository = remember(baseUrl) { DefaultPersonaPresetRepository { tavernApi(baseUrl) } },
 ) {
     BackHandler(onBack = onBack)
     val running = status.state == NodeState.RUNNING
@@ -309,11 +313,11 @@ fun STChatBehaviorScreen(
     val pu = remember { mutableStateMapOf<String, Any?>() }
     val autoCont = remember { mutableStateMapOf<String, Any?>() }
 
-    LaunchedEffect(running, baseUrl) {
+    LaunchedEffect(running, baseUrl, personaPresetRepository) {
         if (!running) { loading = false; return@LaunchedEffect }
         loading = true
         runCatching {
-            val s = TavernCoreClient(baseUrl).getSettings()
+            val s = personaPresetRepository.getSettings()
             rawSettings = s; pu.clear(); pu.putAll(pmap(s["power_user"]))
             autoCont.clear(); autoCont.putAll(pmap(pu["auto_continue"]))
         }.onFailure { onShowMessage(it.message ?: "设置加载失败") }
@@ -331,7 +335,7 @@ fun STChatBehaviorScreen(
                 pu.forEach { (k, v) -> puOut[k] = v }
                 puOut["auto_continue"] = autoCont.toMap()
                 out["power_user"] = puOut
-                TavernCoreClient(baseUrl).saveSettings(out)
+                personaPresetRepository.saveSettings(out)
                 rawSettings = out
             }.onSuccess { onShowMessage("聊天设置已保存"); onBack() }.onFailure { onShowMessage(it.message ?: "保存失败") }
         }

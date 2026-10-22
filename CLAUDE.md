@@ -34,23 +34,28 @@ git submodule update --init --recursive
 
 **单模块 Gradle 项目**（`app/`）。包名：`io.github.sanitised.st`。当前架构详版见 `docs/architecture.md`。
 
-### 核心运行时
+### 核心运行时与依赖注入
 
+- **Hilt 依赖注入**（`di/AppModule.kt`）：`@HiltAndroidApp` 标注 `STApplication`，`@AndroidEntryPoint` 标注 `MainActivity`，单例提供 `AppPaths`、`LocalTavernClientProvider`、`UserPreferencesRepository` 以及各领域 Repository。
 - `NodeService` — foreground service，启动 Node.js 进程运行 SillyTavern，通过 `NodeStatusListener` 回调通信。
 - `NodePayload` — 首次运行时从 APK assets 解压 Node 二进制和 SillyTavern 源码。管理自定义 ST 安装（GitHub 仓库/分支/ZIP）。
-- `STApplication` / `AppContainer` — 应用级依赖入口，统一持有本地 API provider 与 Repository。
-- `MainViewModel` — 中心 ViewModel，委托给 `BackupManager`、`CustomInstallManager`、`UpdateManager`、`BatteryPromptManager`。Manager 状态以只读 `State` 暴露，用户提示使用可确认消费的 `StateFlow`。
+- `STApplication` / `AppContainer` — 应用级依赖容器，统一持有本地 API provider（`tavernApi` / `tavernApiForPort`）与各领域 Repository。
+- `MainViewModel` — `@HiltViewModel` 中心 ViewModel，委托给 `BackupManager`、`CustomInstallManager`、`UpdateManager`、`BatteryPromptManager`。应用级与界面级偏好统一委托给 `data/preferences/UserPreferencesRepository`。
 - `AppPaths` — 所有文件路径的单一来源（`stDir`、`dataDir`、`configDir` 等）。
 
 ### 导航与 UI
 
-`MainActivity` 托管 `NavHost`，路由定义在 `ui/navigation/STNavGraph.kt`（`STRoutes`），导航外壳是抽屉（`STNavigationScaffold`，无底栏）。主要页面：
+`MainActivity`（精简至约 470 行，仅负责生命周期、Service 绑定、权限与系统跳转）托管 `STAppChrome`、`STAppNavHost`、`STAppDialogs`。导航与外壳拆分在 `ui/navigation/`：
+- `STNavGraph.kt`（`STRoutes` 路由常量与构建器）
+- `STAppChrome.kt`（抽屉菜单项、顶栏、导航安全扩展函数）
+- `STAppNavHost.kt`（按业务域拆分为 `homeAndChatGraph`、`characterGraph`、`worldInfoAndToolsGraph`、`settingsAndSystemGraph` 四个子图扩展）
+- `STAppDialogs.kt`（全局确认与更新弹窗）
 
+主要页面（位于 `ui/screens/`，按单一职责独立成文件）：
 - **Home** (`chats/home`) — 对话列表：单聊 + 群聊按最后更新混排，筛选 chips（收藏/进行中/群聊/检查点）、未读打点（`ChatSeenStore`）。位于 `ui/screens/STHomeScreen.kt`。
 - **Chat** (`chat`) — `chat/NativeChatScreen`，纯原生 Compose 聊天界面（无 WebView）。
-- **Characters** (`characters`) — 原生 Compose 角色管理：列表、详情、编辑。位于 `ui/screens/STCharacterScreens.kt`。
-- **Tools** (`tools`) — 工具页面（世界书、预设、API 连接等）。位于 `ui/screens/` 下。
-- **Settings** (`me`) — 设置页面。位于 `ui/screens/STSystemScreens.kt`。
+- **Characters** (`characters`) — 原生 Compose 角色管理：列表、详情、编辑（`STCharacterScreens.kt`、`STCharacterEditScreens.kt`、`CharacterViewModels.kt`）。
+- **Tools & Settings** — 单一职责屏幕文件：`STWorldInfoScreen.kt`、`STWorldBookScreens.kt`、`STPersonaScreen.kt`、`STAISettingsScreen.kt`、`STApiConnectionScreens.kt`、`STProviderDetailScreen.kt`、`STSecretsScreen.kt`、`STExtensionsScreen.kt`、`STAuthorNoteCFGScreen.kt`、`STMemoryScreen.kt`、`STAppearanceScreen.kt`、`STAppearanceDeepScreens.kt`、`STMeScreen.kt`、`STStCoreScreen.kt`，共享组件位于 `STPremiumComponents.kt` 与 `STSystemSharedComponents.kt`。
 
 ### 原生聊天架构
 
@@ -67,11 +72,24 @@ git submodule update --init --recursive
 - **群聊 UI**：`GroupChatScreen`、`GroupMembersScreen`、`GroupSettingsScreen`、`NewGroupScreen`。
 - **架构守卫**：`NativeRuntimeExitArchitectureTest` 禁止 WebView 运行时代码回流，改聊天架构前先看它。
 
-### 数据访问 — 双路径
+### 数据访问 — 双路径与领域 Repository
 
-- **API 路径**：`api/TavernCoreApi.kt` 中的 `TavernCoreClient`，通过 OkHttp 调用本地 SillyTavern HTTP API。JSON 编解码用 `api/StJson.kt`（基于 kotlinx.serialization，不用 Gson/Moshi），解析结果保持旧 SnakeYAML 路径的宽松形态（`Map<String, Any?>` / `List<Any?>` / 基本类型），序列化经 `jsonObject()`、`jsonValue()` 委托给 `StJson.encode*`。CSRF token 自动获取。
+- **API 路径（按领域拆分）**：
+  - `api/TavernCoreApi.kt`：`TavernCoreApi` 接口定义与 `TavernCoreClient` 门面。
+  - `api/TavernHttpTransport.kt`：OkHttp 传输、CSRF token 自动获取、CookieJar 与 JSON 辅助。
+  - `api/TavernCharacterEndpoints.kt`：角色 CRUD、头像上传、聊天记录 JSONL 接口实现。
+  - `api/TavernWorldPersonaEndpoints.kt`：世界书 (WorldInfo) 与人设 (Persona) 接口实现。
+  - `api/TavernPresetSecretEndpoints.kt`：预设、密钥、系统设置、连接配置、快照备份、背景图与群聊接口实现。
+  - JSON 编解码用 `api/StJson.kt`（基于 kotlinx.serialization，不用 Gson/Moshi）。
 - **本地文件路径**：`data/LocalTavernLibraryReader` 直接读取 `data/<user>/` 下的角色 PNG 和聊天 JSONL，作为服务未运行时的 fallback。
-- **角色 Repository**：`data/CharacterRepository.kt` 封装角色列表、详情、收藏、创建和导入；角色页面只通过对应的 StateFlow ViewModel 调用它。
+- **领域 Repository 与偏好仓库**：
+  - `data/preferences/UserPreferencesRepository.kt`：统一管理全部 14 项用户与界面偏好（暴露 `StateFlow<UserPreferences>`）。
+  - `data/CharacterRepository.kt`：角色列表、详情、编辑、创建、导入及角色历史聊天管理。
+  - `data/repository/WorldInfoRepository.kt`：世界书 CRUD 与全局世界书设置。
+  - `data/repository/ConnectionRepository.kt`：API 连接配置、密钥管理、模型拉取、连通性测试与设置快照。
+  - `data/repository/PersonaPresetRepository.kt`：人设、预设库、标签、背景图与通用文件上传。
+  - `data/repository/GroupChatRepository.kt`：群聊列表、创建、编辑、删除与群聊 JSONL 读写。
+- **架构边界守卫**：`ui/ArchitectureBoundaryContractTest.kt` 严禁 `ui/` 与 `chat/` 层直接实例化 `TavernCoreClient(`，并守护 `MainActivity.kt`、`TavernCoreApi.kt` 行数上限及防止巨型屏幕文件回流。
 
 ### 主题
 

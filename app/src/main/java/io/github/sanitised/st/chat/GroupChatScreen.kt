@@ -55,7 +55,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sanitised.st.api.GroupSummary
-import io.github.sanitised.st.api.TavernCoreClient
+import io.github.sanitised.st.data.tavernApi
 import io.github.sanitised.st.chat.engine.GroupReply
 import io.github.sanitised.st.chat.ui.ChatDateChip
 import io.github.sanitised.st.chat.engine.NativeGroupGenerator
@@ -129,7 +129,7 @@ fun GroupChatScreen(
     var loadError by remember { mutableStateOf<String?>(null) }
 
     suspend fun reload() {
-        val client = TavernCoreClient(baseUrl)
+        val client = tavernApi(baseUrl)
         val group = runCatching { client.listGroups().find { it.id == groupId } }.getOrNull()
         if (group == null) {
             loadError = "找不到群聊"
@@ -217,7 +217,7 @@ fun GroupChatScreen(
             }
     }
 
-    val generator = remember { NativeGroupGenerator { TavernCoreClient(baseUrl) } }
+    val generator = remember { NativeGroupGenerator { tavernApi(baseUrl) } }
     var isGenerating by remember { mutableStateOf(false) }
     // Serializes every read-modify-write of the group JSONL so the user-message
     // save and the generation save can never interleave and drop each other.
@@ -240,7 +240,7 @@ fun GroupChatScreen(
         pendingUserSave = scope.launch {
             runCatching {
                 saveMutex.withLock {
-                    val client = TavernCoreClient(baseUrl)
+                    val client = tavernApi(baseUrl)
                     val chat = client.getGroupChatJsonl(activeChatId)
                     ensureGroupHeader(chat, userName, groupState.value.name, date)
                     chat.add(groupUserMessageMap(userName, trimmed, date))
@@ -311,7 +311,7 @@ fun GroupChatScreen(
                 } else {
                     val date = groupSendDate()
                     saveMutex.withLock {
-                        val client = TavernCoreClient(baseUrl)
+                        val client = tavernApi(baseUrl)
                         val chat = client.getGroupChatJsonl(activeChatId)
                         ensureGroupHeader(chat, userName, groupState.value.name, date)
                         chat.add(groupAssistantMessageMap(reply, date))
@@ -337,7 +337,7 @@ fun GroupChatScreen(
         scope.launch {
             runCatching {
                 saveMutex.withLock {
-                    val client = TavernCoreClient(baseUrl)
+                    val client = tavernApi(baseUrl)
                     val chat = client.getGroupChatJsonl(activeChatId)
                     var seen = -1
                     for (j in chat.indices) {
@@ -591,7 +591,7 @@ fun GroupChatScreen(
                     if (!isGenerating) {
                         scope.launch {
                             val newId = System.currentTimeMillis().toString()
-                            val client = TavernCoreClient(baseUrl)
+                            val client = tavernApi(baseUrl)
                             val group = runCatching { client.listGroups().find { it.id == groupId } }.getOrNull()
                             if (group != null) {
                                 val updated = group.copy(chatId = newId, chats = group.chats + newId)
