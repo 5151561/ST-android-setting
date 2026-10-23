@@ -108,4 +108,34 @@ class HomeChatItemsTest {
     fun seenKeyNormalizesJsonlSuffix() {
         assertEquals(chatSeenKey("Aria.png", "a.jsonl"), chatSeenKey("Aria.png", "a"))
     }
+
+    @Test
+    fun resolvesCharacterIdAndChatFileWhenRecentChatUsesDisplayName() {
+        val snapshot = LocalTavernLibrarySnapshot(
+            characters = listOf(
+                CharacterSummary(
+                    id = "default_Seraphina.png",
+                    name = "Seraphina",
+                    avatarUrl = "file:///data/characters/default_Seraphina.png",
+                    isFavorite = true
+                )
+            ),
+            recentChats = listOf(
+                ChatSummary(
+                    id = "Seraphina/2026-10-23@18h00m00s.jsonl",
+                    characterId = "Seraphina.png",
+                    characterName = "Seraphina",
+                    lastMessage = "Welcome back!",
+                    lastUpdated = 500L
+                )
+            )
+        )
+        val item = buildHomeChatItems(snapshot).single()
+        assertEquals("default_Seraphina/2026-10-23@18h00m00s", item.id)
+        assertEquals("default_Seraphina.png", item.characterId)
+        assertEquals("2026-10-23@18h00m00s", item.chatFile)
+        assertEquals("Seraphina", item.title)
+        assertEquals("file:///data/characters/default_Seraphina.png", item.avatarUrl)
+        assertTrue(item.favorite)
+    }
 }

@@ -17,32 +17,33 @@ class NativeChatLoader(
     ): Boolean {
         val client = clientProvider()
         val character = client.getCharacter(avatar)
+        val resolvedAvatar = character.id.ifBlank { avatar }
         val explicitChatFile = chatFile?.takeIf { it.isNotBlank() }
         if (explicitChatFile != null) {
-            val tail = client.getChatTailJsonl(avatar, explicitChatFile, maxLines)
+            val tail = client.getChatTailJsonl(resolvedAvatar, explicitChatFile, maxLines)
             if (tail.header == null && tail.messages.isEmpty()) return false
-            applyTailSnapshot(avatar, character, explicitChatFile, tail)
+            applyTailSnapshot(resolvedAvatar, character, explicitChatFile, tail)
             return true
         }
 
         val defaultChat = character.chat.takeIf { it.isNotBlank() }
         if (defaultChat != null) {
-            val tail = client.getChatTailJsonl(avatar, defaultChat, maxLines)
+            val tail = client.getChatTailJsonl(resolvedAvatar, defaultChat, maxLines)
             if (tail.header != null || tail.messages.isNotEmpty()) {
-                applyTailSnapshot(avatar, character, defaultChat, tail)
+                applyTailSnapshot(resolvedAvatar, character, defaultChat, tail)
                 return true
             }
         }
 
-        val existingChats = runCatching { client.listCharacterChats(avatar) }
+        val existingChats = runCatching { client.listCharacterChats(resolvedAvatar) }
             .getOrDefault(emptyList())
             .filterNot { isNativeChatBackupName(it.fileName) || isNativeChatBackupName(it.id) }
         for (summary in existingChats) {
             val candidate = summary.fileName.ifBlank { summary.id }.takeIf { it.isNotBlank() } ?: continue
             if (candidate == defaultChat) continue
-            val tail = client.getChatTailJsonl(avatar, candidate, maxLines)
+            val tail = client.getChatTailJsonl(resolvedAvatar, candidate, maxLines)
             if (tail.header != null || tail.messages.isNotEmpty()) {
-                applyTailSnapshot(avatar, character, candidate, tail)
+                applyTailSnapshot(resolvedAvatar, character, candidate, tail)
                 return true
             }
         }

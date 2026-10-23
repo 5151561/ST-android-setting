@@ -298,6 +298,36 @@ class TauriTavernJniClientContractTest {
             )
             assertEquals(listOf("Msg 1", "Msg 2"), before.messages.map { it["mes"] })
             assertFalse(before.hasMoreBefore)
+
+            // Verify listRecentChats maps Rust ChatSearchResultDto accurately and can be opened via NativeChatLoader
+            val recentChats = client.listRecentChats()
+            val recentForSeraphina = recentChats.firstOrNull {
+                it.id == "default_Seraphina/$chatFile"
+            } ?: error("Expected recent chat for default_Seraphina/$chatFile, got: $recentChats")
+            assertEquals("default_Seraphina.png", recentForSeraphina.characterId)
+            assertEquals("Seraphina", recentForSeraphina.characterName)
+            assertEquals("Msg 4", recentForSeraphina.lastMessage)
+            assertTrue(recentForSeraphina.lastUpdated > 0L)
+
+            val chatItem = io.github.sanitised.st.ui.screens.buildHomeChatItems(
+                io.github.sanitised.st.ui.screens.LocalTavernLibrarySnapshot(
+                    characters = characters,
+                    recentChats = recentChats
+                )
+            ).first { it.chatFile == chatFile }
+            assertEquals("default_Seraphina.png", chatItem.characterId)
+            assertEquals(chatFile, chatItem.chatFile)
+
+            val store = io.github.sanitised.st.chat.ChatStore()
+            val loader = io.github.sanitised.st.chat.NativeChatLoader(store) { client }
+            val opened = loader.openCharacter(
+                avatar = chatItem.characterId,
+                chatFile = chatItem.chatFile
+            )
+            assertTrue("Expected NativeChatLoader.openCharacter to succeed from chat list item", opened)
+            assertEquals("default_Seraphina.png", store.avatarUrl)
+            assertEquals(chatFile, store.chatFile)
+            assertEquals(4, store.messages.size)
         } finally {
             tempRoot.deleteRecursively()
         }

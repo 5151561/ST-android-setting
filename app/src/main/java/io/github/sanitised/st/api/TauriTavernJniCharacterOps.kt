@@ -21,16 +21,26 @@ internal suspend fun TauriTavernJniClient.doListCharacters(): List<CharacterSumm
 }
 
 internal suspend fun TauriTavernJniClient.doGetCharacter(avatar: String): CharacterDetail {
-    val item = invokeAsMap(
-        "character_get",
-        mapOf(
-            "avatar" to avatar,
-            "name" to avatar.removeSuffix(".png"),
-            "avatarUrl" to avatar,
-            "avatar_url" to avatar
-        )
+    val normalizedAvatar = avatar.trim()
+    val requestPayload = fun(target: String) = mapOf(
+        "avatar" to target,
+        "name" to target.removeSuffix(".png"),
+        "avatarUrl" to target,
+        "avatar_url" to target
     )
-    val base = item.toCharacterDetail(fallbackAvatar = avatar)
+    var resolvedAvatar = normalizedAvatar
+    val item = runCatching {
+        invokeAsMap("character_get", requestPayload(normalizedAvatar))
+    }.recoverCatching { originalError ->
+        val matched = runCatching { doListCharacters() }
+            .getOrDefault(emptyList())
+            .findMatchingCharacter(normalizedAvatar)
+            ?.takeIf { !it.id.equals(normalizedAvatar, ignoreCase = true) }
+            ?: throw originalError
+        resolvedAvatar = matched.id
+        invokeAsMap("character_get", requestPayload(matched.id))
+    }.getOrThrow()
+    val base = item.toCharacterDetail(fallbackAvatar = resolvedAvatar)
     val topExt = item.mapValue("extensions")
     val topDepth = topExt.mapValue("depth_prompt")
     return base.copy(
@@ -699,23 +709,88 @@ internal suspend fun TauriTavernJniClient.doGetChatBeforeJsonl(
     )
 }
 
+internal fun List<CharacterSummary>.findMatchingCharacter(vararg candidates: String): CharacterSummary? {
+    val cleanCandidates = candidates
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    if (cleanCandidates.isEmpty() || isEmpty()) return null
+    for (candidate in cleanCandidates) {
+        val candidateStem = candidate.removeSuffix(".png").trim()
+        firstOrNull {
+            it.id.equals(candidate, ignoreCase = true) ||
+                it.id.removeSuffix(".png").equals(candidateStem, ignoreCase = true)
+        }?.let { return it }
+    }
+    for (candidate in cleanCandidates) {
+        val candidateStem = candidate.removeSuffix(".png").trim()
+        firstOrNull {
+            it.name.equals(candidate, ignoreCase = true) ||
+                it.name.equals(candidateStem, ignoreCase = true)
+        }?.let { return it }
+    }
+    return null
+}
+
 internal suspend fun TauriTavernJniClient.doListRecentChats(): List<ChatSummary> {
     val items = invokeAsListOfMaps("chats_recent")
+    if (items.isEmpty()) return emptyList()
+    val characters = runCatching { doListCharacters() }.getOrDefault(emptyList())
     return items.mapNotNull { item ->
-        val fileName = item.stringAnyValue("file_name")
+        val rawFileName = item.stringAnyValue("file_name")
             .ifBlank { item.stringAnyValue("fileName") }
             .ifBlank { item.stringAnyValue("id") }
-        if (fileName.isBlank()) return@mapNotNull null
-        val avatar = item.stringAnyValue("avatar")
-        val charName = item.stringAnyValue("character_name")
-            .ifBlank { avatar.removeSuffix(".png") }
+            .trim()
+        if (rawFileName.isBlank()) return@mapNotNull null
+        val chatFileStem = rawFileName
+            .substringAfterLast('/')
+            .removeSuffix(".jsonl")
+            .trim()
+        if (chatFileStem.isBlank() || io.github.sanitised.st.chat.isNativeChatBackupName(chatFileStem)) {
+            return@mapNotNull null
+        }
+        val rawAvatar = item.stringAnyValue("avatar")
+            .ifBlank { item.stringAnyValue("avatar_url") }
+            .ifBlank { item.stringAnyValue("characterId") }
+            .trim()
+        val dirPrefix = rawFileName.substringBefore('/', missingDelimiterValue = "").trim()
+        val rawCharName = item.stringAnyValue("character_name")
+            .ifBlank { item.stringAnyValue("characterName") }
+            .ifBlank { dirPrefix }
+            .trim()
+        val matchedCharacter = characters.findMatchingCharacter(rawAvatar, dirPrefix, rawCharName)
+        val resolvedCharacterId = when {
+            matchedCharacter != null && matchedCharacter.id.isNotBlank() -> matchedCharacter.id
+            rawAvatar.isNotBlank() -> if (rawAvatar.endsWith(".png", ignoreCase = true)) rawAvatar else "$rawAvatar.png"
+            rawCharName.isNotBlank() -> {
+                if (rawCharName.endsWith(".png", ignoreCase = true)) rawCharName else "$rawCharName.png"
+            }
+            else -> ""
+        }
+        val characterStem = resolvedCharacterId.removeSuffix(".png").ifBlank {
+            rawCharName.removeSuffix(".png")
+        }
+        val resolvedCharName = matchedCharacter?.name?.takeIf { it.isNotBlank() }
+            ?: rawCharName.removeSuffix(".png").ifBlank { characterStem }
+        val resolvedId = if (characterStem.isNotBlank()) {
+            "$characterStem/$chatFileStem"
+        } else {
+            chatFileStem
+        }
+        val resolvedAvatarUrl = matchedCharacter?.avatarUrl?.takeIf { it.isNotBlank() }
+            ?: resolvedCharacterId.ifBlank { null }
+        val preview = item.stringAnyValue("preview")
+            .ifBlank { item.stringAnyValue("mes") }
+            .ifBlank { item.stringAnyValue("last_mes") }
+        val lastUpdated = item.longAnyValue("date")
+            .takeIf { it > 0L }
+            ?: item.longAnyValue("last_mes")
         ChatSummary(
-            id = fileName,
-            characterId = avatar,
-            characterName = charName,
-            avatarUrl = avatar.ifBlank { null },
-            lastMessage = item.stringAnyValue("mes").ifBlank { item.stringAnyValue("last_mes") },
-            lastUpdated = item.longAnyValue("last_mes")
+            id = resolvedId,
+            characterId = resolvedCharacterId,
+            characterName = resolvedCharName,
+            avatarUrl = resolvedAvatarUrl,
+            lastMessage = preview,
+            lastUpdated = lastUpdated
         )
     }
 }

@@ -8,6 +8,7 @@ import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.api.SecretProviderState
+import io.github.sanitised.st.api.findMatchingCharacter
 
 enum class STChatKind {
     DIRECT,
@@ -128,7 +129,9 @@ data class STDrawerState(
 }
 
 fun ChatSummary.toSTChatItem(): STChatItem {
-    val parsedChatFile = id.substringAfter('/', missingDelimiterValue = "").ifBlank { null }
+    val parsedChatFile = id.substringAfter('/', missingDelimiterValue = id)
+        .removeSuffix(".jsonl")
+        .ifBlank { null }
     return STChatItem(
         id = id,
         characterId = characterId,
@@ -141,6 +144,29 @@ fun ChatSummary.toSTChatItem(): STChatItem {
         favorite = isPinned,
         kind = STChatKind.DIRECT,
         isCheckpoint = parsedChatFile?.contains("checkpoint", ignoreCase = true) == true
+    )
+}
+
+internal fun ChatSummary.resolveWithCharacters(characters: List<CharacterSummary>): ChatSummary {
+    val dirPrefix = id.substringBefore('/', missingDelimiterValue = "")
+    val matched = characters.findMatchingCharacter(characterId, dirPrefix, characterName)
+        ?: return this
+    val chatFileStem = id.substringAfter('/', missingDelimiterValue = id)
+        .removeSuffix(".jsonl")
+        .trim()
+    val canonicalId = if (chatFileStem.isNotBlank() && matched.id.isNotBlank()) {
+        "${matched.id.removeSuffix(".png")}/$chatFileStem"
+    } else {
+        id
+    }
+    val preferredAvatarUrl = avatarUrl?.takeIf {
+        it.isNotBlank() && !it.equals(characterId, ignoreCase = true)
+    } ?: matched.avatarUrl?.takeIf { it.isNotBlank() } ?: matched.id
+    return copy(
+        id = canonicalId,
+        characterId = matched.id.ifBlank { characterId },
+        characterName = matched.name.ifBlank { characterName },
+        avatarUrl = preferredAvatarUrl.ifBlank { null }
     )
 }
 
@@ -191,7 +217,8 @@ fun buildHomeChatItems(
         )
     }
 
-    val chatEntries = snapshot.recentChats.map { chat ->
+    val chatEntries = snapshot.recentChats.map { rawChat ->
+        val chat = rawChat.resolveWithCharacters(snapshot.characters)
         val item = chat.toSTChatItem()
         val decorated = decorate(item, chatSeenKey(chat.characterId, item.chatFile), chat.lastUpdated)
         chat.lastUpdated to decorated.copy(

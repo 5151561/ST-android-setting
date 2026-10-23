@@ -43,8 +43,14 @@ fun rememberLocalTavernLibrarySnapshot(
             if (serverRunning) {
                 runCatching {
                     val client = clientProvider()
-                    val characters = client.listCharacters().ifEmpty { reader.listCharacters() }
-                    val recentChats = client.listRecentChats().ifEmpty { reader.listRecentChats(RECENT_CHAT_LIMIT) }
+                    val localCharacters = reader.listCharacters()
+                    val characters = client.listCharacters()
+                        .ifEmpty { localCharacters }
+                        .withLocalAvatarUrls(localCharacters)
+                    val localRecentChats = reader.listRecentChats(RECENT_CHAT_LIMIT)
+                    val recentChats = client.listRecentChats()
+                        .ifEmpty { localRecentChats }
+                        .resolveRecentChats(characters = characters, localChats = localRecentChats)
                     val groups = runCatching { client.listGroups() }
                         .getOrDefault(emptyList())
                         .ifEmpty { reader.listGroups(GROUP_LIMIT) }
@@ -64,11 +70,64 @@ fun rememberLocalTavernLibrarySnapshot(
 }
 
 private fun localSnapshot(reader: LocalTavernLibraryReader): LocalTavernLibrarySnapshot {
+    val characters = reader.listCharacters()
+    val recentChats = reader.listRecentChats(RECENT_CHAT_LIMIT)
+        .resolveRecentChats(characters = characters, localChats = emptyList())
     return LocalTavernLibrarySnapshot(
-        characters = reader.listCharacters(),
-        recentChats = reader.listRecentChats(RECENT_CHAT_LIMIT),
+        characters = characters,
+        recentChats = recentChats,
         groups = reader.listGroups(GROUP_LIMIT)
     )
+}
+
+private fun List<CharacterSummary>.withLocalAvatarUrls(
+    localCharacters: List<CharacterSummary>
+): List<CharacterSummary> {
+    if (localCharacters.isEmpty()) return this
+    val localById = localCharacters.associateBy { it.id.lowercase() }
+    return map { character ->
+        val localAvatar = localById[character.id.lowercase()]?.avatarUrl
+        if (!localAvatar.isNullOrBlank() && (character.avatarUrl.isNullOrBlank() || character.avatarUrl == character.id)) {
+            character.copy(avatarUrl = localAvatar)
+        } else {
+            character
+        }
+    }
+}
+
+private fun List<ChatSummary>.resolveRecentChats(
+    characters: List<CharacterSummary>,
+    localChats: List<ChatSummary>
+): List<ChatSummary> {
+    return map { chat ->
+        val resolved = chat.resolveWithCharacters(characters)
+        val chatFileStem = resolved.id.substringAfter('/', missingDelimiterValue = resolved.id)
+            .removeSuffix(".jsonl")
+        val matchingLocal = localChats.firstOrNull { local ->
+            val localFileStem = local.id.substringAfter('/', missingDelimiterValue = local.id)
+                .removeSuffix(".jsonl")
+            localFileStem == chatFileStem && (
+                local.characterId.equals(resolved.characterId, ignoreCase = true) ||
+                    local.characterName.equals(resolved.characterName, ignoreCase = true)
+                )
+        } ?: localChats.singleOrNull { local ->
+            val localFileStem = local.id.substringAfter('/', missingDelimiterValue = local.id)
+                .removeSuffix(".jsonl")
+            localFileStem == chatFileStem
+        }
+        if (matchingLocal != null) {
+            val reResolved = resolved.copy(
+                id = if (resolved.characterId.isBlank() || !resolved.id.contains('/')) matchingLocal.id else resolved.id,
+                characterId = resolved.characterId.takeIf {
+                    it.isNotBlank() && characters.any { ch -> ch.id.equals(it, ignoreCase = true) }
+                } ?: matchingLocal.characterId,
+                avatarUrl = matchingLocal.avatarUrl ?: resolved.avatarUrl
+            ).resolveWithCharacters(characters)
+            reResolved.copy(avatarUrl = matchingLocal.avatarUrl ?: reResolved.avatarUrl)
+        } else {
+            resolved
+        }
+    }
 }
 
 private fun List<GroupSummary>.withLocalPreviews(reader: LocalTavernLibraryReader): List<GroupSummary> {
