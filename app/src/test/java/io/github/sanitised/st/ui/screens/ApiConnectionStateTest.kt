@@ -116,13 +116,90 @@ class ApiConnectionStateTest {
         assertEquals(listOf("api_key_claude"), apiConnectionProviderForId("claude")?.secretKeys)
         assertEquals(listOf("api_key_makersuite"), apiConnectionProviderForId("makersuite")?.secretKeys)
         assertEquals(listOf("api_key_makersuite"), apiConnectionProviderForId("googleAi")?.secretKeys)
+        assertEquals(
+            listOf("api_key_vertexai", "vertexai_service_account_json"),
+            apiConnectionProviderForId("vertexai")?.secretKeys
+        )
         assertEquals(listOf("api_key_groq"), apiConnectionProviderForId("groq")?.secretKeys)
         assertEquals(listOf("api_key_moonshot"), apiConnectionProviderForId("kimi")?.secretKeys)
         assertEquals(listOf("api_key_siliconflow"), apiConnectionProviderForId("siliconflow")?.secretKeys)
         assertEquals(listOf("api_key_zai"), apiConnectionProviderForId("glm")?.secretKeys)
         assertEquals(listOf("api_key_minimax"), apiConnectionProviderForId("minimax")?.secretKeys)
+        assertEquals(listOf("api_key_aws_bedrock"), apiConnectionProviderForId("aws_bedrock")?.secretKeys)
+        assertEquals(listOf("api_key_workers_ai"), apiConnectionProviderForId("workers_ai")?.secretKeys)
+        assertEquals(listOf("api_key_opencode"), apiConnectionProviderForId("opencode")?.secretKeys)
+        assertEquals(listOf("api_key_nanogpt"), apiConnectionProviderForId("nanogpt")?.secretKeys)
+        assertEquals(listOf("api_key_chutes"), apiConnectionProviderForId("chutes")?.secretKeys)
+        assertEquals(listOf("api_key_pollinations"), apiConnectionProviderForId("pollinations")?.secretKeys)
         assertEquals(listOf("api_key_custom"), apiConnectionProviderForId("custom")?.secretKeys)
         assertNull(apiConnectionProviderForId("missing-provider"))
+    }
+
+    @Test
+    fun chatCompletionProvidersAlignWithAllTwentyTauriTavernSources() {
+        val ccProviders = apiConnectionProvidersForMode("cc")
+        assertEquals(20, ccProviders.size)
+        val sources = ccProviders.mapNotNull { it.sourceValue }.toSet()
+        assertEquals(
+            setOf(
+                "openai",
+                "claude",
+                "makersuite",
+                "vertexai",
+                "deepseek",
+                "openrouter",
+                "xai",
+                "groq",
+                "moonshot",
+                "siliconflow",
+                "zai",
+                "minimax",
+                "cohere",
+                "aws_bedrock",
+                "workers_ai",
+                "opencode",
+                "nanogpt",
+                "chutes",
+                "pollinations",
+                "custom"
+            ),
+            sources
+        )
+    }
+
+    @Test
+    fun vertexAiRecognizesEitherExpressApiKeyOrServiceAccountJsonSecret() {
+        val stateWithServiceAccount = buildApiConnectionUiState(
+            settings = mapOf(
+                "main_api" to "openai",
+                "oai_settings" to mapOf(
+                    "chat_completion_source" to "vertexai",
+                    "vertexai_model" to "gemini-2.5-pro",
+                    "vertexai_auth_mode" to "full",
+                    "vertexai_region" to "global"
+                )
+            ),
+            secrets = listOf(
+                SecretProviderState("api_key_vertexai", "Google Vertex AI (Express Key)"),
+                SecretProviderState(
+                    key = "vertexai_service_account_json",
+                    label = "Google Vertex AI (Service Account JSON)",
+                    entries = listOf(
+                        SecretEntry(
+                            id = "sa-1",
+                            value = "***json***",
+                            label = "gcp-prod",
+                            active = true
+                        )
+                    )
+                )
+            ),
+            serviceRunning = true
+        )
+        assertEquals("vertexai", stateWithServiceAccount.activeProvider.id)
+        assertEquals("gemini-2.5-pro", stateWithServiceAccount.activeModel)
+        assertTrue(stateWithServiceAccount.activeProvider.hasConfiguredSecret)
+        assertEquals("gcp-prod", stateWithServiceAccount.activeProvider.activeSecretLabel)
     }
 
     @Test

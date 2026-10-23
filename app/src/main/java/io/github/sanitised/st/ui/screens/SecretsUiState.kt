@@ -42,9 +42,15 @@ internal fun secretProviderOptions(secrets: List<SecretProviderState>): List<Sec
     }
     val knownOptions = apiConnectionSecretProviderDefinitions().flatMap { provider ->
         provider.secretKeys.map { key ->
+            val label = when (key) {
+                "api_key_vertexai" -> "${provider.label} (API Key)"
+                "vertexai_service_account_json" -> "${provider.label} (Service Account JSON)"
+                "minimax_group_id" -> "${provider.label} (Group ID)"
+                else -> provider.label
+            }
             SecretProviderOption(
                 key = key,
-                label = provider.label
+                label = label
             )
         }
     }

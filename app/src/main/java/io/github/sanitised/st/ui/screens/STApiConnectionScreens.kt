@@ -364,7 +364,7 @@ fun STApiConnectionScreen(
                 PremiumSectionHeader(title = "本地与社区反代")
                 STListItem(
                     headline = "自定义 OpenAI 兼容反代 (Reverse Proxy)",
-                    supporting = "可自定义 API 根地址，完美适配自建 OneAPI / NewAPI",
+                    supporting = "可自定义 API 根地址与协议适配器，完美适配自建 OneAPI / NewAPI",
                     leading = { STTileIcon(Icons.Filled.Code) },
                     onClick = { onOpenProviderDetail("custom") }
                 )
@@ -373,20 +373,6 @@ fun STApiConnectionScreen(
                     supporting = "使用社区免费志愿贡献者的 GPU 算力",
                     leading = { STTileIcon(Icons.Filled.Face) },
                     onClick = { onOpenProviderDetail("koboldhorde") }
-                )
-            } else if (activeMode == "tc") {
-                PremiumSectionHeader(title = "当前后端的指令模版契约")
-                STListItem(
-                    headline = "自动匹配 Instruct 模板",
-                    supporting = "根据后端模型自动选择指令格式",
-                    leading = { STTileIcon(Icons.Filled.Code) },
-                    onClick = { onShowMessage("指令模板设置请在 AI 采样页中进行") }
-                )
-                STListItem(
-                    headline = "上下文拼接模板 (Context Templates)",
-                    supporting = "Default — 先行角色设定，后贴入场景描述",
-                    leading = { STTileIcon(Icons.Filled.Bookmarks) },
-                    onClick = { onShowMessage("上下文模板设置请在 AI 采样页中进行") }
                 )
             }
 
@@ -449,7 +435,7 @@ private fun STConnectionProfileCard(
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("当前连接预设 (Presets)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                Text("当前连接档案 (Connection Profiles)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 Text(selectedProfileName, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Surface(
@@ -826,24 +812,24 @@ private fun ConnectionProfileBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
-                    onClick = { /* New preset action */ },
+                    onClick = { /* New profile action */ },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                 ) {
                     Icon(Icons.Filled.Add, null)
                     Spacer(Modifier.width(6.dp))
-                    Text("新建预设", color = MaterialTheme.colorScheme.onSurface)
+                    Text("新建档案", color = MaterialTheme.colorScheme.onSurface)
                 }
                 Button(
-                    onClick = { /* Export preset action */ },
+                    onClick = { /* Export profile action */ },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f), contentColor = MaterialTheme.colorScheme.onSurface)
                 ) {
                     Icon(Icons.Filled.Download, null)
                     Spacer(Modifier.width(6.dp))
-                    Text("导出预设")
+                    Text("导出档案")
                 }
             }
         }

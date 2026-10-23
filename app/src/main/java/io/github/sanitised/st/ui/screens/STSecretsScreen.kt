@@ -382,8 +382,9 @@ fun STSecretsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    val isMultilineJson = provider.key == "vertexai_service_account_json"
                     Text(
-                        text = "新密钥字符串",
+                        text = if (isMultilineJson) "新 Service Account JSON" else "新密钥字符串",
                         style = MaterialTheme.typography.labelMedium,
                         color = STThemePrimary,
                         fontWeight = FontWeight.Bold
@@ -393,15 +394,24 @@ fun STSecretsScreen(
                     OutlinedTextField(
                         value = editingKeyText,
                         onValueChange = { editingKeyText = it },
-                        placeholder = { Text("在此粘贴密钥 (支持格式 sk-...)") },
-                        singleLine = true,
-                        visualTransformation = if (showKeyInSheet) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { showKeyInSheet = !showKeyInSheet }) {
-                                Icon(
-                                    imageVector = if (showKeyInSheet) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = null
-                                )
+                        placeholder = {
+                            Text(
+                                if (isMultilineJson) "在此粘贴完整的 Service Account JSON ({ \"type\": \"service_account\", ... })"
+                                else "在此粘贴密钥 (支持格式 sk-...)"
+                            )
+                        },
+                        singleLine = !isMultilineJson,
+                        minLines = if (isMultilineJson) 4 else 1,
+                        maxLines = if (isMultilineJson) 8 else 1,
+                        visualTransformation = if (isMultilineJson || showKeyInSheet) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = if (isMultilineJson) null else {
+                            {
+                                IconButton(onClick = { showKeyInSheet = !showKeyInSheet }) {
+                                    Icon(
+                                        imageVector = if (showKeyInSheet) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                        contentDescription = null
+                                    )
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -568,20 +578,35 @@ fun STSecretsScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    Text("API 密钥值 (Value)", style = MaterialTheme.typography.labelMedium, color = STThemePrimary, fontWeight = FontWeight.Bold)
+                    val isAddMultilineJson = customKeyProvider == "vertexai_service_account_json"
+                    Text(
+                        if (isAddMultilineJson) "Service Account JSON (Value)" else "API 密钥值 (Value)",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = STThemePrimary,
+                        fontWeight = FontWeight.Bold
+                    )
                     Spacer(modifier = Modifier.height(6.dp))
                     OutlinedTextField(
                         value = editingKeyText,
                         onValueChange = { editingKeyText = it },
-                        placeholder = { Text("在此粘贴你的密钥串") },
-                        singleLine = true,
-                        visualTransformation = if (showKeyInSheet) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { showKeyInSheet = !showKeyInSheet }) {
-                                Icon(
-                                    imageVector = if (showKeyInSheet) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = null
-                                )
+                        placeholder = {
+                            Text(
+                                if (isAddMultilineJson) "在此粘贴完整的 Service Account JSON ({ \"type\": \"service_account\", ... })"
+                                else "在此粘贴你的密钥串"
+                            )
+                        },
+                        singleLine = !isAddMultilineJson,
+                        minLines = if (isAddMultilineJson) 4 else 1,
+                        maxLines = if (isAddMultilineJson) 8 else 1,
+                        visualTransformation = if (isAddMultilineJson || showKeyInSheet) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = if (isAddMultilineJson) null else {
+                            {
+                                IconButton(onClick = { showKeyInSheet = !showKeyInSheet }) {
+                                    Icon(
+                                        imageVector = if (showKeyInSheet) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                        contentDescription = null
+                                    )
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),

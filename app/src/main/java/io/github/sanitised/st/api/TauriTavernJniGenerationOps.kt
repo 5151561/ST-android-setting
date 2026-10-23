@@ -10,23 +10,107 @@ import java.util.concurrent.ConcurrentHashMap
 
 private val activeChatStreams = ConcurrentHashMap<String, String>()
 
+private suspend fun TauriTavernJniClient.buildStatusPayload(
+    sourceValue: String,
+    apiServer: String
+): Pair<LinkedHashMap<String, Any?>, Map<String, Any?>> {
+    val trimmedServer = apiServer.trim()
+    val settings = runCatching { doGetSettings() }.getOrDefault(emptyMap())
+    val oai = (settings["oai_settings"] as? Map<*, *>)
+        ?.entries
+        ?.associate { (k, v) -> k.toString() to v }
+        .orEmpty()
+    val proxyPassword = ((oai["proxy_password_$sourceValue"] as? String)?.takeIf { it.isNotBlank() }
+        ?: (oai["proxy_password"] as? String)).orEmpty()
+    val customUrl = if (sourceValue == "custom") {
+        trimmedServer.ifBlank { (oai["custom_url"] as? String).orEmpty().trim() }
+    } else {
+        ""
+    }
+    val reverseProxy = if (sourceValue == "custom") {
+        ""
+    } else {
+        trimmedServer.ifBlank {
+            ((oai["reverse_proxy_$sourceValue"] as? String)?.takeIf { it.isNotBlank() }
+                ?: (oai["reverse_proxy"] as? String)).orEmpty().trim()
+        }
+    }
+    val payload = linkedMapOf<String, Any?>(
+        "chat_completion_source" to sourceValue,
+        "textgenerationwebui_type" to sourceValue,
+        "api_type" to sourceValue,
+        "api_server" to trimmedServer,
+        "reverse_proxy" to reverseProxy,
+        "proxy_password" to proxyPassword,
+        "custom_url" to customUrl
+    )
+    val forwardedStringKeys = listOf(
+        "secret_id",
+        "siliconflow_endpoint",
+        "opencode_endpoint",
+        "opencode_api_format",
+        "minimax_endpoint",
+        "moonshot_endpoint",
+        "pollinations_endpoint",
+        "zai_endpoint",
+        "workers_ai_account_id",
+        "aws_bedrock_region",
+        "custom_include_headers",
+        "custom_api_format",
+        "vertexai_auth_mode",
+        "vertexai_region",
+        "vertexai_express_project_id",
+        "nanogpt_provider"
+    )
+    for (key in forwardedStringKeys) {
+        (oai[key] as? String)?.trim()?.takeIf { it.isNotBlank() }?.let { value ->
+            payload[key] = value
+        }
+    }
+    if (sourceValue == "vertexai") {
+        payload.putIfAbsent("vertexai_auth_mode", "express")
+        payload.putIfAbsent("vertexai_region", "us-central1")
+    }
+    return payload to oai
+}
+
 internal suspend fun TauriTavernJniClient.doFetchModels(
     mode: String,
     sourceValue: String,
     apiServer: String
 ): List<String> {
     return runCatching {
-        val trimmedServer = apiServer.trim()
-        val payload = linkedMapOf<String, Any?>(
-            "chat_completion_source" to sourceValue,
-            "textgenerationwebui_type" to sourceValue,
-            "api_type" to sourceValue,
-            "api_server" to trimmedServer,
-            "reverse_proxy" to if (sourceValue == "custom") "" else trimmedServer,
-            "proxy_password" to "",
-            "custom_url" to if (sourceValue == "custom") trimmedServer else ""
-        )
+        val (payload, oai) = buildStatusPayload(sourceValue, apiServer)
         val data = invokeRaw("chat_completion_status", payload + mapOf("request" to payload))
+        val map = data as? Map<*, *>
+        if (map != null && map["bypass"] == true) {
+            return@runCatching when (sourceValue) {
+                "vertexai" -> {
+                    val authMode = (oai["vertexai_auth_mode"] as? String).orEmpty().lowercase()
+                    val baseGemini = listOf(
+                        "gemini-2.5-flash",
+                        "gemini-2.5-pro",
+                        "gemini-2.0-flash-001",
+                        "gemini-1.5-pro-002",
+                        "gemini-1.5-flash-002"
+                    )
+                    val claudeModels = listOf(
+                        "claude-sonnet-4-5@20250929",
+                        "claude-opus-4-5@20251101",
+                        "claude-3-7-sonnet@20250219",
+                        "claude-3-5-sonnet-v2@20241022",
+                        "claude-3-5-haiku@20241022"
+                    )
+                    if (authMode == "full" || (payload["reverse_proxy"] as? String).orEmpty().isNotBlank()) {
+                        baseGemini + claudeModels
+                    } else {
+                        baseGemini
+                    }
+                }
+                "minimax" -> listOf("MiniMax-M2.7", "MiniMax-Text-01", "abab6.5s-chat")
+                else -> emptyList()
+            }
+        }
         val list = when (data) {
             is List<*> -> data
             is Map<*, *> -> (data["data"] as? List<*>)
@@ -52,16 +136,7 @@ internal suspend fun TauriTavernJniClient.doTestConnection(
     apiServer: String
 ): ConnectionTestResult {
     return try {
-        val trimmedServer = apiServer.trim()
-        val payload = linkedMapOf<String, Any?>(
-            "chat_completion_source" to sourceValue,
-            "textgenerationwebui_type" to sourceValue,
-            "api_type" to sourceValue,
-            "api_server" to trimmedServer,
-            "reverse_proxy" to if (sourceValue == "custom") "" else trimmedServer,
-            "proxy_password" to "",
-            "custom_url" to if (sourceValue == "custom") trimmedServer else ""
-        )
+        val (payload, oai) = buildStatusPayload(sourceValue, apiServer)
         val data = invokeRaw("chat_completion_status", payload + mapOf("request" to payload))
         val map = data as? Map<*, *>
         val hasError = map != null && map["error"] == true
@@ -73,22 +148,21 @@ internal suspend fun TauriTavernJniClient.doTestConnection(
             )
         }
         if (map != null && map["bypass"] == true) {
-            val probeModel = when (sourceValue) {
-                "minimax" -> "MiniMax-M2.7"
-                "vertexai" -> "gemini-2.5-flash"
-                else -> ""
+            val configuredModel = (oai["${sourceValue}_model"] as? String)?.trim().orEmpty()
+            val probeModel = configuredModel.ifBlank {
+                when (sourceValue) {
+                    "minimax" -> "MiniMax-M2.7"
+                    "vertexai" -> "gemini-2.5-flash"
+                    else -> ""
+                }
             }
             if (probeModel.isNotBlank()) {
-                val probePayload = linkedMapOf<String, Any?>(
-                    "chat_completion_source" to sourceValue,
-                    "model" to probeModel,
-                    "messages" to listOf(mapOf("role" to "user", "content" to "Hi")),
-                    "max_tokens" to 1,
-                    "stream" to false,
-                    "reverse_proxy" to if (sourceValue == "custom") "" else trimmedServer,
-                    "proxy_password" to "",
-                    "custom_url" to if (sourceValue == "custom") trimmedServer else ""
-                )
+                val probePayload = LinkedHashMap<String, Any?>(payload).apply {
+                    put("model", probeModel)
+                    put("messages", listOf(mapOf("role" to "user", "content" to "Hi")))
+                    put("max_tokens", 1)
+                    put("stream", false)
+                }
                 doGenerateChatCompletion(probePayload)
             }
         }

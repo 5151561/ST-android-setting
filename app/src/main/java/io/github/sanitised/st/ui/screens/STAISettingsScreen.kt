@@ -61,6 +61,8 @@ fun STAISettingsScreen(
     val running = status.state == NodeState.RUNNING
     var settings by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
 
+    var maxContext by remember { mutableFloatStateOf(32768f) }
+    var maxTokens by remember { mutableFloatStateOf(1024f) }
     var temp by remember { mutableFloatStateOf(1.0f) }
     var topP by remember { mutableFloatStateOf(1.0f) }
     var topK by remember { mutableFloatStateOf(0f) }
@@ -73,6 +75,8 @@ fun STAISettingsScreen(
 
     fun loadFromSettings(s: Map<String, Any?>) {
         val oai = (s["oai_settings"] as? Map<*, *>)?.entries?.associate { (k, v) -> k.toString() to v } ?: emptyMap()
+        maxContext = oai.floatValue("openai_max_context", s.floatValue("max_context", 32768f)).coerceIn(2048f, 128000f)
+        maxTokens = oai.floatValue("openai_max_tokens", s.floatValue("amount_gen", 1024f)).coerceIn(64f, 16384f)
         temp = oai.floatValue("temp_openai", oai.floatValue("temp", 1.0f))
         topP = oai.floatValue("top_p_openai", 1.0f)
         topK = oai.floatValue("top_k_openai", 0f).coerceIn(0f, 100f)
@@ -140,6 +144,10 @@ fun STAISettingsScreen(
                         val oai = ((updated["oai_settings"] as? Map<*, *>)
                             ?.entries?.associate { (k, v) -> k.toString() to v }
                             ?: emptyMap()).toMutableMap()
+                        oai["openai_max_context"] = maxContext.toInt()
+                        updated["max_context"] = maxContext.toInt()
+                        oai["openai_max_tokens"] = maxTokens.toInt()
+                        updated["amount_gen"] = maxTokens.toInt()
                         oai["temp_openai"] = temp
                         oai["temp"] = temp
                         oai["top_p_openai"] = topP
@@ -156,7 +164,7 @@ fun STAISettingsScreen(
                         personaPresetRepository.saveSettings(updated)
                         settings = updated
                         onSettingsChanged()
-                        onShowMessage("采样参数已保存至后端")
+                        onShowMessage("采样与上下文参数已保存至后端")
                     }.onFailure { onShowMessage("保存失败：${it.message}") }
                 }
             } else {
@@ -164,6 +172,37 @@ fun STAISettingsScreen(
             }
         })
     }) {
+        val activeConnectionState = remember(settings, running) {
+            buildApiConnectionUiState(
+                settings = settings,
+                secrets = emptyList(),
+                serviceRunning = running
+            )
+        }
+        PremiumCard(
+            borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.Tune, null, tint = STThemePrimary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "当前生效后端：${activeConnectionState.activeProvider.label} · ${activeConnectionState.activeModel}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "本页仅管理采样参数、上下文窗口与提示词模板；API 密钥与端点请在「API 连接设置」中配置。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
         STPresetCard(
             presetLibrary = presetLibrary,
             onSelectPreset = { apiId, name ->
@@ -183,8 +222,11 @@ fun STAISettingsScreen(
                 }
             }
         )
+        STSectionHeader("上下文与响应预算 (Context & Response)")
+        STStatefulIntSlider("上下文窗口 (Max Context)", maxContext, 2048f..128000f, suffix = " tokens") { maxContext = it }
+        STStatefulIntSlider("单次最大回复 (Max Response Tokens)", maxTokens, 64f..16384f, suffix = " tokens") { maxTokens = it }
         STSectionHeader("提示模板", trailing = {
-            Text("仅文本补全", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("仅文本补全 / 系统提示", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         })
         val instructName = presetLibrary?.categories?.firstOrNull { it.apiId == "instruct" }
             ?.presets?.firstOrNull { it.selected }?.name ?: "—"
@@ -360,5 +402,36 @@ private fun STStatefulSlider(label: String, value: Float, range: ClosedFloatingP
             )
         }
         Slider(value = value.coerceIn(range.start, range.endInclusive), onValueChange = onValueChange, valueRange = range, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun STStatefulIntSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    suffix: String = "",
+    onValueChange: (Float) -> Unit
+) {
+    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = "${value.toInt()}$suffix",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        Slider(
+            value = value.coerceIn(range.start, range.endInclusive),
+            onValueChange = onValueChange,
+            valueRange = range,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }

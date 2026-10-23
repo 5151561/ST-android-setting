@@ -109,14 +109,52 @@ object PromptBuilder {
             "custom_prompt_post_processing" to (oai["custom_prompt_post_processing"] as? String ?: "none"),
             "verbosity" to (oai["verbosity"] as? String ?: "auto"),
         )
-        (oai["reverse_proxy"] as? String)?.takeIf { it.isNotBlank() }?.let { proxy ->
-            payload["reverse_proxy"] = proxy
-            payload["proxy_password"] = (oai["proxy_password"] as? String).orEmpty()
+        val reverseProxy = ((oai["reverse_proxy"] as? String)?.takeIf { it.isNotBlank() }
+            ?: (oai["reverse_proxy_$source"] as? String)?.takeIf { it.isNotBlank() })
+        if (reverseProxy != null) {
+            payload["reverse_proxy"] = reverseProxy
+            payload["proxy_password"] = ((oai["proxy_password"] as? String)?.takeIf { it.isNotBlank() }
+                ?: (oai["proxy_password_$source"] as? String)).orEmpty()
         }
-        if (source == "custom") {
-            (oai["custom_url"] as? String)?.takeIf { it.isNotBlank() }?.let { url ->
-                payload["custom_url"] = url
+        val forwardedStringKeys = listOf(
+            "secret_id",
+            "vertexai_auth_mode",
+            "vertexai_region",
+            "vertexai_express_project_id",
+            "custom_url",
+            "custom_api_format",
+            "custom_include_headers",
+            "custom_include_body",
+            "custom_exclude_body",
+            "opencode_endpoint",
+            "opencode_api_format",
+            "moonshot_endpoint",
+            "siliconflow_endpoint",
+            "minimax_endpoint",
+            "zai_endpoint",
+            "pollinations_endpoint",
+            "workers_ai_account_id",
+            "aws_bedrock_region",
+            "aws_bedrock_custom_response_path",
+            "aws_bedrock_custom_stream_path",
+            "nanogpt_provider"
+        )
+        for (key in forwardedStringKeys) {
+            (oai[key] as? String)?.trim()?.takeIf { it.isNotBlank() }?.let { value ->
+                payload[key] = value
             }
+        }
+        if (source == "vertexai") {
+            payload.putIfAbsent("vertexai_auth_mode", "express")
+            payload.putIfAbsent("vertexai_region", "us-central1")
+        }
+        if (oai.containsKey("aws_bedrock_use_custom_template")) {
+            payload["aws_bedrock_use_custom_template"] =
+                oai.booleanValue("aws_bedrock_use_custom_template", false)
+        }
+        if (oai.containsKey("nanogpt_payg_override")) {
+            payload["nanogpt_payg_override"] =
+                oai.booleanValue("nanogpt_payg_override", false)
         }
         if (source == "makersuite" || source == "vertexai" || oai.containsKey("use_sysprompt")) {
             payload["use_sysprompt"] = oai.booleanValue("use_sysprompt", true)

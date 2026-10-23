@@ -120,4 +120,54 @@ class PromptBuilderTest {
         assertTrue(turns.size < 10)
         assertTrue((turns.last()["content"] as String).contains("#9"))
     }
+
+    @Test
+    fun forwardsTauriTavernProviderSpecificOptionsIntoGeneratePayload() {
+        val vertexSettings = mapOf<String, Any?>(
+            "main_api" to "openai",
+            "username" to "Alex",
+            "oai_settings" to mapOf(
+                "chat_completion_source" to "vertexai",
+                "vertexai_model" to "gemini-2.5-pro",
+                "vertexai_auth_mode" to "full",
+                "vertexai_region" to "us-central1",
+                "vertexai_express_project_id" to "my-gcp-project",
+                "custom_url" to "https://custom.example.com/v1",
+                "custom_api_format" to "anthropic",
+                "custom_include_headers" to "X-Custom: 1",
+                "aws_bedrock_region" to "us-west-2",
+                "workers_ai_account_id" to "cf-acc-123",
+                "opencode_endpoint" to "https://opencode.ai/zen/go/v1",
+                "opencode_api_format" to "openai",
+                "nanogpt_provider" to "Azure",
+                "nanogpt_payg_override" to "true",
+                "reverse_proxy" to "https://proxy.example.com/v1",
+                "proxy_password" to "proxy-secret",
+            )
+        )
+
+        val payload = PromptBuilder.build(
+            character(),
+            "Alex",
+            listOf(msg(0, "Hello", true)),
+            vertexSettings
+        )
+
+        assertEquals("vertexai", payload["chat_completion_source"])
+        assertEquals("gemini-2.5-pro", payload["model"])
+        assertEquals("full", payload["vertexai_auth_mode"])
+        assertEquals("us-central1", payload["vertexai_region"])
+        assertEquals("my-gcp-project", payload["vertexai_express_project_id"])
+        assertEquals("https://custom.example.com/v1", payload["custom_url"])
+        assertEquals("anthropic", payload["custom_api_format"])
+        assertEquals("X-Custom: 1", payload["custom_include_headers"])
+        assertEquals("us-west-2", payload["aws_bedrock_region"])
+        assertEquals("cf-acc-123", payload["workers_ai_account_id"])
+        assertEquals("https://opencode.ai/zen/go/v1", payload["opencode_endpoint"])
+        assertEquals("openai", payload["opencode_api_format"])
+        assertEquals("Azure", payload["nanogpt_provider"])
+        assertEquals(true, payload["nanogpt_payg_override"])
+        assertEquals("https://proxy.example.com/v1", payload["reverse_proxy"])
+        assertEquals("proxy-secret", payload["proxy_password"])
+    }
 }

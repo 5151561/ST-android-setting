@@ -22,7 +22,10 @@ internal data class ApiConnectionProviderDefinition(
     val modelKey: String? = null,
     val requiresSecret: Boolean = true,
     val defaultModels: List<String> = emptyList(),
-    val endpointHint: String = "https://api.openai.com/v1"
+    val endpointHint: String = "https://api.openai.com/v1",
+    val supportsReverseProxy: Boolean = false,
+    val endpointSettingKey: String? = null,
+    val endpointOptions: List<Pair<String, String>> = emptyList()
 )
 
 internal data class ApiConnectionProviderState(
@@ -204,6 +207,10 @@ internal fun settingsWithSelectedApiProvider(
             if (oaiSettings.containsKey(scopedProxyKey)) {
                 oaiSettings["reverse_proxy"] = oaiSettings.stringAnyValue(scopedProxyKey)
             }
+            val scopedProxyPassKey = "proxy_password_${provider.sourceValue}"
+            if (oaiSettings.containsKey(scopedProxyPassKey)) {
+                oaiSettings["proxy_password"] = oaiSettings.stringAnyValue(scopedProxyPassKey)
+            }
             updated["oai_settings"] = oaiSettings
         }
         provider.mainApi == "textgenerationwebui" && provider.sourceValue != null -> {
@@ -269,7 +276,8 @@ private val apiConnectionProviders = listOf(
         modelSettingsGroup = "oai_settings",
         modelKey = "openai_model",
         defaultModels = listOf("gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o3-mini"),
-        endpointHint = "https://api.openai.com/v1"
+        endpointHint = "https://api.openai.com/v1",
+        supportsReverseProxy = true
     ),
     ApiConnectionProviderDefinition(
         id = "anthropic",
@@ -286,7 +294,8 @@ private val apiConnectionProviders = listOf(
             "claude-3-5-sonnet-20241022",
             "claude-3-5-haiku-20241022"
         ),
-        endpointHint = "https://api.anthropic.com/v1"
+        endpointHint = "https://api.anthropic.com/v1",
+        supportsReverseProxy = true
     ),
     ApiConnectionProviderDefinition(
         id = "google",
@@ -305,7 +314,29 @@ private val apiConnectionProviders = listOf(
             "gemini-1.5-pro",
             "gemini-1.5-flash"
         ),
-        endpointHint = "https://generativelanguage.googleapis.com"
+        endpointHint = "https://generativelanguage.googleapis.com",
+        supportsReverseProxy = true
+    ),
+    ApiConnectionProviderDefinition(
+        id = "vertexai",
+        label = "Google Vertex AI",
+        icon = "V",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "vertexai",
+        secretKeys = listOf("api_key_vertexai", "vertexai_service_account_json"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "vertexai_model",
+        defaultModels = listOf(
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.0-flash-001",
+            "claude-sonnet-4-5@20250929",
+            "claude-opus-4-5@20251101",
+            "claude-3-7-sonnet@20250219"
+        ),
+        endpointHint = "https://aiplatform.googleapis.com",
+        supportsReverseProxy = true
     ),
     ApiConnectionProviderDefinition(
         id = "deepseek",
@@ -318,7 +349,8 @@ private val apiConnectionProviders = listOf(
         modelSettingsGroup = "oai_settings",
         modelKey = "deepseek_model",
         defaultModels = listOf("deepseek-chat", "deepseek-reasoner"),
-        endpointHint = "https://api.deepseek.com/v1"
+        endpointHint = "https://api.deepseek.com/v1",
+        supportsReverseProxy = true
     ),
     ApiConnectionProviderDefinition(
         id = "openrouter",
@@ -349,7 +381,8 @@ private val apiConnectionProviders = listOf(
         modelSettingsGroup = "oai_settings",
         modelKey = "xai_model",
         defaultModels = listOf("grok-3-mini", "grok-3", "grok-2-1212"),
-        endpointHint = "https://api.x.ai/v1"
+        endpointHint = "https://api.x.ai/v1",
+        supportsReverseProxy = true
     ),
     ApiConnectionProviderDefinition(
         id = "groq",
@@ -379,7 +412,13 @@ private val apiConnectionProviders = listOf(
         modelSettingsGroup = "oai_settings",
         modelKey = "moonshot_model",
         defaultModels = listOf("kimi-k2-0711-preview", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"),
-        endpointHint = "https://api.moonshot.cn/v1"
+        endpointHint = "https://api.moonshot.ai/v1",
+        supportsReverseProxy = true,
+        endpointSettingKey = "moonshot_endpoint",
+        endpointOptions = listOf(
+            "global" to "国际站 (moonshot.ai)",
+            "cn" to "中国站 (moonshot.cn)"
+        )
     ),
     ApiConnectionProviderDefinition(
         id = "siliconflow",
@@ -396,7 +435,12 @@ private val apiConnectionProviders = listOf(
             "deepseek-ai/DeepSeek-R1",
             "Qwen/Qwen2.5-72B-Instruct"
         ),
-        endpointHint = "https://api.siliconflow.cn/v1"
+        endpointHint = "https://api.siliconflow.cn/v1",
+        endpointSettingKey = "siliconflow_endpoint",
+        endpointOptions = listOf(
+            "global" to "国际站 (siliconflow.com)",
+            "cn" to "中国站 (siliconflow.cn)"
+        )
     ),
     ApiConnectionProviderDefinition(
         id = "zai",
@@ -409,7 +453,13 @@ private val apiConnectionProviders = listOf(
         modelSettingsGroup = "oai_settings",
         modelKey = "zai_model",
         defaultModels = listOf("glm-4-plus", "glm-4-air", "glm-4-flash"),
-        endpointHint = "https://open.bigmodel.cn/api/paas/v4"
+        endpointHint = "https://api.z.ai/api/paas/v4",
+        supportsReverseProxy = true,
+        endpointSettingKey = "zai_endpoint",
+        endpointOptions = listOf(
+            "common" to "标准端点 (paas/v4)",
+            "coding" to "Coding 端点 (coding/paas/v4)"
+        )
     ),
     ApiConnectionProviderDefinition(
         id = "minimax",
@@ -422,20 +472,12 @@ private val apiConnectionProviders = listOf(
         modelSettingsGroup = "oai_settings",
         modelKey = "minimax_model",
         defaultModels = listOf("MiniMax-M2.7", "MiniMax-Text-01", "abab6.5s-chat"),
-        endpointHint = "https://api.minimax.io/v1"
-    ),
-    ApiConnectionProviderDefinition(
-        id = "mistralai",
-        label = "Mistral",
-        icon = "M",
-        mode = "cc",
-        mainApi = "openai",
-        sourceValue = "mistralai",
-        secretKeys = listOf("api_key_mistralai"),
-        modelSettingsGroup = "oai_settings",
-        modelKey = "mistralai_model",
-        defaultModels = listOf("mistral-large-latest", "mistral-small-latest", "codestral-latest"),
-        endpointHint = "https://api.mistral.ai/v1"
+        endpointHint = "https://api.minimax.io/v1",
+        endpointSettingKey = "minimax_endpoint",
+        endpointOptions = listOf(
+            "global" to "国际站 (minimax.io)",
+            "cn" to "中国站 (minimaxi.com)"
+        )
     ),
     ApiConnectionProviderDefinition(
         id = "cohere",
@@ -451,17 +493,95 @@ private val apiConnectionProviders = listOf(
         endpointHint = "https://api.cohere.ai/v2"
     ),
     ApiConnectionProviderDefinition(
-        id = "perplexity",
-        label = "Perplexity",
+        id = "aws_bedrock",
+        label = "AWS Bedrock",
+        icon = "B",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "aws_bedrock",
+        secretKeys = listOf("api_key_aws_bedrock"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "aws_bedrock_model",
+        defaultModels = listOf(
+            "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+            "amazon.nova-pro-v1:0"
+        ),
+        endpointHint = "https://bedrock-runtime.us-east-1.amazonaws.com"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "workers_ai",
+        label = "Workers AI",
+        icon = "W",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "workers_ai",
+        secretKeys = listOf("api_key_workers_ai"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "workers_ai_model",
+        defaultModels = listOf(
+            "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+            "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b"
+        ),
+        endpointHint = "https://api.cloudflare.com/client/v4/accounts"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "opencode",
+        label = "OpenCode",
+        icon = "O",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "opencode",
+        secretKeys = listOf("api_key_opencode"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "opencode_model",
+        defaultModels = listOf("gpt-4o", "claude-3-7-sonnet", "gemini-2.5-pro"),
+        endpointHint = "https://opencode.ai/zen/v1"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "nanogpt",
+        label = "NanoGPT",
+        icon = "N",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "nanogpt",
+        secretKeys = listOf("api_key_nanogpt"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "nanogpt_model",
+        defaultModels = listOf("chatgpt-4o-latest", "claude-3-7-sonnet-20250219", "deepseek-chat"),
+        endpointHint = "https://nano-gpt.com/api/v1"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "chutes",
+        label = "Chutes",
+        icon = "C",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "chutes",
+        secretKeys = listOf("api_key_chutes"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "chutes_model",
+        defaultModels = listOf("deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1"),
+        endpointHint = "https://llm.chutes.ai/v1"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "pollinations",
+        label = "Pollinations",
         icon = "P",
         mode = "cc",
         mainApi = "openai",
-        sourceValue = "perplexity",
-        secretKeys = listOf("api_key_perplexity"),
+        sourceValue = "pollinations",
+        secretKeys = listOf("api_key_pollinations"),
         modelSettingsGroup = "oai_settings",
-        modelKey = "perplexity_model",
-        defaultModels = listOf("sonar-pro", "sonar", "sonar-reasoning-pro", "sonar-reasoning"),
-        endpointHint = "https://api.perplexity.ai"
+        modelKey = "pollinations_model",
+        requiresSecret = false,
+        defaultModels = listOf("openai", "openai-large", "deepseek", "claude-hybridspace"),
+        endpointHint = "https://gen.pollinations.ai/v1",
+        endpointSettingKey = "pollinations_endpoint",
+        endpointOptions = listOf(
+            "default" to "默认 (认证 gen.pollinations.ai)",
+            "anonymous" to "匿名免密 (text.pollinations.ai)"
+        )
     ),
     ApiConnectionProviderDefinition(
         id = "custom",
@@ -608,6 +728,10 @@ private val providerAliases = mapOf(
     "gemini" to "google",
     "makersuite" to "google",
     "palm" to "google",
+    "vertexai" to "vertexai",
+    "vertex" to "vertexai",
+    "googlevertexai" to "vertexai",
+    "vertexaiserviceaccountjson" to "vertexai",
     "textgenwebui" to "ooba",
     "textgenerationwebui" to "ooba",
     "novel" to "novelai",
@@ -622,8 +746,21 @@ private val providerAliases = mapOf(
     "siliconflow" to "siliconflow",
     "groq" to "groq",
     "minimax" to "minimax",
+    "minimaxgroupid" to "minimax",
+    "cohere" to "cohere",
+    "awsbedrock" to "awsbedrock",
+    "bedrock" to "awsbedrock",
+    "workersai" to "workersai",
+    "cloudflare" to "workersai",
+    "cloudflareworkersai" to "workersai",
+    "opencode" to "opencode",
+    "nanogpt" to "nanogpt",
+    "chutes" to "chutes",
+    "pollinations" to "pollinations",
     "custom" to "custom",
-    "openaicompatible" to "custom"
+    "openaicompatible" to "custom",
+    "mistralai" to "custom",
+    "perplexity" to "custom"
 )
 
 private fun String.normalizedProviderId(): String {
