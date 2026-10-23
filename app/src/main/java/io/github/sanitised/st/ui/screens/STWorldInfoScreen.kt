@@ -26,6 +26,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.WorldInfoBook
@@ -51,6 +54,17 @@ fun STWorldInfoScreen(
     var loading by remember { mutableStateOf(false) }
     var books by remember { mutableStateOf<List<WorldInfoSummary>>(emptyList()) }
     var firstBook by remember { mutableStateOf<WorldInfoBook?>(null) }
+    var searchActive by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val searchBackState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = searchBackState,
+        isBackEnabled = searchActive,
+        onBackCompleted = {
+            searchActive = false
+            searchQuery = ""
+        }
+    )
     val running = status.state == NodeState.RUNNING
 
     LaunchedEffect(running, baseUrl, worldInfoRepository) {

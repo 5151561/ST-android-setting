@@ -1,6 +1,5 @@
 package io.github.sanitised.st.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -118,7 +117,6 @@ fun STBackgroundsScreen(
     onChatBackgroundChanged: (String) -> Unit = {},
     personaPresetRepository: PersonaPresetRepository = remember(baseUrl) { DefaultPersonaPresetRepository { tavernApi(baseUrl) } },
 ) {
-    BackHandler(onBack = onBack)
     val context = LocalContext.current
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
@@ -318,7 +316,6 @@ fun STChatBehaviorScreen(
     onShowMessage: (String) -> Unit = {},
     personaPresetRepository: PersonaPresetRepository = remember(baseUrl) { DefaultPersonaPresetRepository { tavernApi(baseUrl) } },
 ) {
-    BackHandler(onBack = onBack)
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }

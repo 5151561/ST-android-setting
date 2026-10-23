@@ -1,8 +1,8 @@
 package io.github.sanitised.st.ui.navigation
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,8 +27,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -36,6 +36,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.launch
 
 val LocalSTOpenDrawer = staticCompositionLocalOf<() -> Unit> { {} }
@@ -60,6 +63,7 @@ fun STNavigationScaffold(
     currentRoute: String?,
     onNavigate: (String) -> Unit,
     showNavigation: Boolean = true,
+    swipeDrawer: Boolean = true,
     snackbarHost: @Composable () -> Unit,
     // 头部里的可点区域(扮演者/连接卡)拿到的是「关抽屉再导航」的回调
     drawerHeader: (@Composable ((String) -> Unit) -> Unit)? = null,
@@ -73,10 +77,16 @@ fun STNavigationScaffold(
         onNavigate(route)
     }
 
+    NavigationBackHandler(
+        state = rememberNavigationEventState(NavigationEventInfo.None),
+        isBackEnabled = drawerState.isOpen,
+        onBackCompleted = { scope.launch { drawerState.close() } }
+    )
+
     CompositionLocalProvider(LocalSTOpenDrawer provides openDrawer) {
         ModalNavigationDrawer(
             drawerState = drawerState,
-            gesturesEnabled = showNavigation,
+            gesturesEnabled = (showNavigation && swipeDrawer) || drawerState.isOpen,
             drawerContent = {
                 STDrawerSheet(
                     drawerItems = drawerItems,

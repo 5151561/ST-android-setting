@@ -64,9 +64,28 @@ class Material3NativeUiContractTest {
     @Test
     fun hiddenNavigationDisablesDrawerGestures() {
         val scaffoldFile = File("src/main/java/io/github/sanitised/st/ui/navigation/STNavigationScaffold.kt").readText()
+        val chromeFile = File("src/main/java/io/github/sanitised/st/ui/navigation/STAppChrome.kt").readText()
 
         assertTrue(scaffoldFile.contains("ModalNavigationDrawer("))
-        assertTrue(scaffoldFile.contains("gesturesEnabled = showNavigation"))
+        assertTrue(scaffoldFile.contains("gesturesEnabled = (showNavigation && swipeDrawer) || drawerState.isOpen"))
+        assertTrue(scaffoldFile.contains("NavigationBackHandler("))
+        assertTrue(chromeFile.contains("val showNavigationChrome = currentRoute in rootTabRoutes"))
+        assertTrue(chromeFile.contains("swipeDrawer = swipeDrawer"))
+        assertFalse(chromeFile.contains("isReadyForNav"))
+        assertFalse(chromeFile.contains("popBackStackSafely"))
+    }
+
+    @Test
+    fun navigation3DisplayAndBackStackReplaceLegacyNavHost() {
+        val navHostFile = File("src/main/java/io/github/sanitised/st/ui/navigation/STAppNavHost.kt").readText()
+        val mainActivityFile = File("src/main/java/io/github/sanitised/st/MainActivity.kt").readText()
+
+        assertTrue(navHostFile.contains("NavDisplay("))
+        assertTrue(navHostFile.contains("entryProvider = entryProvider"))
+        assertTrue(navHostFile.contains("rememberSaveableStateHolderNavEntryDecorator"))
+        assertTrue(navHostFile.contains("rememberViewModelStoreNavEntryDecorator"))
+        assertFalse(navHostFile.contains("import androidx.activity.compose.BackHandler"))
+        assertTrue(mainActivityFile.contains("rememberSTNavigator()"))
     }
 
     @Test

@@ -1,6 +1,5 @@
 package io.github.sanitised.st.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,7 +46,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import io.github.sanitised.st.AppPaths
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.CharacterDetail
@@ -57,7 +58,6 @@ import io.github.sanitised.st.data.DefaultCharacterRepository
 import io.github.sanitised.st.data.LocalTavernLibraryReader
 import io.github.sanitised.st.data.tavernApi
 import kotlinx.coroutines.launch
-import java.io.File
 
 // ─────────────────────────────────────────────────────────────────────────────
 // P0 · 角色完整编辑（设计稿 screens/CharEditFull.jsx，画板 07–09）
@@ -105,14 +105,15 @@ fun STCharacterFormScreen(
     onOpenGreetings: () -> Unit,
     onOpenAdvanced: () -> Unit,
     onShowMessage: (String) -> Unit = {},
-    characterRepository: CharacterRepository = remember(baseUrl) {
-        DefaultCharacterRepository(
-            clientProvider = { tavernApi(baseUrl) },
-            localReader = LocalTavernLibraryReader(File("")),
-        )
+    characterRepository: CharacterRepository = LocalContext.current.let { context ->
+        remember(baseUrl, context) {
+            DefaultCharacterRepository(
+                clientProvider = { tavernApi(baseUrl) },
+                localReader = LocalTavernLibraryReader(AppPaths(context).dataDir),
+            )
+        }
     },
 ) {
-    BackHandler(onBack = onClose)
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }
@@ -236,14 +237,15 @@ fun STAltGreetingsScreen(
     baseUrl: String,
     onBack: () -> Unit,
     onShowMessage: (String) -> Unit = {},
-    characterRepository: CharacterRepository = remember(baseUrl) {
-        DefaultCharacterRepository(
-            clientProvider = { tavernApi(baseUrl) },
-            localReader = LocalTavernLibraryReader(File("")),
-        )
+    characterRepository: CharacterRepository = LocalContext.current.let { context ->
+        remember(baseUrl, context) {
+            DefaultCharacterRepository(
+                clientProvider = { tavernApi(baseUrl) },
+                localReader = LocalTavernLibraryReader(AppPaths(context).dataDir),
+            )
+        }
     },
 ) {
-    BackHandler(onBack = onBack)
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }
@@ -335,14 +337,15 @@ fun STCharacterAdvancedScreen(
     baseUrl: String,
     onClose: () -> Unit,
     onShowMessage: (String) -> Unit = {},
-    characterRepository: CharacterRepository = remember(baseUrl) {
-        DefaultCharacterRepository(
-            clientProvider = { tavernApi(baseUrl) },
-            localReader = LocalTavernLibraryReader(File("")),
-        )
+    characterRepository: CharacterRepository = LocalContext.current.let { context ->
+        remember(baseUrl, context) {
+            DefaultCharacterRepository(
+                clientProvider = { tavernApi(baseUrl) },
+                localReader = LocalTavernLibraryReader(AppPaths(context).dataDir),
+            )
+        }
     },
 ) {
-    BackHandler(onBack = onClose)
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }

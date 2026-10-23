@@ -140,6 +140,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import coil3.compose.AsyncImage
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
@@ -202,6 +205,15 @@ fun NativeChatScreen(
     var selectedMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var editingMessageId by rememberSaveable { mutableStateOf(-1) }
     var editText by rememberSaveable { mutableStateOf("") }
+    val editBackState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = editBackState,
+        isBackEnabled = editingMessageId >= 0,
+        onBackCompleted = {
+            editingMessageId = -1
+            editText = ""
+        }
+    )
     var deletingMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var showGroupChatsSheet by remember { mutableStateOf(false) }
     var showAuthorsNoteDialog by remember { mutableStateOf(false) }

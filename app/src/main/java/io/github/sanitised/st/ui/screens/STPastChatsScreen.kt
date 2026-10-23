@@ -69,6 +69,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
+import io.github.sanitised.st.AppPaths
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.api.CharacterChatSummary
@@ -93,11 +97,13 @@ fun STPastChatsScreen(
     onNewChat: () -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
-    characterRepository: CharacterRepository = remember(baseUrl) {
-        DefaultCharacterRepository(
-            clientProvider = { tavernApi(baseUrl) },
-            localReader = LocalTavernLibraryReader(File("")),
-        )
+    characterRepository: CharacterRepository = LocalContext.current.let { context ->
+        remember(baseUrl, context) {
+            DefaultCharacterRepository(
+                clientProvider = { tavernApi(baseUrl) },
+                localReader = LocalTavernLibraryReader(AppPaths(context).dataDir),
+            )
+        }
     },
 ) {
     val scope = rememberCoroutineScope()
@@ -109,6 +115,15 @@ fun STPastChatsScreen(
     var loading by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
     var searchActive by remember { mutableStateOf(false) }
+    val searchBackState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = searchBackState,
+        isBackEnabled = searchActive,
+        onBackCompleted = {
+            searchActive = false
+            searchQuery = ""
+        }
+    )
     var actionTarget by remember { mutableStateOf<CharacterChatSummary?>(null) }
     var renameTarget by remember { mutableStateOf<CharacterChatSummary?>(null) }
     var deleteTarget by remember { mutableStateOf<CharacterChatSummary?>(null) }

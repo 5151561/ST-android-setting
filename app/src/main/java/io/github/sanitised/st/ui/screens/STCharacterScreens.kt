@@ -79,6 +79,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import coil3.compose.AsyncImage
 import io.github.sanitised.st.AppPaths
 import io.github.sanitised.st.NodeState
@@ -122,6 +125,15 @@ fun STCharacterLibraryScreen(
     val serverRunning = status.state == NodeState.RUNNING
     var selectedFilter by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
+    val searchActive = searchQuery.isNotEmpty()
+    val searchBackState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = searchBackState,
+        isBackEnabled = searchActive,
+        onBackCompleted = {
+            searchQuery = ""
+        }
+    )
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
@@ -139,7 +151,7 @@ fun STCharacterLibraryScreen(
         }
     }
 
-    LaunchedEffect(serverRunning, status.port) {
+    LaunchedEffect(serverRunning, baseUrl) {
         viewModel.refresh(serverRunning)
     }
     LaunchedEffect(uiState.message?.id) {

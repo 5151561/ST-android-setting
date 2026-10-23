@@ -34,13 +34,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.currentBackStackEntryAsState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.ui.screens.STAvatar
 import io.github.sanitised.st.ui.screens.STDrawerAccount
@@ -64,15 +60,12 @@ internal val drawerNavItems = listOf(
     DrawerNavItem(STRoutes.LOGIN, "退出登录", Icons.AutoMirrored.Filled.Logout, isPrimaryGroup = false)
 )
 
-// 过渡动画进行中(当前返回栈项还没到 RESUMED)时再触发 navigate/popBackStack，
-// 会让 NavHost 落到「无当前目的地」而整屏白屏。手速快连点抽屉项 + 左上角返回极易命中
-// (对话→角色库→扮演者→返回 循环)。统一加 RESUMED 守卫:动画没结束就丢弃这次操作,
-// 用户再点一次即可,不会白屏。
-internal fun NavHostController.isReadyForNav(): Boolean =
-    currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED
-
-internal fun NavHostController.popBackStackSafely(): Boolean =
-    if (isReadyForNav()) popBackStack() else false
+internal val rootTabRoutes = setOf(
+    STRoutes.HOME,
+    STRoutes.CHARACTERS,
+    STRoutes.WORLD_INFO,
+    STRoutes.SETTINGS
+)
 
 @Composable
 internal fun STAppDrawerHeader(
@@ -174,20 +167,20 @@ internal fun STAppDrawerHeader(
 
 /**
  * 导航外壳:路由 → 抽屉高亮/是否显示外壳的推导收在这里。
- * navBackStackEntry 的读取只让本作用域随导航重组,
+ * navigator.currentRoute 的读取只让本作用域随导航重组,
  * setContent 根作用域不再因为每次导航整棵重跑。
  */
 @Composable
 internal fun STAppChrome(
-    navController: NavHostController,
+    navigator: STNavigator,
     drawerItems: List<DrawerNavItem>,
     onNavigate: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
+    swipeDrawer: Boolean = true,
     drawerHeader: @Composable ((String) -> Unit) -> Unit,
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    val currentRoute = navigator.currentRoute
     // 子页面路由折叠到抽屉里对应的父条目,保证抽屉高亮正确。
     val drawerSelectedRoute = when (currentRoute) {
         STRoutes.CHAT -> STRoutes.HOME
@@ -196,15 +189,23 @@ internal fun STAppChrome(
         STRoutes.CHARACTER_EDIT,
         STRoutes.CHAR_FORM,
         STRoutes.CHAR_GREETINGS,
-        STRoutes.CHAR_ADVANCED -> STRoutes.CHARACTERS
+        STRoutes.CHAR_ADVANCED,
+        STRoutes.PAST_CHATS -> STRoutes.CHARACTERS
         STRoutes.WORLD_INFO_MANAGE,
         STRoutes.WORLD_INFO_BOOK,
         STRoutes.WORLD_INFO_ENTRY,
         STRoutes.WORLD_INFO_GLOBAL -> STRoutes.WORLD_INFO
-        STRoutes.GROUP_CHAT_DETAIL -> STRoutes.HOME
-        STRoutes.SECRETS -> STRoutes.CONNECTIONS
+        STRoutes.GROUP_CHAT_DETAIL,
+        STRoutes.GROUP_SETTINGS,
+        STRoutes.GROUP_MEMBERS,
+        STRoutes.NEW_GROUP_CHAT -> STRoutes.HOME
+        STRoutes.SECRETS,
+        STRoutes.PROVIDER_DETAIL -> STRoutes.CONNECTIONS
         STRoutes.QUICK_REPLIES -> STRoutes.EXTENSIONS
+        STRoutes.APPEARANCE_THEME_COLOR,
+        STRoutes.APPEARANCE_TYPOGRAPHY,
         STRoutes.BACKGROUNDS,
+        STRoutes.APPEARANCE_CHAT_STYLE,
         STRoutes.CHAT_BEHAVIOR -> STRoutes.APPEARANCE
         STRoutes.LOGS,
         STRoutes.CONFIG -> STRoutes.MANAGE_ST
@@ -212,14 +213,13 @@ internal fun STAppChrome(
         STRoutes.ACCOUNT -> STRoutes.SETTINGS
         else -> currentRoute
     }
-    val showNavigationChrome = currentRoute != STRoutes.CHAT &&
-        currentRoute != STRoutes.LOGIN &&
-        currentRoute != STRoutes.ONBOARDING
+    val showNavigationChrome = currentRoute in rootTabRoutes
     STNavigationScaffold(
         drawerItems = drawerItems,
         currentRoute = drawerSelectedRoute,
         onNavigate = onNavigate,
         showNavigation = showNavigationChrome,
+        swipeDrawer = swipeDrawer,
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,

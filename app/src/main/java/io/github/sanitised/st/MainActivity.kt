@@ -26,7 +26,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,8 +38,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
 import io.github.sanitised.st.chat.ChatTarget
 import io.github.sanitised.st.chat.ChatViewModel
@@ -49,12 +46,13 @@ import io.github.sanitised.st.ui.navigation.STAppChrome
 import io.github.sanitised.st.ui.navigation.STAppDialogs
 import io.github.sanitised.st.ui.navigation.STAppDrawerHeader
 import io.github.sanitised.st.ui.navigation.STAppNavHost
+import io.github.sanitised.st.ui.navigation.STKey
 import io.github.sanitised.st.ui.navigation.STRoutes
 import io.github.sanitised.st.ui.navigation.backupImportPreviewText
 import io.github.sanitised.st.ui.navigation.chatTargetSaver
 import io.github.sanitised.st.ui.navigation.drawerNavItems
-import io.github.sanitised.st.ui.navigation.isReadyForNav
 import io.github.sanitised.st.ui.navigation.pendingDialogStateSaver
+import io.github.sanitised.st.ui.navigation.rememberSTNavigator
 import io.github.sanitised.st.ui.screens.ChatSeenStore
 import io.github.sanitised.st.ui.screens.STDrawerAccount
 import io.github.sanitised.st.ui.screens.buildHomeChatItems
@@ -92,12 +90,9 @@ class MainActivity : ComponentActivity() {
             val chatViewModel: ChatViewModel = viewModel(
                 factory = ChatViewModel.factory(appContainer.tavernClientProvider::get)
             )
-            val navController = rememberNavController()
-            val isOnHome by produceState(initialValue = true, navController) {
-                navController.currentBackStackEntryFlow.collect { entry ->
-                    value = entry.destination.route == STRoutes.HOME
-                }
-            }
+            val navigator = rememberSTNavigator()
+            val isOnHome = navigator.currentKey == STKey.Home
+            val swipeDrawer by viewModel.swipeDrawer
             val appPaths = remember { AppPaths(this@MainActivity) }
             val legalDocs = remember {
                 listOf(
@@ -301,52 +296,46 @@ class MainActivity : ComponentActivity() {
                 )
             }
             val navigateMainTab: (String) -> Unit = { route ->
-                if (!navController.isReadyForNav()) {
-                    // Ignore duplicate navigation while transition is still running.
-                } else if (route == STRoutes.LOGIN) {
+                if (route == STRoutes.LOGIN) {
                     scope.launch {
                         if (statusState.value.state == NodeState.RUNNING) {
                             runCatching {
                                 appContainer.tavernClientProvider.get().logoutUser()
                             }
                         }
-                        navController.navigate(STRoutes.LOGIN) {
-                            popUpTo(navController.graph.findStartDestination().id)
-                            launchSingleTop = true
+                        navigator.selectTopLevelOrDrawerRoute(STRoutes.LOGIN)
+                    }
+                } else if (route == STRoutes.CHAT) {
+                    val storeHasChat = chatStore.chatFile.isNotBlank() ||
+                        chatStore.characterName.isNotBlank() ||
+                        chatStore.messages.isNotEmpty()
+                    if (storeHasChat) {
+                        pendingChatTarget = ChatTarget.Current
+                        navigator.openChat(useCurrentStore = true)
+                    } else {
+                        val recent = librarySnapshot.recentChats.firstOrNull()
+                        if (recent != null) {
+                            val chatFile = recent.id.substringAfter('/', "").ifBlank { null }
+                            pendingChatTarget = ChatTarget.CharacterChat(recent.characterId, chatFile)
+                            navigator.openChat(avatar = recent.characterId, chatFile = chatFile)
+                        } else {
+                            pendingChatTarget = ChatTarget.Current
+                            navigator.openChat(useCurrentStore = true)
                         }
                     }
                 } else {
-                    if (route == STRoutes.CHAT) {
-                        val storeHasChat = chatStore.chatFile.isNotBlank() ||
-                            chatStore.characterName.isNotBlank() ||
-                            chatStore.messages.isNotEmpty()
-                        pendingChatTarget = if (storeHasChat) {
-                            ChatTarget.Current
-                        } else {
-                            librarySnapshot.recentChats.firstOrNull()?.let { recent ->
-                                ChatTarget.CharacterChat(
-                                    avatar = recent.characterId,
-                                    chatFile = recent.id.substringAfter('/', "").ifBlank { null },
-                                )
-                            } ?: ChatTarget.Current
-                        }
-                    }
-                    navController.navigate(route) {
-                        popUpTo(navController.graph.findStartDestination().id)
-                        launchSingleTop = true
-                    }
+                    navigator.selectTopLevelOrDrawerRoute(route)
                 }
             }
             val openCharacterChatFromCharacterManagement: (String, String?) -> Unit = { avatar, chatFile ->
                 chatSeenStore.markSeen(chatSeenKey(avatar, chatFile))
                 pendingChatTarget = ChatTarget.CharacterChat(avatar, chatFile)
-                navController.navigate(STRoutes.CHAT) { launchSingleTop = true }
+                navigator.openChat(avatar = avatar, chatFile = chatFile)
             }
             val openGroupChat: (String, String?) -> Unit = { groupId, chatId ->
                 chatSeenStore.markSeen(groupSeenKey(groupId))
-                navController.navigate(STRoutes.groupChatDetail(groupId, chatId)) {
-                    launchSingleTop = true
-                }
+                // Legacy route contract: navController.navigate(STRoutes.groupChatDetail(groupId, chatId))
+                navigator.navigate(STKey.GroupChat(groupId = groupId, chatId = chatId.orEmpty()))
             }
             val dynamicDrawerItems = remember(drawerNavItems, connectedCount, librarySnapshot, homeChatItems, statusState.value.state) {
                 drawerNavItems.map { item ->
@@ -369,10 +358,11 @@ class MainActivity : ComponentActivity() {
                 chatBubbleStyle = viewModel.bubbleStyle.value
             ) {
                 STAppChrome(
-                    navController = navController,
+                    navigator = navigator,
                     drawerItems = dynamicDrawerItems,
                     onNavigate = navigateMainTab,
                     snackbarHostState = snackbarHostState,
+                    swipeDrawer = swipeDrawer,
                     drawerHeader = { navigateFromDrawer ->
                         STAppDrawerHeader(
                             stLabel = currentStLabel,
@@ -391,7 +381,7 @@ class MainActivity : ComponentActivity() {
                             .fillMaxSize()
                     ) {
                         STAppNavHost(
-                            navController = navController,
+                            navigator = navigator,
                             statusState = statusState,
                             viewModel = viewModel,
                             chatStore = chatStore,

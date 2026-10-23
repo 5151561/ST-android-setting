@@ -1,6 +1,5 @@
 package io.github.sanitised.st.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -148,7 +147,6 @@ fun STWorldBookManageScreen(
     onShowMessage: (String) -> Unit = {},
     worldInfoRepository: WorldInfoRepository = remember(baseUrl) { DefaultWorldInfoRepository { tavernApi(baseUrl) } },
 ) {
-    BackHandler(onBack = onBack)
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(false) }
@@ -329,7 +327,6 @@ fun STLorebookDetailScreen(
     onShowMessage: (String) -> Unit = {},
     worldInfoRepository: WorldInfoRepository = remember(baseUrl) { DefaultWorldInfoRepository { tavernApi(baseUrl) } },
 ) {
-    BackHandler(onBack = onBack)
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(false) }
@@ -457,7 +454,6 @@ fun STWorldEntryEditScreen(
     onShowMessage: (String) -> Unit = {},
     worldInfoRepository: WorldInfoRepository = remember(baseUrl) { DefaultWorldInfoRepository { tavernApi(baseUrl) } },
 ) {
-    BackHandler(onBack = onClose)
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
     var tab by remember { mutableIntStateOf(0) }
@@ -646,7 +642,6 @@ fun STWIGlobalSettingsScreen(
     onShowMessage: (String) -> Unit = {},
     worldInfoRepository: WorldInfoRepository = remember(baseUrl) { DefaultWorldInfoRepository { tavernApi(baseUrl) } },
 ) {
-    BackHandler(onBack = onBack)
     val running = status.state == NodeState.RUNNING
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }

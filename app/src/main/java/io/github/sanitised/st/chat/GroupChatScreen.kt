@@ -54,6 +54,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import io.github.sanitised.st.api.GroupSummary
 import io.github.sanitised.st.data.tavernApi
 import io.github.sanitised.st.chat.engine.GroupReply
@@ -183,6 +186,12 @@ fun GroupChatScreen(
     var autoSecondsLeft by remember { mutableStateOf(groupState.value.autoDelay) }
     var showSpeakerSheet by remember { mutableStateOf(false) }
     var showConversationSwitcher by remember { mutableStateOf(false) }
+    val switcherBackState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = switcherBackState,
+        isBackEnabled = showConversationSwitcher,
+        onBackCompleted = { showConversationSwitcher = false }
+    )
     var actionMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var deletingMessage by remember { mutableStateOf<ChatMessage?>(null) }

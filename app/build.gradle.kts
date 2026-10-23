@@ -171,8 +171,12 @@ dependencies {
     // Coil 3 默认不带网络层,加载 http(s) 图片必须显式引入 OkHttp 网络组件。
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
 
-    // Navigation Compose
+    // Navigation Compose & Navigation 3
     implementation("androidx.navigation:navigation-compose:2.9.8")
+    implementation("androidx.navigation3:navigation3-runtime:1.2.0")
+    implementation("androidx.navigation3:navigation3-ui:1.2.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-navigation3:2.11.0")
+    implementation("androidx.navigationevent:navigationevent-compose:1.1.1")
 
     // Hilt Dependency Injection
     implementation("com.google.dagger:hilt-android:2.60.1")
