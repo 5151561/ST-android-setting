@@ -2,8 +2,10 @@ package io.github.sanitised.st.chat
 
 import io.github.sanitised.st.api.CharacterChatSummary
 import io.github.sanitised.st.api.CharacterDetail
+import io.github.sanitised.st.api.ChatPayloadCursor
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,6 +28,42 @@ class NativeChatRuntimeTest {
         assertEquals(listOf("second"), store.messages.map { it.mes })
         assertEquals(0, store.messages.single().id)
         assertEquals(1, store.messages.single().swipeId)
+        assertEquals(1, source.getChatJsonlCallCount)
+        assertFalse(source.savedChatKeys().any { isNativeChatBackupName(it) })
+    }
+
+    @Test
+    fun mutatingTailPaginatedStoreResolvesRawIndexAndPreservesTailWindow() = runBlocking {
+        val source = FakeNativeChatDataSource()
+        val cursor = ChatPayloadCursor(offset = 128L, size = 512L, modifiedMillis = 1000L)
+        // Store only holds the last message ("first") out of the 2 messages on disk ("one", "first")
+        val tailRawChat = listOf(
+            FakeNativeChatDataSource.initialChat()[0],
+            FakeNativeChatDataSource.initialChat()[2],
+        )
+        val store = ChatStore().apply {
+            applySnapshot(
+                buildNativeCharacterChatSnapshot(
+                    avatar = "Alice.png",
+                    character = CharacterDetail(id = "Alice.png", name = "Alice", chat = "main.jsonl"),
+                    chatFile = "main.jsonl",
+                    rawChat = tailRawChat,
+                ),
+                markRuntimeReady = false,
+            )
+            hasMoreHistory = true
+            historyCursor = cursor
+        }
+        val runtime = NativeChatRuntime(store) { source }
+
+        // UI messageId = 0 is the second message on disk (index 1)
+        runtime.editMessage(0, "tail-edited")
+
+        assertEquals(listOf("one", "tail-edited"), source.savedCurrent().messages().map { it["mes"] })
+        assertEquals(listOf("tail-edited"), store.messages.map { it.mes })
+        assertEquals(0, store.messages.single().id)
+        assertTrue(store.hasMoreHistory)
+        assertEquals(cursor, store.historyCursor)
     }
 
     @Test
@@ -90,12 +128,23 @@ class NativeChatRuntimeTest {
     ) : NativeChatDataSource {
         private val chats = linkedMapOf("main" to initialChat())
         private val saved = linkedMapOf<String, MutableList<Any?>>()
+        var getChatJsonlCallCount: Int = 0
+            private set
 
         override suspend fun getCharacter(avatar: String): CharacterDetail =
             character.copy(id = avatar)
 
-        override suspend fun getChatJsonl(avatar: String, chatFile: String): MutableList<Any?> =
-            (chats[chatFile.removeSuffix(".jsonl")] ?: mutableListOf()).deepCopyChat()
+        override suspend fun getChatJsonl(avatar: String, chatFile: String): MutableList<Any?> {
+            getChatJsonlCallCount += 1
+            return (chats[chatFile.removeSuffix(".jsonl")] ?: mutableListOf()).deepCopyChat()
+        }
+
+        override suspend fun getChatIntegrity(avatar: String, chatFile: String): String? {
+            val chat = chats[chatFile.removeSuffix(".jsonl")] ?: return null
+            val header = chat.firstOrNull() as? Map<*, *> ?: return null
+            val meta = header["chat_metadata"] as? Map<*, *> ?: return null
+            return meta["integrity"]?.toString()
+        }
 
         override suspend fun saveChatJsonl(avatar: String, chatFile: String, chat: List<Any?>) {
             val key = chatFile.removeSuffix(".jsonl")
@@ -107,6 +156,8 @@ class NativeChatRuntimeTest {
             chats.keys.map { name -> CharacterChatSummary(id = name, fileName = "$name.jsonl") }
 
         fun savedCurrent(): MutableList<Any?> = savedChat("main")
+
+        fun savedChatKeys(): Set<String> = saved.keys.toSet()
 
         fun savedChat(name: String): MutableList<Any?> =
             saved[name.removeSuffix(".jsonl")] ?: error("No saved chat named $name")

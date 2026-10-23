@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.github.sanitised.st.api.ChatPayloadCursor
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -60,6 +61,9 @@ class ChatStore {
     var itemizedPromptError by mutableStateOf<String?>(null)
     var dataBank by mutableStateOf<DataBankAttachments?>(null)
     var dataBankLoading by mutableStateOf(false)
+    var hasMoreHistory by mutableStateOf(false)
+    var isLoadingMoreHistory by mutableStateOf(false)
+    var historyCursor by mutableStateOf<ChatPayloadCursor?>(null)
     val messages = mutableStateListOf<ChatMessage>()
     val pendingAttachments = mutableStateListOf<PendingAttachment>()
     val quickReplies = mutableStateListOf<QuickReplyItem>()
@@ -83,6 +87,35 @@ class ChatStore {
         chatQuickReplyConfig = snapshot.metadata.optJSONObject("quickReply")?.toNativeMap().orEmpty()
         messages.clear()
         messages.addAll(snapshot.messages)
+    }
+
+    fun setMessages(newMessages: List<ChatMessage>) {
+        messages.clear()
+        messages.addAll(newMessages)
+    }
+
+    fun prependMessages(
+        olderMessages: List<ChatMessage>,
+        newCursor: ChatPayloadCursor?,
+        hasMore: Boolean
+    ) {
+        if (olderMessages.isNotEmpty()) {
+            val offset = olderMessages.size
+            val reindexedOlder = olderMessages.mapIndexed { idx, msg -> msg.copy(id = idx) }
+            val reindexedExisting = messages.map { msg -> msg.copy(id = msg.id + offset) }
+            messages.clear()
+            messages.addAll(reindexedOlder)
+            messages.addAll(reindexedExisting)
+        }
+        historyCursor = newCursor
+        hasMoreHistory = hasMore
+    }
+
+    fun clearMessages() {
+        messages.clear()
+        hasMoreHistory = false
+        isLoadingMoreHistory = false
+        historyCursor = null
     }
 
     fun addPendingAttachment(attachment: PendingAttachment) {
@@ -232,6 +265,9 @@ class ChatStore {
         itemizedPromptError = null
         dataBank = null
         dataBankLoading = false
+        hasMoreHistory = false
+        isLoadingMoreHistory = false
+        historyCursor = null
         messages.clear()
         pendingAttachments.clear()
         quickReplies.clear()

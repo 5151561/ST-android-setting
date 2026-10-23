@@ -32,6 +32,7 @@ class ChatViewModel(
         scope = viewModelScope,
         store = store,
         clientProvider = clientProvider,
+        repository = runtime.repository,
     )
 
     companion object {

@@ -383,8 +383,36 @@ class TauriTavernJniClient(
         doSaveGroupChatJsonl(chatId, chat)
     override suspend fun getChatJsonl(avatar: String, chatFile: String): MutableList<Any?> =
         doGetChatJsonl(avatar, chatFile)
+    override suspend fun getChatIntegrity(
+        avatar: String,
+        chatFile: String,
+    ): String? = doGetChatIntegrity(avatar, chatFile)
     override suspend fun saveChatJsonl(avatar: String, chatFile: String, chat: List<Any?>) =
         doSaveChatJsonl(avatar, chatFile, chat)
+    override suspend fun appendChatJsonl(
+        avatar: String,
+        chatFile: String,
+        newMessages: List<Any?>,
+        headerIfMissing: Map<String, Any?>?,
+        expectedIntegrity: String?,
+    ): Boolean = doAppendChatJsonl(
+        avatar = avatar,
+        chatFile = chatFile,
+        newMessages = newMessages,
+        headerIfMissing = headerIfMissing,
+        expectedIntegrity = expectedIntegrity,
+    )
+    override suspend fun getChatTailJsonl(
+        avatar: String,
+        chatFile: String,
+        maxLines: Int,
+    ): ChatPayloadTail = doGetChatTailJsonl(avatar, chatFile, maxLines)
+    override suspend fun getChatBeforeJsonl(
+        avatar: String,
+        chatFile: String,
+        cursor: ChatPayloadCursor,
+        maxLines: Int,
+    ): ChatPayloadChunk = doGetChatBeforeJsonl(avatar, chatFile, cursor, maxLines)
     override suspend fun generateChatCompletion(payload: Map<String, Any?>): String =
         doGenerateChatCompletion(payload)
     override fun generateChatCompletionStream(payload: Map<String, Any?>): Flow<String> =

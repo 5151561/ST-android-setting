@@ -366,6 +366,9 @@ internal fun MessageList(
     onSaveEdit: (Int) -> Unit,
     onCancelEdit: () -> Unit,
     onDeleteFromEdit: (ChatMessage) -> Unit,
+    hasMoreHistory: Boolean = false,
+    isLoadingMoreHistory: Boolean = false,
+    onLoadMoreHistory: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     // 底部留白 = 悬浮在列表上方的「继续/重写」快捷条高度,保证最后一条消息能完整滚到其上方
     bottomContentPadding: Dp = 8.dp
@@ -387,22 +390,41 @@ internal fun MessageList(
     // 另外只有本来就停在底部附近时才跟随,用户上翻阅读旧消息不再被拽回。
     LaunchedEffect(messages, dateLabel) {
         var lastCount = -1
-        snapshotFlow { messages.size to messages.lastOrNull()?.mes }
-            .collect { (count, _) ->
-                val target = chatListScrollTargetIndex(visibleChatMessages(messages), dateLabel)
-                    ?: return@collect
-                val countChanged = count != lastCount
-                lastCount = count
-                if (countChanged) {
-                    listState.animateScrollToItem(target)
-                } else {
-                    val info = listState.layoutInfo
-                    val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: return@collect
-                    if (lastVisible >= info.totalItemsCount - 2) {
-                        listState.scrollToItem(target)
-                    }
+        var lastFirstSignature: String? = null
+        var lastTailSignature: String? = null
+        snapshotFlow {
+            val firstSig = messages.firstOrNull()?.let { "${it.sendDate}:${it.mes}" }
+            val tailSig = messages.lastOrNull()?.let { "${it.sendDate}:${it.mes}" }
+            Triple(messages.size, firstSig, tailSig)
+        }.collect { (count, firstSig, tailSig) ->
+            val baseTarget = chatListScrollTargetIndex(visibleChatMessages(messages), dateLabel)
+                ?: return@collect
+            val target = baseTarget + if (hasMoreHistory) 1 else 0
+            val countChanged = count != lastCount
+            val prependedHistory = lastCount > 0 &&
+                count > lastCount &&
+                tailSig != null &&
+                tailSig == lastTailSignature &&
+                firstSig != lastFirstSignature
+            val prevCount = lastCount
+            lastCount = count
+            lastFirstSignature = firstSig
+            lastTailSignature = tailSig
+            if (prependedHistory) {
+                val prepended = (count - prevCount).coerceAtLeast(0)
+                if (prepended > 0) {
+                    listState.scrollToItem(prepended)
+                }
+            } else if (countChanged) {
+                listState.animateScrollToItem(target)
+            } else {
+                val info = listState.layoutInfo
+                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: return@collect
+                if (lastVisible >= info.totalItemsCount - 2) {
+                    listState.scrollToItem(target)
                 }
             }
+        }
     }
     // 键盘弹出/收起时保持贴底。原实现在组合期读 WindowInsets.ime,
     // 键盘动画每一帧都会让整个消息列表重组;snapshotFlow 在快照系统里观察,
@@ -421,6 +443,40 @@ internal fun MessageList(
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        if (hasMoreHistory) {
+            item(key = "load_more_history") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isLoadingMoreHistory) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                text = "正在加载历史消息...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        TextButton(
+                            onClick = { onLoadMoreHistory?.invoke() },
+                            enabled = onLoadMoreHistory != null
+                        ) {
+                            Text("加载更早消息")
+                        }
+                    }
+                }
+            }
+        }
         if (dateLabel != null) {
             item(key = "date-chip") {
                 ChatDateChip(text = dateLabel)

@@ -272,6 +272,25 @@ data class ChatSummary(
     val isPinned: Boolean = false
 )
 
+data class ChatPayloadCursor(
+    val offset: Long,
+    val size: Long,
+    val modifiedMillis: Long,
+)
+
+data class ChatPayloadTail(
+    val header: Map<String, Any?>? = null,
+    val messages: List<Map<String, Any?>> = emptyList(),
+    val cursor: ChatPayloadCursor? = null,
+    val hasMoreBefore: Boolean = false,
+)
+
+data class ChatPayloadChunk(
+    val messages: List<Map<String, Any?>> = emptyList(),
+    val cursor: ChatPayloadCursor? = null,
+    val hasMoreBefore: Boolean = false,
+)
+
 @Immutable
 data class GroupSummary(
     val id: String,
@@ -408,6 +427,81 @@ interface TavernCoreApi {
     suspend fun getChatJsonl(avatar: String, chatFile: String): MutableList<Any?>
     /** Saves the raw chat JSONL (`[header, ...messages]`) back to disk. */
     suspend fun saveChatJsonl(avatar: String, chatFile: String, chat: List<Any?>)
+
+    suspend fun getChatIntegrity(avatar: String, chatFile: String): String? {
+        val header = getChatJsonl(avatar, chatFile).firstOrNull() as? Map<*, *> ?: return null
+        val metadata = header["chat_metadata"] as? Map<*, *> ?: return null
+        return metadata["integrity"]?.toString()?.takeIf { it.isNotBlank() }
+    }
+
+    suspend fun appendChatJsonl(
+        avatar: String,
+        chatFile: String,
+        newMessages: List<Any?>,
+        headerIfMissing: Map<String, Any?>? = null,
+        expectedIntegrity: String? = null,
+    ): Boolean {
+        if (newMessages.isEmpty()) return true
+        val existing = getChatJsonl(avatar, chatFile)
+        val currentIntegrity = (existing.firstOrNull() as? Map<*, *>)
+            ?.let { it["chat_metadata"] as? Map<*, *> }
+            ?.get("integrity")
+            ?.toString()
+            ?.takeIf { it.isNotBlank() }
+        if (!expectedIntegrity.isNullOrBlank() && currentIntegrity != null && currentIntegrity != expectedIntegrity) {
+            return false
+        }
+        val base = if (existing.isEmpty()) {
+            listOf(headerIfMissing ?: mapOf("chat_metadata" to mutableMapOf<String, Any?>()))
+        } else {
+            existing
+        }
+        saveChatJsonl(
+            avatar = avatar,
+            chatFile = chatFile,
+            chat = base + newMessages,
+        )
+        return true
+    }
+
+    suspend fun getChatTailJsonl(
+        avatar: String,
+        chatFile: String,
+        maxLines: Int = 100,
+    ): ChatPayloadTail {
+        val all = getChatJsonl(avatar, chatFile)
+        val header = (all.firstOrNull() as? Map<*, *>)?.toStringKeyMap()
+        val messages = all.drop(1).mapNotNull { (it as? Map<*, *>)?.toStringKeyMap() }
+        val limit = maxLines.coerceAtLeast(1)
+        val tailMessages = if (messages.size > limit) messages.takeLast(limit) else messages
+        val remainingCount = (messages.size - tailMessages.size).coerceAtLeast(0)
+        return ChatPayloadTail(
+            header = header,
+            messages = tailMessages,
+            cursor = if (remainingCount > 0) ChatPayloadCursor(offset = remainingCount.toLong(), size = messages.size.toLong(), modifiedMillis = 0L) else null,
+            hasMoreBefore = remainingCount > 0,
+        )
+    }
+
+    suspend fun getChatBeforeJsonl(
+        avatar: String,
+        chatFile: String,
+        cursor: ChatPayloadCursor,
+        maxLines: Int = 100,
+    ): ChatPayloadChunk {
+        val all = getChatJsonl(avatar, chatFile)
+        val messages = all.drop(1).mapNotNull { (it as? Map<*, *>)?.toStringKeyMap() }
+        val endExclusive = cursor.offset.toInt().coerceIn(0, messages.size)
+        val limit = maxLines.coerceAtLeast(1)
+        val startInclusive = (endExclusive - limit).coerceAtLeast(0)
+        val chunk = if (endExclusive > startInclusive) messages.subList(startInclusive, endExclusive) else emptyList()
+        return ChatPayloadChunk(
+            messages = chunk,
+            cursor = if (startInclusive > 0) ChatPayloadCursor(offset = startInclusive.toLong(), size = messages.size.toLong(), modifiedMillis = cursor.modifiedMillis) else null,
+            hasMoreBefore = startInclusive > 0,
+        )
+    }
+
     /** Posts an already-assembled chat-completion payload and returns the assistant reply text. */
     suspend fun generateChatCompletion(payload: Map<String, Any?>): String
     /** Streams a chat-completion (SSE), emitting incremental text deltas. Forces `stream=true`. */

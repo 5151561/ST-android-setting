@@ -10,6 +10,7 @@ import io.github.sanitised.st.chat.NativeChatJsonOps
 import io.github.sanitised.st.chat.TavernNativeChatDataSource
 import io.github.sanitised.st.chat.ChatStore
 import io.github.sanitised.st.chat.buildNativeCharacterChatSnapshot
+import io.github.sanitised.st.chat.sliceRawChatForStore
 import io.github.sanitised.st.chat.prompt.PromptBuilder
 import io.github.sanitised.st.chat.prompt.TextPromptBuildResult
 import io.github.sanitised.st.chat.prompt.TextPromptBuilder
@@ -64,6 +65,9 @@ class NativeChatEngine(
     private val clientProvider: () -> TavernCoreApi,
     private val logger: NativeChatLogger = NativeChatLogger.Android,
     private val itemizedPromptStore: ItemizedPromptStore = ItemizedPromptStore.Global,
+    private val repository: NativeChatRepository = NativeChatRepository(
+        dataSourceProvider = { TavernNativeChatDataSource(clientProvider()) },
+    ),
 ) : ChatEngine {
 
     private var job: Job? = null
@@ -133,21 +137,27 @@ class NativeChatEngine(
                     NativeEngineMode.UNSUPPORTED -> ""
                 }
 
-                val chat = client.getChatJsonl(avatar, chatFile)
-                ensureHeader(chat, userName, character.name, date)
-                chat += userMessageMap(userName, message, date, pendingAttachments)
-                if (reply.isNotBlank()) {
-                    chat += aiMessageMap(
-                        name = character.name,
-                        text = reply,
-                        date = date,
-                        model = model,
-                        api = route.api,
-                        type = route.source,
-                    )
+                val newMessages = buildList {
+                    add(userMessageMap(userName, message, date, pendingAttachments))
+                    if (reply.isNotBlank()) {
+                        add(
+                            aiMessageMap(
+                                name = character.name,
+                                text = reply,
+                                date = date,
+                                model = model,
+                                api = route.api,
+                                type = route.source,
+                            )
+                        )
+                    }
                 }
-                NativeChatRepository(dataSourceProvider = { TavernNativeChatDataSource(client) })
-                    .save(avatar, chatFile, chat)
+                repository.appendCharacterMessages(
+                    avatar = avatar,
+                    chatFile = chatFile,
+                    newMessages = newMessages,
+                    headerIfMissing = defaultHeaderMap(userName, character.name, date),
+                )
                 persisted = true
                 store.clearSaveError()
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -345,19 +355,28 @@ class NativeChatEngine(
             if (generated.isBlank()) return@launchGeneration
 
             try {
-                val chat = client.getChatJsonl(avatar, chatFile)
-                applyGenerated(chat, target.id, generated, target.mes)
-                NativeChatRepository(dataSourceProvider = { TavernNativeChatDataSource(client) })
-                    .save(avatar, chatFile, chat)
+                val (_, chat) = repository.load(avatar, chatFile)
+                val unloadedPrefixCount = if (store.hasMoreHistory && store.messages.isNotEmpty()) {
+                    (NativeChatJsonOps.messageCount(chat) - store.messages.size).coerceAtLeast(0)
+                } else {
+                    0
+                }
+                applyGenerated(chat, unloadedPrefixCount + target.id, generated, target.mes)
+                repository.save(avatar, chatFile, chat)
+                val savedHasMore = store.hasMoreHistory
+                val savedCursor = store.historyCursor
+                val chatForStore = sliceRawChatForStore(chat, unloadedPrefixCount)
                 store.applySnapshot(
                     buildNativeCharacterChatSnapshot(
                         avatar = avatar,
                         character = character,
                         chatFile = chatFile,
-                        rawChat = chat,
+                        rawChat = chatForStore,
                     ),
                     markRuntimeReady = false,
                 )
+                store.hasMoreHistory = savedHasMore
+                store.historyCursor = savedCursor
                 store.clearSaveError()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -620,15 +639,13 @@ class NativeChatEngine(
         )
     }
 
-    private fun ensureHeader(chat: MutableList<Any?>, userName: String, charName: String, date: String) {
-        if (chat.isNotEmpty()) return
-        chat += linkedMapOf<String, Any?>(
+    private fun defaultHeaderMap(userName: String, charName: String, date: String): Map<String, Any?> =
+        linkedMapOf<String, Any?>(
             "user_name" to userName,
             "character_name" to charName,
             "create_date" to date,
             "chat_metadata" to linkedMapOf<String, Any?>("integrity" to UUID.randomUUID().toString())
         )
-    }
 
     private fun sendDate(): String =
         SimpleDateFormat("MMMM d, yyyy h:mma", Locale.ENGLISH).format(Date()).lowercase(Locale.ENGLISH)

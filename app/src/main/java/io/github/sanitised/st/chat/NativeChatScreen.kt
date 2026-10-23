@@ -263,6 +263,7 @@ fun NativeChatScreen(
     LaunchedEffect(nativeTargetKey) {
         if (nativeTargetKey == null) return@LaunchedEffect
         if (target is ChatTarget.CharacterChat) {
+            nativeChatRuntime?.repository?.invalidateCache()
             // 服务刚上报就绪时首个请求仍可能瞬时失败,重试兜底,避免一次失败后永久卡住。
             var lastError: Throwable? = null
             repeat(3) { attempt ->
@@ -371,8 +372,12 @@ fun NativeChatScreen(
                 onSearch = { onShowMessage("消息搜索暂未接入原生聊天运行时") },
                 onReloadChat = {
                     scope.launch {
+                        nativeChatRuntime?.repository?.invalidateCache()
                         val loaded = if (target is ChatTarget.CharacterChat) {
-                            nativeChatLoader?.openCharacter(target.avatar, target.chatFile) == true
+                            nativeChatLoader?.openCharacter(
+                                target.avatar,
+                                target.chatFile?.takeIf { it.isNotBlank() } ?: store.chatFile.takeIf { it.isNotBlank() },
+                            ) == true
                         } else {
                             false
                         }
@@ -467,6 +472,20 @@ fun NativeChatScreen(
                         onDeleteFromEdit = { message ->
                             editingMessageId = -1
                             deletingMessage = message
+                        },
+                        hasMoreHistory = store.hasMoreHistory,
+                        isLoadingMoreHistory = store.isLoadingMoreHistory,
+                        onLoadMoreHistory = {
+                            scope.launch {
+                                val beforeSize = store.messages.size
+                                val loaded = runCatching {
+                                    nativeChatLoader?.loadMoreHistory() == true
+                                }.getOrDefault(false)
+                                if (loaded && editingMessageId >= 0) {
+                                    val delta = store.messages.size - beforeSize
+                                    if (delta > 0) editingMessageId += delta
+                                }
+                            }
                         },
                         modifier = Modifier.fillMaxSize(),
                         bottomContentPadding = quickStripHeight + 8.dp

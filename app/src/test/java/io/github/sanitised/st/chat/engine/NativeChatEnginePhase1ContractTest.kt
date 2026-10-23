@@ -38,8 +38,8 @@ class NativeChatEnginePhase1ContractTest {
         engine.send("hello")
         joinLaunchedJobs()
 
-        assertEquals("main.jsonl", api.savedChatFiles().last())
-        assertTrue(api.savedChatFiles().first().startsWith("__native-backup__main__"))
+        assertEquals(listOf("main.jsonl"), api.savedChatFiles())
+        assertEquals(0, api.getChatJsonlCallCount())
         assertEquals(listOf("hello", "native reply"), api.savedMessages())
         assertEquals(listOf("hello", "native reply"), store.messages.map { it.mes })
     }
@@ -211,9 +211,12 @@ class NativeChatEnginePhase1ContractTest {
         private var chat = chat
         private var saved: MutableList<Any?>? = null
         private val saveCalls = mutableListOf<String>()
+        private var getChatCalls = 0
         private var streamCalls = 0
 
         fun currentChat(): MutableList<Any?> = chat.deepCopyChat()
+
+        fun getChatJsonlCallCount(): Int = getChatCalls
 
         fun savedMessages(): List<String> =
             (saved ?: error("No saved chat"))
@@ -257,7 +260,33 @@ class NativeChatEnginePhase1ContractTest {
                         chat = "main.jsonl",
                     )
                     "getWorldInfo" -> WorldInfoBook(args?.getOrNull(0)?.toString().orEmpty())
-                    "getChatJsonl" -> chat.deepCopyChat()
+                    "getChatJsonl" -> {
+                        getChatCalls += 1
+                        chat.deepCopyChat()
+                    }
+                    "getChatIntegrity" -> {
+                        val header = chat.firstOrNull() as? Map<*, *>
+                        val meta = header?.get("chat_metadata") as? Map<*, *>
+                        meta?.get("integrity")?.toString()
+                    }
+                    "appendChatJsonl" -> {
+                        val chatFile = args?.getOrNull(1).toString()
+                        val newMessages = (args?.getOrNull(2) as? List<*>).orEmpty()
+                        val headerIfMissing = args?.getOrNull(3) as? Map<*, *>
+                        val next = chat.deepCopyChat()
+                        if (next.isEmpty() && headerIfMissing != null) {
+                            next += deepCopyValue(headerIfMissing)
+                        }
+                        newMessages.forEach { msg ->
+                            if (msg != null) next += deepCopyValue(msg)
+                        }
+                        saveCalls += chatFile
+                        if (chatFile.removeSuffix(".jsonl") == "main") {
+                            chat = next.deepCopyChat()
+                            saved = chat.deepCopyChat()
+                        }
+                        true
+                    }
                     "saveChatJsonl" -> {
                         @Suppress("UNCHECKED_CAST")
                         val next = (args?.getOrNull(2) as List<Any?>).deepCopyChat()

@@ -20,6 +20,40 @@ interface NativeChatDataSource {
     suspend fun saveChatJsonl(avatar: String, chatFile: String, chat: List<Any?>)
     suspend fun listCharacterChats(avatar: String): List<CharacterChatSummary>
 
+    suspend fun getChatIntegrity(avatar: String, chatFile: String): String? =
+        getChatJsonl(avatar, chatFile).nativeChatIntegrity().takeIf { it.isNotBlank() }
+
+    suspend fun appendChatJsonl(
+        avatar: String,
+        chatFile: String,
+        newMessages: List<Any?>,
+        headerIfMissing: Map<String, Any?>? = null,
+        expectedIntegrity: String? = null,
+    ): Boolean {
+        val current = getChatJsonl(avatar, chatFile)
+        val actualIntegrity = current.nativeChatIntegrity()
+        if (!expectedIntegrity.isNullOrBlank() && actualIntegrity.isNotBlank() && actualIntegrity != expectedIntegrity) {
+            return false
+        }
+        val next = if (current.isEmpty()) {
+            mutableListOf<Any?>().apply {
+                if (headerIfMissing != null) {
+                    add(nativeChatDeepCopyValue(headerIfMissing))
+                }
+                ensureNativeChatIntegrity()
+            }
+        } else {
+            current.nativeChatDeepCopy()
+        }
+        newMessages.forEach { message ->
+            if (message != null) {
+                next.add(nativeChatDeepCopyValue(message))
+            }
+        }
+        saveChatJsonl(avatar, chatFile, next)
+        return true
+    }
+
     suspend fun renameCharacterChat(avatar: String, originalFile: String, renamedFile: String): String =
         error("renameCharacterChat is not available")
 
@@ -54,6 +88,24 @@ class TavernNativeChatDataSource(
         api.saveChatJsonl(avatar, chatFile, chat)
     }
 
+    override suspend fun getChatIntegrity(avatar: String, chatFile: String): String? =
+        api.getChatIntegrity(avatar, chatFile)
+
+    override suspend fun appendChatJsonl(
+        avatar: String,
+        chatFile: String,
+        newMessages: List<Any?>,
+        headerIfMissing: Map<String, Any?>?,
+        expectedIntegrity: String?,
+    ): Boolean =
+        api.appendChatJsonl(
+            avatar = avatar,
+            chatFile = chatFile,
+            newMessages = newMessages,
+            headerIfMissing = headerIfMissing,
+            expectedIntegrity = expectedIntegrity,
+        )
+
     override suspend fun listCharacterChats(avatar: String): List<CharacterChatSummary> =
         api.listCharacterChats(avatar)
 
@@ -82,12 +134,34 @@ class TavernNativeChatDataSource(
 
 class NativeChatRepository(
     private val dataSourceProvider: () -> NativeChatDataSource,
-    private val backupNameProvider: (avatar: String, chatFile: String) -> String = ::defaultNativeChatBackupName,
+    private val backupNameProvider: (avatar: String, chatFile: String) -> String = DEFAULT_BACKUP_NAME_PROVIDER,
     private val backupRetentionCount: Int = DEFAULT_NATIVE_BACKUP_RETENTION_COUNT,
+    private val enableLegacyFileBackups: Boolean = backupNameProvider !== DEFAULT_BACKUP_NAME_PROVIDER,
 ) {
+    private data class CachedChatSession(
+        val key: String,
+        val lines: MutableList<Any?>,
+        val integrity: String?,
+    )
+
+    @Volatile
+    private var cachedSession: CachedChatSession? = null
+
     suspend fun load(avatar: String, chatFile: String): Pair<CharacterDetail, MutableList<Any?>> {
         val source = dataSourceProvider()
-        return source.getCharacter(avatar) to source.getChatJsonl(avatar, chatFile)
+        val character = source.getCharacter(avatar)
+        val key = writeLockKey(avatar, chatFile)
+        val cached = cachedSession?.takeIf { it.key == key }
+        if (cached != null) {
+            return character to cached.lines.nativeChatDeepCopy()
+        }
+        val lines = source.getChatJsonl(avatar, chatFile)
+        cachedSession = CachedChatSession(
+            key = key,
+            lines = lines.nativeChatDeepCopy(),
+            integrity = lines.nativeChatIntegrity().takeIf { it.isNotBlank() },
+        )
+        return character to lines
     }
 
     suspend fun getCharacter(avatar: String): CharacterDetail =
@@ -97,24 +171,104 @@ class NativeChatRepository(
         val key = writeLockKey(avatar, chatFile)
         writeLocks.getOrPut(key) { Mutex() }.withLock {
             val source = dataSourceProvider()
-            val current = source.getChatJsonl(avatar, chatFile)
             val expectedIntegrity = chat.nativeChatIntegrity()
-            val currentIntegrity = current.nativeChatIntegrity()
-            if (expectedIntegrity.isNotBlank() && currentIntegrity.isNotBlank() && expectedIntegrity != currentIntegrity) {
-                throw NativeChatIntegrityConflict(
-                    avatar = avatar,
-                    chatFile = chatFile,
-                    expectedIntegrity = expectedIntegrity,
-                    actualIntegrity = currentIntegrity,
-                )
-            }
-            if (current.isNotEmpty()) {
-                source.saveChatJsonl(avatar, backupNameProvider(avatar, chatFile), current.nativeChatDeepCopy())
+            if (enableLegacyFileBackups) {
+                val current = source.getChatJsonl(avatar, chatFile)
+                val currentIntegrity = current.nativeChatIntegrity()
+                if (expectedIntegrity.isNotBlank() && currentIntegrity.isNotBlank() && expectedIntegrity != currentIntegrity) {
+                    cachedSession = null
+                    throw NativeChatIntegrityConflict(
+                        avatar = avatar,
+                        chatFile = chatFile,
+                        expectedIntegrity = expectedIntegrity,
+                        actualIntegrity = currentIntegrity,
+                    )
+                }
+                if (current.isNotEmpty()) {
+                    source.saveChatJsonl(avatar, backupNameProvider(avatar, chatFile), current.nativeChatDeepCopy())
+                }
+            } else if (expectedIntegrity.isNotBlank()) {
+                val currentIntegrity = source.getChatIntegrity(avatar, chatFile).orEmpty()
+                if (currentIntegrity.isNotBlank() && expectedIntegrity != currentIntegrity) {
+                    cachedSession = null
+                    throw NativeChatIntegrityConflict(
+                        avatar = avatar,
+                        chatFile = chatFile,
+                        expectedIntegrity = expectedIntegrity,
+                        actualIntegrity = currentIntegrity,
+                    )
+                }
             }
             val next = chat.nativeChatDeepCopy()
             next.ensureNativeChatIntegrity()
             source.saveChatJsonl(avatar, chatFile, next)
-            pruneNativeBackups(source, avatar, chatFile)
+            cachedSession = CachedChatSession(
+                key = key,
+                lines = next.nativeChatDeepCopy(),
+                integrity = next.nativeChatIntegrity().takeIf { it.isNotBlank() },
+            )
+            if (enableLegacyFileBackups) {
+                pruneNativeBackups(source, avatar, chatFile)
+            }
+        }
+    }
+
+    suspend fun appendCharacterMessages(
+        avatar: String,
+        chatFile: String,
+        newMessages: List<Map<String, Any?>>,
+        headerIfMissing: Map<String, Any?>? = null,
+    ): Boolean {
+        if (newMessages.isEmpty()) return true
+        val key = writeLockKey(avatar, chatFile)
+        return writeLocks.getOrPut(key) { Mutex() }.withLock {
+            val source = dataSourceProvider()
+            val cached = cachedSession?.takeIf { it.key == key }
+            val expectedIntegrity = cached?.integrity
+            val appended = source.appendChatJsonl(
+                avatar = avatar,
+                chatFile = chatFile,
+                newMessages = newMessages,
+                headerIfMissing = headerIfMissing,
+                expectedIntegrity = expectedIntegrity,
+            )
+            if (!appended) {
+                cachedSession = null
+                val actualIntegrity = source.getChatIntegrity(avatar, chatFile).orEmpty()
+                throw NativeChatIntegrityConflict(
+                    avatar = avatar,
+                    chatFile = chatFile,
+                    expectedIntegrity = expectedIntegrity.orEmpty(),
+                    actualIntegrity = actualIntegrity,
+                )
+            }
+            if (cached != null) {
+                val updatedLines = cached.lines.nativeChatDeepCopy()
+                if (updatedLines.isEmpty() && headerIfMissing != null) {
+                    updatedLines.add(nativeChatDeepCopyValue(headerIfMissing))
+                    updatedLines.ensureNativeChatIntegrity()
+                }
+                newMessages.forEach { message ->
+                    updatedLines.add(nativeChatDeepCopyValue(message))
+                }
+                cachedSession = CachedChatSession(
+                    key = key,
+                    lines = updatedLines,
+                    integrity = updatedLines.nativeChatIntegrity().takeIf { it.isNotBlank() } ?: cached.integrity,
+                )
+            }
+            true
+        }
+    }
+
+    fun invalidateCache(avatar: String? = null, chatFile: String? = null) {
+        if (avatar == null || chatFile == null) {
+            cachedSession = null
+            return
+        }
+        val key = writeLockKey(avatar, chatFile)
+        if (cachedSession?.key == key) {
+            cachedSession = null
         }
     }
 
@@ -126,10 +280,14 @@ class NativeChatRepository(
             .filterNot(::isNativeChatBackupName)
             .toSet()
 
-    suspend fun rename(avatar: String, originalFile: String, renamedFile: String): String =
-        dataSourceProvider().renameCharacterChat(avatar, originalFile, renamedFile)
+    suspend fun rename(avatar: String, originalFile: String, renamedFile: String): String {
+        invalidateCache(avatar, originalFile)
+        invalidateCache(avatar, renamedFile)
+        return dataSourceProvider().renameCharacterChat(avatar, originalFile, renamedFile)
+    }
 
     suspend fun delete(avatar: String, chatFile: String) {
+        invalidateCache(avatar, chatFile)
         dataSourceProvider().deleteCharacterChat(avatar, chatFile)
     }
 
@@ -179,46 +337,68 @@ class NativeChatRuntime(
     private val store: ChatStore,
     dataSourceProvider: () -> NativeChatDataSource,
 ) {
-    private val repository = NativeChatRepository(dataSourceProvider)
+    internal val repository: NativeChatRepository = NativeChatRepository(dataSourceProvider)
 
     suspend fun editMessage(messageId: Int, text: String) =
-        mutateCurrent { NativeChatJsonOps.editMessage(it, messageId, text) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.editMessage(session.chat, session.resolveRawMessageId(messageId), text)
+        }
 
     suspend fun deleteMessage(messageId: Int) =
-        mutateCurrent { NativeChatJsonOps.deleteMessage(it, messageId) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.deleteMessage(session.chat, session.resolveRawMessageId(messageId))
+        }
 
     suspend fun setMessageHidden(messageId: Int, hidden: Boolean) =
-        mutateCurrent { NativeChatJsonOps.setHidden(it, messageId, hidden) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.setHidden(session.chat, session.resolveRawMessageId(messageId), hidden)
+        }
 
     suspend fun moveMessage(messageId: Int, delta: Int): Boolean =
-        mutateCurrent { NativeChatJsonOps.moveMessage(it, messageId, delta) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.moveMessage(session.chat, session.resolveRawMessageId(messageId), delta)
+        }
 
     suspend fun setReasoning(messageId: Int, reasoning: String?) =
-        mutateCurrent { NativeChatJsonOps.setReasoning(it, messageId, reasoning) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.setReasoning(session.chat, session.resolveRawMessageId(messageId), reasoning)
+        }
 
     suspend fun deleteAttachment(messageId: Int, kind: NativeAttachmentKind, index: Int): Boolean =
-        mutateCurrent { NativeChatJsonOps.deleteAttachment(it, messageId, kind, index) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.deleteAttachment(session.chat, session.resolveRawMessageId(messageId), kind, index)
+        }
 
     suspend fun setMediaDisplay(messageId: Int, display: NativeMediaDisplay) =
-        mutateCurrent { NativeChatJsonOps.setMediaDisplay(it, messageId, display) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.setMediaDisplay(session.chat, session.resolveRawMessageId(messageId), display)
+        }
 
     suspend fun setAuthorsNote(text: String) =
-        mutateCurrent { NativeChatJsonOps.setAuthorsNote(it, text) }
+        mutateCurrent { session -> NativeChatJsonOps.setAuthorsNote(session.chat, text) }
 
     suspend fun setCfg(scale: Double, negativePrompt: String, positivePrompt: String) =
-        mutateCurrent { NativeChatJsonOps.setCfg(it, scale, negativePrompt, positivePrompt) }
+        mutateCurrent { session -> NativeChatJsonOps.setCfg(session.chat, scale, negativePrompt, positivePrompt) }
 
     suspend fun swipePrevious(messageId: Int): Boolean =
-        mutateCurrent { NativeChatJsonOps.switchSwipe(it, messageId, delta = -1) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.switchSwipe(session.chat, session.resolveRawMessageId(messageId), delta = -1)
+        }
 
     suspend fun swipeNext(messageId: Int): Boolean =
-        mutateCurrent { NativeChatJsonOps.switchSwipe(it, messageId, delta = 1) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.switchSwipe(session.chat, session.resolveRawMessageId(messageId), delta = 1)
+        }
 
     suspend fun createSwipe(messageId: Int, text: String) =
-        mutateCurrent { NativeChatJsonOps.createSwipe(it, messageId, text) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.createSwipe(session.chat, session.resolveRawMessageId(messageId), text)
+        }
 
     suspend fun deleteSwipe(messageId: Int, swipeId: Int): Boolean =
-        mutateCurrent { NativeChatJsonOps.deleteSwipe(it, messageId, swipeId) }
+        mutateCurrent { session ->
+            NativeChatJsonOps.deleteSwipe(session.chat, session.resolveRawMessageId(messageId), swipeId)
+        }
 
     suspend fun createNewChat(avatarOverride: String? = null): String {
         val avatar = avatarOverride?.takeIf { it.isNotBlank() }
@@ -231,7 +411,7 @@ class NativeChatRuntime(
         )
         val chat = newCharacterChat(character)
         repository.save(avatar, name, chat)
-        apply(avatar, name, character, chat)
+        apply(avatar, name, character, chat, resetPagination = true)
         return name
     }
 
@@ -246,11 +426,11 @@ class NativeChatRuntime(
         val copy = NativeChatJsonOps.createCheckpoint(
             chat = session.chat,
             currentChatName = session.chatFile,
-            messageId = messageId,
+            messageId = session.resolveRawMessageId(messageId),
             name = name,
         )
         repository.save(session.avatar, copy.linkedName, copy.chatCopy)
-        saveAndApply(session.avatar, session.chatFile, session.character, session.chat)
+        saveAndApply(session)
         return copy.linkedName
     }
 
@@ -264,24 +444,24 @@ class NativeChatRuntime(
         val copy = NativeChatJsonOps.createBranch(
             chat = session.chat,
             currentChatName = session.chatFile,
-            messageId = messageId,
+            messageId = session.resolveRawMessageId(messageId),
             name = name,
         )
         repository.save(session.avatar, session.chatFile, session.chat)
         repository.save(session.avatar, copy.linkedName, copy.chatCopy)
-        apply(session.avatar, copy.linkedName, session.character, copy.chatCopy)
+        apply(session.avatar, copy.linkedName, session.character, copy.chatCopy, resetPagination = true)
         return copy.linkedName
     }
 
     suspend fun openChat(chatFile: String) {
         val session = loadCurrent(chatFileOverride = chatFile)
-        apply(session.avatar, session.chatFile, session.character, session.chat)
+        apply(session.avatar, session.chatFile, session.character, session.chat, resetPagination = true)
     }
 
-    private suspend fun mutateCurrent(block: (MutableList<Any?>) -> Unit): Boolean {
+    private suspend fun mutateCurrent(block: (NativeLoadedChat) -> Unit): Boolean {
         val session = loadCurrent()
-        block(session.chat)
-        saveAndApply(session.avatar, session.chatFile, session.character, session.chat)
+        block(session)
+        saveAndApply(session)
         return true
     }
 
@@ -292,20 +472,45 @@ class NativeChatRuntime(
             ?: store.chatFile.takeIf { it.isNotBlank() }
             ?: error("No active chat file")
         val (character, chat) = repository.load(avatar, chatFile)
-        return NativeLoadedChat(avatar, chatFile, character, chat)
+        val unloadedPrefixCount = if (
+            chatFileOverride == null &&
+            store.hasMoreHistory &&
+            store.messages.isNotEmpty()
+        ) {
+            (NativeChatJsonOps.messageCount(chat) - store.messages.size).coerceAtLeast(0)
+        } else {
+            0
+        }
+        return NativeLoadedChat(
+            avatar = avatar,
+            chatFile = chatFile,
+            character = character,
+            chat = chat,
+            unloadedPrefixCount = unloadedPrefixCount,
+        )
     }
 
-    private suspend fun saveAndApply(
+    private suspend fun saveAndApply(session: NativeLoadedChat) {
+        repository.save(session.avatar, session.chatFile, session.chat)
+        val chatForStore = sliceRawChatForStore(session.chat, session.unloadedPrefixCount)
+        apply(
+            avatar = session.avatar,
+            chatFile = session.chatFile,
+            character = session.character,
+            chat = chatForStore,
+            resetPagination = session.unloadedPrefixCount == 0 && !store.hasMoreHistory,
+        )
+    }
+
+    private fun apply(
         avatar: String,
         chatFile: String,
         character: CharacterDetail,
-        chat: MutableList<Any?>,
+        chat: List<Any?>,
+        resetPagination: Boolean = false,
     ) {
-        repository.save(avatar, chatFile, chat)
-        apply(avatar, chatFile, character, chat)
-    }
-
-    private fun apply(avatar: String, chatFile: String, character: CharacterDetail, chat: List<Any?>) {
+        val savedHasMore = store.hasMoreHistory
+        val savedCursor = store.historyCursor
         store.applySnapshot(
             buildNativeCharacterChatSnapshot(
                 avatar = avatar,
@@ -315,6 +520,14 @@ class NativeChatRuntime(
             ),
             markRuntimeReady = false,
         )
+        if (resetPagination) {
+            store.hasMoreHistory = false
+            store.historyCursor = null
+            store.isLoadingMoreHistory = false
+        } else {
+            store.hasMoreHistory = savedHasMore
+            store.historyCursor = savedCursor
+        }
     }
 
     private fun uniqueName(base: String, token: String, existing: Set<String>): String {
@@ -390,10 +603,26 @@ class NativeChatRuntime(
         val chatFile: String,
         val character: CharacterDetail,
         val chat: MutableList<Any?>,
-    )
+        val unloadedPrefixCount: Int = 0,
+    ) {
+        fun resolveRawMessageId(uiMessageId: Int): Int =
+            unloadedPrefixCount + uiMessageId
+    }
+}
+
+internal fun sliceRawChatForStore(rawChat: List<Any?>, unloadedPrefixCount: Int): List<Any?> {
+    if (unloadedPrefixCount <= 0 || rawChat.isEmpty()) return rawChat
+    val header = rawChat.firstOrNull().nativeChatHeaderMetadata()?.let { rawChat.first() }
+    val messageRows = if (header != null) rawChat.drop(1) else rawChat
+    val slicedMessages = messageRows.drop(unloadedPrefixCount.coerceAtMost(messageRows.size))
+    return buildList(slicedMessages.size + 1) {
+        if (header != null) add(header)
+        addAll(slicedMessages)
+    }
 }
 
 private const val DEFAULT_NATIVE_BACKUP_RETENTION_COUNT = 5
+private val DEFAULT_BACKUP_NAME_PROVIDER: (String, String) -> String = ::defaultNativeChatBackupName
 internal const val NATIVE_BACKUP_PREFIX = "__native-backup__"
 private const val LEGACY_NATIVE_BACKUP_MARKER = ".native-backup-"
 

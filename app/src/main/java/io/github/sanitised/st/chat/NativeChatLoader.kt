@@ -1,6 +1,7 @@
 package io.github.sanitised.st.chat
 
 import io.github.sanitised.st.api.CharacterDetail
+import io.github.sanitised.st.api.ChatPayloadTail
 import io.github.sanitised.st.api.TavernCoreApi
 import org.json.JSONArray
 import org.json.JSONObject
@@ -9,25 +10,98 @@ class NativeChatLoader(
     private val store: ChatStore,
     private val clientProvider: () -> TavernCoreApi,
 ) {
-    suspend fun openCharacter(avatar: String, chatFile: String?): Boolean {
+    suspend fun openCharacter(
+        avatar: String,
+        chatFile: String? = null,
+        maxLines: Int = 100,
+    ): Boolean {
         val client = clientProvider()
         val character = client.getCharacter(avatar)
-        val selectedChatFile = chatFile
-            ?.takeIf { it.isNotBlank() }
-            ?: character.chat.takeIf { it.isNotBlank() }
-            ?: return false
-        val rawChat = client.getChatJsonl(avatar, selectedChatFile)
-        if (rawChat.isEmpty()) return false
+        val explicitChatFile = chatFile?.takeIf { it.isNotBlank() }
+        if (explicitChatFile != null) {
+            val tail = client.getChatTailJsonl(avatar, explicitChatFile, maxLines)
+            if (tail.header == null && tail.messages.isEmpty()) return false
+            applyTailSnapshot(avatar, character, explicitChatFile, tail)
+            return true
+        }
+
+        val defaultChat = character.chat.takeIf { it.isNotBlank() }
+        if (defaultChat != null) {
+            val tail = client.getChatTailJsonl(avatar, defaultChat, maxLines)
+            if (tail.header != null || tail.messages.isNotEmpty()) {
+                applyTailSnapshot(avatar, character, defaultChat, tail)
+                return true
+            }
+        }
+
+        val existingChats = runCatching { client.listCharacterChats(avatar) }
+            .getOrDefault(emptyList())
+            .filterNot { isNativeChatBackupName(it.fileName) || isNativeChatBackupName(it.id) }
+        for (summary in existingChats) {
+            val candidate = summary.fileName.ifBlank { summary.id }.takeIf { it.isNotBlank() } ?: continue
+            if (candidate == defaultChat) continue
+            val tail = client.getChatTailJsonl(avatar, candidate, maxLines)
+            if (tail.header != null || tail.messages.isNotEmpty()) {
+                applyTailSnapshot(avatar, character, candidate, tail)
+                return true
+            }
+        }
+
+        return false
+    }
+
+    suspend fun loadMoreHistory(maxLines: Int = 100): Boolean {
+        if (store.mode == "group") return false
+        val avatar = store.avatarUrl.takeIf { it.isNotBlank() } ?: return false
+        val chatFile = store.chatFile.takeIf { it.isNotBlank() } ?: return false
+        val cursor = store.historyCursor ?: return false
+        if (!store.hasMoreHistory || store.isLoadingMoreHistory) return false
+
+        store.isLoadingMoreHistory = true
+        return try {
+            val chunk = clientProvider().getChatBeforeJsonl(avatar, chatFile, cursor, maxLines)
+            if (chunk.messages.isEmpty()) {
+                store.hasMoreHistory = false
+                store.historyCursor = null
+                false
+            } else {
+                val olderMessages = chunk.messages.mapIndexed { idx, row ->
+                    row.toNativeChatMessage(idx)
+                }
+                store.prependMessages(
+                    olderMessages = olderMessages,
+                    newCursor = chunk.cursor,
+                    hasMore = chunk.hasMoreBefore && chunk.cursor != null,
+                )
+                true
+            }
+        } finally {
+            store.isLoadingMoreHistory = false
+        }
+    }
+
+    private fun applyTailSnapshot(
+        avatar: String,
+        character: CharacterDetail,
+        chatFile: String,
+        tail: ChatPayloadTail,
+    ) {
+        val rawChat = buildList<Any?> {
+            tail.header?.let(::add)
+            addAll(tail.messages)
+        }
         store.applySnapshot(
             buildNativeCharacterChatSnapshot(
                 avatar = avatar,
                 character = character,
-                chatFile = selectedChatFile,
+                chatFile = chatFile,
                 rawChat = rawChat,
             ),
             markRuntimeReady = false,
         )
-        return true
+        store.historyCursor = tail.cursor
+        store.hasMoreHistory = tail.hasMoreBefore && tail.cursor != null
+        store.isLoadingMoreHistory = false
     }
 }
 

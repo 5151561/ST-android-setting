@@ -370,6 +370,7 @@ pub struct JniAppState {
     pub character_service: Arc<CharacterService>,
     pub chat_service: Arc<ChatService>,
     pub chat_commit_service: Arc<ChatCommitService>,
+    pub chat_history_coordinator: Arc<ChatHistoryCoordinator>,
     pub group_service: Arc<GroupService>,
     pub group_chat_service: Arc<GroupChatService>,
     pub preset_service: Arc<PresetService>,
@@ -572,7 +573,7 @@ impl JniAppState {
         let group_chat_service = Arc::new(GroupChatService::new(
             group_chat_repository,
             agent_workspace_lifecycle_service,
-            chat_history_coordinator,
+            chat_history_coordinator.clone(),
         ));
 
         let preset_service = Arc::new(PresetService::new(preset_repository));
@@ -632,6 +633,7 @@ impl JniAppState {
             character_service,
             chat_service,
             chat_commit_service,
+            chat_history_coordinator,
             group_service,
             group_chat_service,
             preset_service,
@@ -1604,7 +1606,9 @@ impl JniAppState {
                     Ok(s) => Self::strip_avatar_ext(s),
                     Err(env) => return env,
                 };
-                let file_name = match Self::require_str(&payload, "file_name") {
+                let file_name = match Self::require_str(&payload, "file_name")
+                    .or_else(|_| Self::require_str(&payload, "fileName"))
+                {
                     Ok(s) => s,
                     Err(env) => return env,
                 };
@@ -1614,6 +1618,7 @@ impl JniAppState {
                     .await
                 {
                     Ok(lines) => InvokeEnvelope::success(lines),
+                    Err(ApplicationError::NotFound(_)) => InvokeEnvelope::success(json!([])),
                     Err(e) => InvokeEnvelope::from_app_error(e),
                 }
             }
@@ -1771,16 +1776,20 @@ impl JniAppState {
             "get_chat_tail" | "get_chat_payload_tail" => {
                 let character_name = match Self::require_str(&payload, "character_name")
                     .or_else(|_| Self::require_str(&payload, "avatar_url"))
+                    .or_else(|_| Self::require_str(&payload, "avatar"))
                 {
                     Ok(s) => Self::strip_avatar_ext(s),
                     Err(env) => return env,
                 };
-                let file_name = match Self::require_str(&payload, "file_name") {
+                let file_name = match Self::require_str(&payload, "file_name")
+                    .or_else(|_| Self::require_str(&payload, "fileName"))
+                {
                     Ok(s) => s,
                     Err(env) => return env,
                 };
                 let max_lines = payload
                     .get("max_lines")
+                    .or_else(|| payload.get("maxLines"))
                     .or_else(|| payload.get("limit"))
                     .and_then(|v| v.as_u64())
                     .unwrap_or(100) as usize;
@@ -1790,6 +1799,12 @@ impl JniAppState {
                     .await
                 {
                     Ok(tail) => InvokeEnvelope::success(tail),
+                    Err(ApplicationError::NotFound(_)) => InvokeEnvelope::success(json!({
+                        "header": "",
+                        "lines": [],
+                        "cursor": { "offset": 0, "size": 0, "modifiedMillis": 0 },
+                        "hasMoreBefore": false
+                    })),
                     Err(e) => InvokeEnvelope::from_app_error(e),
                 }
             }
@@ -1797,31 +1812,66 @@ impl JniAppState {
             "get_chat_before" | "get_chat_payload_before" => {
                 let character_name = match Self::require_str(&payload, "character_name")
                     .or_else(|_| Self::require_str(&payload, "avatar_url"))
+                    .or_else(|_| Self::require_str(&payload, "avatar"))
                 {
                     Ok(s) => Self::strip_avatar_ext(s),
                     Err(env) => return env,
                 };
-                let file_name = match Self::require_str(&payload, "file_name") {
+                let file_name = match Self::require_str(&payload, "file_name")
+                    .or_else(|_| Self::require_str(&payload, "fileName"))
+                {
                     Ok(s) => s,
                     Err(env) => return env,
                 };
-                let cursor: ChatPayloadCursor = match payload
-                    .get("cursor")
-                    .cloned()
-                    .ok_or_else(|| String::from("Missing cursor"))
-                    .and_then(|v| serde_json::from_value(v).map_err(|e| e.to_string()))
-                {
-                    Ok(c) => c,
-                    Err(e) => {
-                        return InvokeEnvelope::error(
-                            "VALIDATION_ERROR",
-                            format!("Invalid cursor: {e}"),
-                            None,
-                        );
+                let cursor: ChatPayloadCursor = if let Some(cursor_val) = payload.get("cursor") {
+                    match serde_json::from_value(cursor_val.clone()) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            return InvokeEnvelope::error(
+                                "VALIDATION_ERROR",
+                                format!("Invalid cursor: {e}"),
+                                None,
+                            );
+                        }
+                    }
+                } else {
+                    let offset = match payload
+                        .get("before_offset")
+                        .or_else(|| payload.get("beforeOffset"))
+                        .or_else(|| payload.get("offset"))
+                        .and_then(Value::as_u64)
+                    {
+                        Some(o) => o,
+                        None => {
+                            return InvokeEnvelope::error(
+                                "VALIDATION_ERROR",
+                                "Missing 'cursor' or 'before_offset' for get_chat_before",
+                                None,
+                            );
+                        }
+                    };
+                    let size = payload
+                        .get("expected_size")
+                        .or_else(|| payload.get("expectedSize"))
+                        .or_else(|| payload.get("size"))
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0);
+                    let modified_millis = payload
+                        .get("expected_modified_millis")
+                        .or_else(|| payload.get("expectedModifiedMillis"))
+                        .or_else(|| payload.get("modified_millis"))
+                        .or_else(|| payload.get("modifiedMillis"))
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0);
+                    ChatPayloadCursor {
+                        offset,
+                        size,
+                        modified_millis,
                     }
                 };
                 let max_lines = payload
                     .get("max_lines")
+                    .or_else(|| payload.get("maxLines"))
                     .or_else(|| payload.get("limit"))
                     .and_then(|v| v.as_u64())
                     .unwrap_or(100) as usize;
@@ -1831,6 +1881,305 @@ impl JniAppState {
                     .await
                 {
                     Ok(chunk) => InvokeEnvelope::success(chunk),
+                    Err(ApplicationError::NotFound(_)) => InvokeEnvelope::success(json!({
+                        "lines": [],
+                        "cursor": { "offset": 0, "size": 0, "modifiedMillis": 0 },
+                        "hasMoreBefore": false
+                    })),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
+            "chat_integrity" | "get_chat_integrity" => {
+                let character_name = match Self::require_str(&payload, "character_name")
+                    .or_else(|_| Self::require_str(&payload, "avatar_url"))
+                    .or_else(|_| Self::require_str(&payload, "avatar"))
+                {
+                    Ok(s) => Self::strip_avatar_ext(s),
+                    Err(env) => return env,
+                };
+                let file_name = match Self::require_str(&payload, "file_name")
+                    .or_else(|_| Self::require_str(&payload, "fileName"))
+                {
+                    Ok(s) => s,
+                    Err(env) => return env,
+                };
+                match self
+                    .chat_service
+                    .get_character_chat_integrity(character_name, file_name)
+                    .await
+                {
+                    Ok(integrity) => InvokeEnvelope::success(json!({ "integrity": integrity })),
+                    Err(ApplicationError::NotFound(_)) => {
+                        InvokeEnvelope::success(json!({ "integrity": Value::Null }))
+                    }
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
+            "chat_append_lines" | "append_chat_lines" => {
+                let character_name = match Self::require_str(&payload, "character_name")
+                    .or_else(|_| Self::require_str(&payload, "avatar_url"))
+                    .or_else(|_| Self::require_str(&payload, "avatar"))
+                {
+                    Ok(s) => Self::strip_avatar_ext(s).to_string(),
+                    Err(env) => return env,
+                };
+                let file_name = match Self::require_str(&payload, "file_name")
+                    .or_else(|_| Self::require_str(&payload, "fileName"))
+                {
+                    Ok(s) => s.to_string(),
+                    Err(env) => return env,
+                };
+                let lines = match payload
+                    .get("lines")
+                    .and_then(Value::as_array)
+                    .filter(|arr| !arr.is_empty())
+                {
+                    Some(arr) => arr,
+                    None => {
+                        return InvokeEnvelope::error(
+                            "VALIDATION_ERROR",
+                            "Missing or empty 'lines' array for chat_append_lines",
+                            None,
+                        );
+                    }
+                };
+                let header = payload.get("header").filter(|v| !v.is_null());
+                let expected_integrity = payload
+                    .get("expected_integrity")
+                    .or_else(|| payload.get("expectedIntegrity"))
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty());
+
+                let mut serialized_lines = Vec::with_capacity(lines.len());
+                for line_val in lines {
+                    let line_str = if let Some(raw_str) = line_val.as_str() {
+                        raw_str.trim_end_matches(['\r', '\n']).to_string()
+                    } else {
+                        match serde_json::to_string(line_val) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                return InvokeEnvelope::error(
+                                    "VALIDATION_ERROR",
+                                    format!("Failed to serialize chat line: {e}"),
+                                    None,
+                                );
+                            }
+                        }
+                    };
+                    if !line_str.is_empty() {
+                        serialized_lines.push(line_str);
+                    }
+                }
+
+                match self
+                    .chat_service
+                    .get_character_chat_integrity(&character_name, &file_name)
+                    .await
+                {
+                    Ok(current_integrity) => {
+                        if let Some(expected) = expected_integrity {
+                            if current_integrity.as_deref() != Some(expected) {
+                                return InvokeEnvelope::from_app_error(ApplicationError::Conflict(
+                                    "Chat integrity mismatch".into(),
+                                ));
+                            }
+                        }
+                        let path_str = match self
+                            .chat_service
+                            .get_chat_payload_path(&character_name, &file_name)
+                            .await
+                        {
+                            Ok(p) => p,
+                            Err(e) => return InvokeEnvelope::from_app_error(e),
+                        };
+                        let chat_path = PathBuf::from(&path_str);
+                        let file_len = tokio::fs::metadata(&chat_path)
+                            .await
+                            .map(|m| m.len())
+                            .unwrap_or(0);
+
+                        let mut append_bytes = Vec::new();
+                        if file_len == 0 {
+                            if let Some(hdr) = header {
+                                let hdr_str = if let Some(raw_str) = hdr.as_str() {
+                                    raw_str.trim_end_matches(['\r', '\n']).to_string()
+                                } else {
+                                    match serde_json::to_string(hdr) {
+                                        Ok(s) => s,
+                                        Err(e) => {
+                                            return InvokeEnvelope::error(
+                                                "VALIDATION_ERROR",
+                                                format!("Failed to serialize chat header: {e}"),
+                                                None,
+                                            );
+                                        }
+                                    }
+                                };
+                                append_bytes.extend_from_slice(hdr_str.as_bytes());
+                                append_bytes.push(b'\n');
+                            } else {
+                                return InvokeEnvelope::from_app_error(ApplicationError::NotFound(
+                                    format!("Chat header missing for empty file: {character_name}/{file_name}"),
+                                ));
+                            }
+                        } else {
+                            let needs_leading_newline = match std::fs::File::open(&chat_path) {
+                                Ok(mut rf) => {
+                                    use std::io::{Read, Seek, SeekFrom};
+                                    let mut last_byte = [0u8; 1];
+                                    if rf.seek(SeekFrom::End(-1)).is_ok()
+                                        && rf.read_exact(&mut last_byte).is_ok()
+                                    {
+                                        last_byte[0] != b'\n'
+                                    } else {
+                                        false
+                                    }
+                                }
+                                Err(_) => false,
+                            };
+                            if needs_leading_newline {
+                                append_bytes.push(b'\n');
+                            }
+                        }
+
+                        for line_str in &serialized_lines {
+                            append_bytes.extend_from_slice(line_str.as_bytes());
+                            append_bytes.push(b'\n');
+                        }
+
+                        let open_res = tokio::fs::OpenOptions::new()
+                            .create(true)
+                            .read(true)
+                            .append(true)
+                            .open(&chat_path)
+                            .await;
+                        let mut file = match open_res {
+                            Ok(f) => f,
+                            Err(e) => {
+                                return InvokeEnvelope::from_app_error(
+                                    ApplicationError::InternalError(format!(
+                                        "Failed to open chat file for append: {e}"
+                                    )),
+                                );
+                            }
+                        };
+                        {
+                            use tokio::io::AsyncWriteExt;
+                            if let Err(e) = file.write_all(&append_bytes).await {
+                                return InvokeEnvelope::from_app_error(
+                                    ApplicationError::InternalError(format!(
+                                        "Failed to append chat lines: {e}"
+                                    )),
+                                );
+                            }
+                            if let Err(e) = file.flush().await {
+                                return InvokeEnvelope::from_app_error(
+                                    ApplicationError::InternalError(format!(
+                                        "Failed to flush chat file: {e}"
+                                    )),
+                                );
+                            }
+                        }
+
+                        let locator = ChatHistoryLocator::Character {
+                            character_id: character_name,
+                            file_name,
+                        };
+                        self.chat_history_coordinator.invalidate(&locator).await;
+                        self.chat_history_coordinator
+                            .note_current_committed(locator, CurrentCommitReason::Mutation)
+                            .await;
+
+                        InvokeEnvelope::success(json!({
+                            "ok": true,
+                            "appended": lines.len()
+                        }))
+                    }
+                    Err(ApplicationError::NotFound(_)) => {
+                        if expected_integrity.is_some() {
+                            return InvokeEnvelope::from_app_error(ApplicationError::Conflict(
+                                "Chat integrity mismatch".into(),
+                            ));
+                        }
+                        let Some(hdr) = header else {
+                            return InvokeEnvelope::from_app_error(ApplicationError::NotFound(
+                                format!("Chat not found: {character_name}/{file_name}"),
+                            ));
+                        };
+                        let hdr_str = if let Some(raw_str) = hdr.as_str() {
+                            raw_str.trim_end_matches(['\r', '\n']).to_string()
+                        } else {
+                            match serde_json::to_string(hdr) {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    return InvokeEnvelope::error(
+                                        "VALIDATION_ERROR",
+                                        format!("Failed to serialize chat header: {e}"),
+                                        None,
+                                    );
+                                }
+                            }
+                        };
+                        if hdr_str.is_empty() {
+                            return InvokeEnvelope::from_app_error(ApplicationError::NotFound(
+                                format!("Chat not found: {character_name}/{file_name}"),
+                            ));
+                        }
+                        let mut jsonl_bytes = Vec::new();
+                        jsonl_bytes.extend_from_slice(hdr_str.as_bytes());
+                        jsonl_bytes.push(b'\n');
+                        for line_str in &serialized_lines {
+                            jsonl_bytes.extend_from_slice(line_str.as_bytes());
+                            jsonl_bytes.push(b'\n');
+                        }
+                        let locator = ChatHistoryLocator::Character {
+                            character_id: character_name,
+                            file_name,
+                        };
+                        let begin = match self
+                            .chat_commit_service
+                            .begin(
+                                locator,
+                                ChatCommitOperation::Payload {
+                                    force: true,
+                                    cold_source: None,
+                                },
+                            )
+                            .await
+                        {
+                            Ok(b) => b,
+                            Err(e) => return InvokeEnvelope::from_app_error(e),
+                        };
+                        let total_len = jsonl_bytes.len() as u64;
+                        if total_len > 0 {
+                            if let Err(e) = self
+                                .chat_commit_service
+                                .append(&begin.session_id, 0, &jsonl_bytes)
+                                .await
+                            {
+                                let _ = self.chat_commit_service.abort(&begin.session_id).await;
+                                return InvokeEnvelope::from_app_error(e);
+                            }
+                        }
+                        match self
+                            .chat_commit_service
+                            .finish(
+                                &begin.session_id,
+                                total_len,
+                                CurrentCommitReason::Mutation,
+                            )
+                            .await
+                        {
+                            Ok(()) => InvokeEnvelope::success(json!({
+                                "ok": true,
+                                "appended": lines.len()
+                            })),
+                            Err(e) => InvokeEnvelope::from_app_error(e),
+                        }
+                    }
                     Err(e) => InvokeEnvelope::from_app_error(e),
                 }
             }
@@ -2191,6 +2540,7 @@ impl JniAppState {
 
             "group_chat_get" | "get_group_chat" | "get_group_chat_tail" => {
                 let chat_id = match Self::require_str(&payload, "chat_id")
+                    .or_else(|_| Self::require_str(&payload, "chatId"))
                     .or_else(|_| Self::require_str(&payload, "id"))
                 {
                     Ok(s) => s,
@@ -2198,6 +2548,7 @@ impl JniAppState {
                 };
                 let max_lines = payload
                     .get("max_lines")
+                    .or_else(|| payload.get("maxLines"))
                     .or_else(|| payload.get("limit"))
                     .and_then(|v| v.as_u64())
                     .unwrap_or(10000) as usize;
@@ -2216,6 +2567,18 @@ impl JniAppState {
                             InvokeEnvelope::success(parsed_lines)
                         } else {
                             InvokeEnvelope::success(tail)
+                        }
+                    }
+                    Err(ApplicationError::NotFound(_)) => {
+                        if command == "group_chat_get" {
+                            InvokeEnvelope::success(json!([]))
+                        } else {
+                            InvokeEnvelope::success(json!({
+                                "header": "",
+                                "lines": [],
+                                "cursor": { "offset": 0, "size": 0, "modifiedMillis": 0 },
+                                "hasMoreBefore": false
+                            }))
                         }
                     }
                     Err(e) => InvokeEnvelope::from_app_error(e),

@@ -245,6 +245,59 @@ class TauriTavernJniClientContractTest {
                 "Expected Default OpenAI preset to be seeded in PresetLibrary, got: ${presetLibrary.categories}",
                 openaiCategory?.presets?.any { it.name == "Default" } == true
             )
+
+            // Verify missing chat files return empty instead of [NOT_FOUND] error
+            val missingChat = client.getChatJsonl("default_Seraphina.png", "missing-chat")
+            assertTrue(missingChat.isEmpty())
+            val missingGroupChat = client.getGroupChatJsonl("missing-group-chat")
+            assertTrue(missingGroupChat.isEmpty())
+            val missingTail = client.getChatTailJsonl("default_Seraphina.png", "missing-chat", maxLines = 10)
+            assertEquals(null, missingTail.header)
+            assertTrue(missingTail.messages.isEmpty())
+            assertFalse(missingTail.hasMoreBefore)
+
+            // Verify O(1) incremental append, header integrity read, and tail/before pagination over real JNI
+            val chatFile = "2026-10-23@18h00m00s"
+            val header = mapOf(
+                "user_name" to "User",
+                "character_name" to "Seraphina",
+                "chat_metadata" to mapOf("integrity" to "integ-123")
+            )
+            val appendedFirst = client.appendChatJsonl(
+                avatar = "default_Seraphina.png",
+                chatFile = chatFile,
+                newMessages = listOf(
+                    mapOf("name" to "Seraphina", "is_user" to false, "mes" to "Msg 1"),
+                    mapOf("name" to "User", "is_user" to true, "mes" to "Msg 2")
+                ),
+                headerIfMissing = header
+            )
+            assertTrue(appendedFirst)
+            assertEquals("integ-123", client.getChatIntegrity("default_Seraphina.png", chatFile))
+
+            val appendedSecond = client.appendChatJsonl(
+                avatar = "default_Seraphina.png",
+                chatFile = chatFile,
+                newMessages = listOf(
+                    mapOf("name" to "Seraphina", "is_user" to false, "mes" to "Msg 3"),
+                    mapOf("name" to "User", "is_user" to true, "mes" to "Msg 4")
+                ),
+                expectedIntegrity = "integ-123"
+            )
+            assertTrue(appendedSecond)
+
+            val tail = client.getChatTailJsonl("default_Seraphina.png", chatFile, maxLines = 2)
+            assertEquals(listOf("Msg 3", "Msg 4"), tail.messages.map { it["mes"] })
+            assertTrue(tail.hasMoreBefore)
+
+            val before = client.getChatBeforeJsonl(
+                avatar = "default_Seraphina.png",
+                chatFile = chatFile,
+                cursor = requireNotNull(tail.cursor),
+                maxLines = 2
+            )
+            assertEquals(listOf("Msg 1", "Msg 2"), before.messages.map { it["mes"] })
+            assertFalse(before.hasMoreBefore)
         } finally {
             tempRoot.deleteRecursively()
         }

@@ -229,6 +229,30 @@ class NativeChatEngineSendFailureTest {
                     )
                     "getWorldInfo" -> WorldInfoBook(args?.getOrNull(0)?.toString().orEmpty())
                     "getChatJsonl" -> chat.deepCopyChat()
+                    "getChatIntegrity" -> {
+                        val header = chat.firstOrNull() as? Map<*, *>
+                        val meta = header?.get("chat_metadata") as? Map<*, *>
+                        meta?.get("integrity")?.toString()
+                    }
+                    "appendChatJsonl" -> {
+                        if (failSave) error("simulated save failure")
+                        val chatFile = args?.getOrNull(1).toString()
+                        val newMessages = (args?.getOrNull(2) as? List<*>).orEmpty()
+                        val headerIfMissing = args?.getOrNull(3) as? Map<*, *>
+                        val next = chat.deepCopyChat()
+                        if (next.isEmpty() && headerIfMissing != null) {
+                            next += deepCopyValue(headerIfMissing)
+                        }
+                        newMessages.forEach { msg ->
+                            if (msg != null) next += deepCopyValue(msg)
+                        }
+                        saveCalls += chatFile
+                        if (chatFile.removeSuffix(".jsonl") == "main") {
+                            chat = next.deepCopyChat()
+                            saved = chat.deepCopyChat()
+                        }
+                        true
+                    }
                     "saveChatJsonl" -> {
                         if (failSave) error("simulated save failure")
                         @Suppress("UNCHECKED_CAST")

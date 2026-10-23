@@ -459,21 +459,61 @@ internal suspend fun TauriTavernJniClient.doExportCharacterChat(
     )
 }
 
+private fun Throwable.isChatNotFoundError(): Boolean {
+    val msg = message ?: return false
+    return msg.contains("NOT_FOUND", ignoreCase = true) || msg.contains("not found", ignoreCase = true)
+}
+
+private fun parseChatLineMaps(rawLines: List<*>?): List<Map<String, Any?>> {
+    if (rawLines == null) return emptyList()
+    return rawLines.mapNotNull { item ->
+        when (item) {
+            is String -> item.takeIf { it.isNotBlank() }
+                ?.let { StJson.parse(it) as? Map<*, *> }
+                ?.toStringKeyMap()
+            is Map<*, *> -> item.toStringKeyMap()
+            else -> null
+        }
+    }
+}
+
+private fun parseChatPayloadCursor(rawCursor: Any?): ChatPayloadCursor? {
+    val cursorMap = rawCursor as? Map<*, *> ?: return null
+    val offset = cursorMap.longValue("offset")
+    val size = cursorMap.longValue("size")
+    val modifiedMillis = if (cursorMap.containsKey("modifiedMillis")) {
+        cursorMap.longValue("modifiedMillis")
+    } else {
+        cursorMap.longValue("modified_millis")
+    }
+    return ChatPayloadCursor(
+        offset = offset,
+        size = size,
+        modifiedMillis = modifiedMillis
+    )
+}
+
 internal suspend fun TauriTavernJniClient.doGetChatJsonl(
     avatar: String,
     chatFile: String
 ): MutableList<Any?> {
     val normalized = chatFile.removeSuffix(".jsonl")
-    val data = invokeRaw(
-        "chat_get",
-        mapOf(
-            "avatar" to avatar,
-            "avatarUrl" to avatar,
-            "avatar_url" to avatar,
-            "fileName" to normalized,
-            "file_name" to normalized
+    val data = runCatching {
+        invokeRaw(
+            "chat_get",
+            mapOf(
+                "avatar" to avatar,
+                "avatarUrl" to avatar,
+                "avatar_url" to avatar,
+                "character_name" to avatar.removeSuffix(".png"),
+                "fileName" to normalized,
+                "file_name" to normalized
+            )
         )
-    )
+    }.getOrElse { err ->
+        if (err.isChatNotFoundError()) return mutableListOf()
+        throw err
+    }
     return when (data) {
         is List<*> -> data.map { normalizeJsonValue(it) }.toMutableList()
         is Map<*, *> -> {
@@ -504,6 +544,158 @@ internal suspend fun TauriTavernJniClient.doSaveChatJsonl(
             "chat" to chat,
             "messages" to chat
         )
+    )
+}
+
+internal suspend fun TauriTavernJniClient.doGetChatIntegrity(
+    avatar: String,
+    chatFile: String
+): String? {
+    val avatarName = avatar.removeSuffix(".png")
+    val fileName = chatFile.removeSuffix(".jsonl")
+    val data = runCatching {
+        invokeRaw(
+            "chat_integrity",
+            mapOf(
+                "character_name" to avatarName,
+                "avatar" to avatar,
+                "avatar_url" to avatar,
+                "file_name" to fileName
+            )
+        )
+    }.getOrElse { err ->
+        if (err.isChatNotFoundError()) return null
+        throw err
+    }
+    return when (data) {
+        is Map<*, *> -> data["integrity"]?.toString()?.takeIf { it.isNotBlank() && it != "null" }
+        is String -> data.takeIf { it.isNotBlank() && it != "null" }
+        else -> null
+    }
+}
+
+internal suspend fun TauriTavernJniClient.doAppendChatJsonl(
+    avatar: String,
+    chatFile: String,
+    newMessages: List<Any?>,
+    headerIfMissing: Map<String, Any?>? = null,
+    expectedIntegrity: String? = null
+): Boolean {
+    if (newMessages.isEmpty()) return true
+    val avatarName = avatar.removeSuffix(".png")
+    val fileName = chatFile.removeSuffix(".jsonl")
+    val payload = linkedMapOf<String, Any?>(
+        "character_name" to avatarName,
+        "avatar" to avatar,
+        "avatar_url" to avatar,
+        "file_name" to fileName,
+        "lines" to newMessages
+    )
+    if (headerIfMissing != null) {
+        payload["header"] = headerIfMissing
+    }
+    if (!expectedIntegrity.isNullOrBlank()) {
+        payload["expected_integrity"] = expectedIntegrity
+    }
+    val data = invokeRaw("chat_append_lines", payload)
+    return when (data) {
+        is Map<*, *> -> (data["ok"] as? Boolean) ?: (data["appended"] as? Boolean) ?: true
+        is Boolean -> data
+        else -> true
+    }
+}
+
+internal suspend fun TauriTavernJniClient.doGetChatTailJsonl(
+    avatar: String,
+    chatFile: String,
+    maxLines: Int = 100
+): ChatPayloadTail {
+    val avatarName = avatar.removeSuffix(".png")
+    val fileName = chatFile.removeSuffix(".jsonl")
+    val data = runCatching {
+        invokeRaw(
+            "get_chat_tail",
+            mapOf(
+                "character_name" to avatarName,
+                "avatar" to avatar,
+                "avatar_url" to avatar,
+                "file_name" to fileName,
+                "max_lines" to maxLines.coerceAtLeast(1)
+            )
+        )
+    }.getOrElse { err ->
+        if (err.isChatNotFoundError()) return ChatPayloadTail()
+        throw err
+    }
+    val map = data as? Map<*, *> ?: return ChatPayloadTail()
+    val header = when (val rawHeader = map["header"]) {
+        is String -> rawHeader.takeIf { it.isNotBlank() }
+            ?.let { StJson.parse(it) as? Map<*, *> }
+            ?.toStringKeyMap()
+        is Map<*, *> -> rawHeader.toStringKeyMap()
+        else -> null
+    }
+    val rawLines = (map["lines"] as? List<*>) ?: (map["messages"] as? List<*>)
+    val messages = parseChatLineMaps(rawLines)
+    val hasMoreBefore = if (map.containsKey("hasMoreBefore")) {
+        map.booleanValue("hasMoreBefore")
+    } else {
+        map.booleanValue("has_more_before")
+    }
+    val cursor = parseChatPayloadCursor(map["cursor"])
+    return ChatPayloadTail(
+        header = header,
+        messages = messages,
+        cursor = cursor,
+        hasMoreBefore = hasMoreBefore
+    )
+}
+
+internal suspend fun TauriTavernJniClient.doGetChatBeforeJsonl(
+    avatar: String,
+    chatFile: String,
+    cursor: ChatPayloadCursor,
+    maxLines: Int = 100
+): ChatPayloadChunk {
+    val avatarName = avatar.removeSuffix(".png")
+    val fileName = chatFile.removeSuffix(".jsonl")
+    val data = runCatching {
+        invokeRaw(
+            "get_chat_before",
+            mapOf(
+                "character_name" to avatarName,
+                "avatar" to avatar,
+                "avatar_url" to avatar,
+                "file_name" to fileName,
+                "before_offset" to cursor.offset,
+                "expected_size" to cursor.size,
+                "expected_modified_millis" to cursor.modifiedMillis,
+                "cursor" to mapOf(
+                    "offset" to cursor.offset,
+                    "size" to cursor.size,
+                    "modifiedMillis" to cursor.modifiedMillis,
+                    "modified_millis" to cursor.modifiedMillis
+                ),
+                "max_lines" to maxLines.coerceAtLeast(1)
+            )
+        )
+    }.getOrElse { err ->
+        if (err.isChatNotFoundError()) return ChatPayloadChunk()
+        throw err
+    }
+    val map = data as? Map<*, *> ?: return ChatPayloadChunk()
+    val rawLines = (map["lines"] as? List<*>) ?: (map["messages"] as? List<*>)
+    val messages = parseChatLineMaps(rawLines)
+    val hasMoreBefore = if (map.containsKey("hasMoreBefore")) {
+        map.booleanValue("hasMoreBefore")
+    } else {
+        map.booleanValue("has_more_before")
+    }
+    val nextCursor = parseChatPayloadCursor(map["cursor"])
+    return ChatPayloadChunk(
+        messages = messages,
+        cursor = nextCursor,
+        hasMoreBefore = hasMoreBefore
     )
 }
 
@@ -580,7 +772,14 @@ internal suspend fun TauriTavernJniClient.doDeleteGroup(groupId: String) {
 
 internal suspend fun TauriTavernJniClient.doGetGroupChatJsonl(chatId: String): MutableList<Any?> {
     val normalizedId = chatId.removeSuffix(".jsonl")
-    val data = invokeRaw("group_chat_get", mapOf("id" to normalizedId, "chatId" to normalizedId))
+    val data = runCatching {
+        invokeRaw("group_chat_get", mapOf("id" to normalizedId, "chatId" to normalizedId))
+    }.getOrElse { err ->
+        if (err.isChatNotFoundError()) {
+            return mutableListOf()
+        }
+        throw err
+    }
     return when (data) {
         is List<*> -> data.map { normalizeJsonValue(it) }.toMutableList()
         is Map<*, *> -> {
