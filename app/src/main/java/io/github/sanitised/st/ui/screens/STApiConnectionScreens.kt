@@ -205,8 +205,15 @@ fun STApiConnectionScreen(
     var selectedProfileName by remember { mutableStateOf("当前 SillyTavern 设置") }
     var showProfileSheet by remember { mutableStateOf(false) }
 
-    LaunchedEffect(profiles) {
-        if (profiles.isNotEmpty() && selectedProfileId == null) {
+    LaunchedEffect(profiles, settings) {
+        val lastConn = ((settings["power_user"] as? Map<*, *>)?.get("last_connection") as? String)
+            ?.trim()
+            .orEmpty()
+        val matched = profiles.firstOrNull { it.label == lastConn }
+        if (matched != null) {
+            selectedProfileId = matched.label
+            selectedProfileName = matched.label
+        } else if (profiles.isNotEmpty() && selectedProfileId == null) {
             val first = profiles.first()
             selectedProfileId = first.label
             selectedProfileName = first.label
@@ -386,21 +393,73 @@ fun STApiConnectionScreen(
                         selectedProfileName = name
                         showProfileSheet = false
                         if (running) {
-                            val profile = profiles.firstOrNull { it.label == id }
-                            if (profile != null) {
-                                scope.launch {
-                                    runCatching {
-                                        connectionRepository.saveConnectionProfile(profile.copy(
-                                            lastConnection = System.currentTimeMillis()
-                                        ))
-                                        onShowMessage("已选择服务器：$name")
-                                    }.onFailure {
-                                        onShowMessage("切换失败：${it.message}")
+                            scope.launch {
+                                runCatching {
+                                    val applied = connectionRepository.applyConnectionProfile(name)
+                                    if (applied) {
+                                        val coreSettings = connectionRepository.getSettings()
+                                        settings = coreSettings
+                                        profiles = connectionRepository.listConnectionProfiles()
+                                        val loadedState = buildApiConnectionUiState(
+                                            settings = coreSettings,
+                                            secrets = secrets,
+                                            serviceRunning = true
+                                        )
+                                        activeMode = loadedState.activeMode
+                                        activeProviderId = loadedState.activeProvider.id
+                                        onSettingsChanged()
                                     }
+                                    onShowMessage("已切换连接档案：$name")
+                                }.onFailure {
+                                    onShowMessage("切换失败：${it.message}")
                                 }
                             }
                         } else {
-                            onShowMessage("已选择服务器：$name")
+                            onShowMessage("已切换连接档案：$name")
+                        }
+                    },
+                    onCreateProfile = {
+                        showProfileSheet = false
+                        if (running) {
+                            scope.launch {
+                                runCatching {
+                                    val modelPart = connectionState.activeModel.takeIf {
+                                        it.isNotBlank() && it != "未选择模型" && it != "服务未启动"
+                                    }
+                                    val newName = if (modelPart != null) {
+                                        "${connectionState.activeProvider.label} · $modelPart"
+                                    } else {
+                                        "${connectionState.activeProvider.label} 档案"
+                                    }
+                                    connectionRepository.saveConnectionProfile(name = newName)
+                                    profiles = connectionRepository.listConnectionProfiles()
+                                    settings = connectionRepository.getSettings()
+                                    selectedProfileId = newName
+                                    selectedProfileName = newName
+                                    onShowMessage("已保存连接档案：$newName")
+                                }.onFailure {
+                                    onShowMessage("保存档案失败：${it.message}")
+                                }
+                            }
+                        }
+                    },
+                    onDeleteProfile = { name ->
+                        if (running) {
+                            scope.launch {
+                                runCatching {
+                                    connectionRepository.deleteConnectionProfile(name)
+                                    profiles = connectionRepository.listConnectionProfiles()
+                                    settings = connectionRepository.getSettings()
+                                    if (selectedProfileId == name) {
+                                        val next = profiles.firstOrNull()
+                                        selectedProfileId = next?.label
+                                        selectedProfileName = next?.label ?: "当前 SillyTavern 设置"
+                                    }
+                                    onShowMessage("已删除连接档案：$name")
+                                }.onFailure {
+                                    onShowMessage("删除失败：${it.message}")
+                                }
+                            }
                         }
                     }
                 )
@@ -720,7 +779,9 @@ private fun ConnectionProfileBottomSheet(
     apiProfiles: List<ConnectionProfile>,
     onDismiss: () -> Unit,
     selectedProfileId: String?,
-    onProfileSelected: (String, String) -> Unit
+    onProfileSelected: (String, String) -> Unit,
+    onCreateProfile: () -> Unit = {},
+    onDeleteProfile: (String) -> Unit = {}
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -741,8 +802,8 @@ private fun ConnectionProfileBottomSheet(
                 Icon(Icons.Filled.Bookmarks, null, tint = STThemePrimary, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("切换连接服务器", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
-                    Text("选择已保存的 SillyTavern 服务端点", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("切换连接档案", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                    Text("选择或保存完整 API 连接快照", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Filled.Close, "关闭")
@@ -752,7 +813,7 @@ private fun ConnectionProfileBottomSheet(
             Spacer(modifier = Modifier.height(8.dp))
 
             if (apiProfiles.isEmpty()) {
-                STSystemInfoCard("暂无保存的服务器", "当前使用本地 SillyTavern 服务。")
+                STSystemInfoCard("暂无保存的连接档案", "点击下方「新建档案」可将当前服务商、模型与反代配置保存为快照。")
             } else {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -801,6 +862,14 @@ private fun ConnectionProfileBottomSheet(
                                 if (active) {
                                     Icon(Icons.Filled.CheckCircle, null, tint = STThemePrimary)
                                 }
+                                IconButton(onClick = { onDeleteProfile(profile.label) }) {
+                                    Icon(
+                                        Icons.Filled.Delete,
+                                        contentDescription = "删除档案",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -812,7 +881,7 @@ private fun ConnectionProfileBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
-                    onClick = { /* New profile action */ },
+                    onClick = onCreateProfile,
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
@@ -822,7 +891,7 @@ private fun ConnectionProfileBottomSheet(
                     Text("新建档案", color = MaterialTheme.colorScheme.onSurface)
                 }
                 Button(
-                    onClick = { /* Export profile action */ },
+                    onClick = onDismiss,
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f), contentColor = MaterialTheme.colorScheme.onSurface)
@@ -834,5 +903,39 @@ private fun ConnectionProfileBottomSheet(
             }
         }
     }
+}
+
+internal fun resolveModelForSource(oai: Map<*, *>?, src: String): String {
+    if (oai == null) return ""
+    val key = when (src) {
+        "openai" -> "openai_model"
+        "claude" -> "claude_model"
+        "makersuite" -> "google_model"
+        "vertexai" -> "vertexai_model"
+        "openrouter" -> "openrouter_model"
+        "ai21" -> "ai21_model"
+        "mistralai" -> "mistralai_model"
+        "custom" -> "custom_model"
+        "cohere" -> "cohere_model"
+        "perplexity" -> "perplexity_model"
+        "groq" -> "groq_model"
+        "siliconflow" -> "siliconflow_model"
+        "nanogpt" -> "nanogpt_model"
+        "deepseek" -> "deepseek_model"
+        "xai" -> "xai_model"
+        "pollinations" -> "pollinations_model"
+        "moonshot" -> "moonshot_model"
+        "fireworks" -> "fireworks_model"
+        "cometapi" -> "cometapi_model"
+        "azure_openai" -> "azure_openai_model"
+        "zai" -> "zai_model"
+        "chutes" -> "chutes_model"
+        "minimax" -> "minimax_model"
+        "opencode" -> "opencode_model"
+        "aws_bedrock" -> "aws_bedrock_model"
+        "workers_ai" -> "workers_ai_model"
+        else -> "${src}_model"
+    }
+    return (oai[key] as? String).orEmpty()
 }
 

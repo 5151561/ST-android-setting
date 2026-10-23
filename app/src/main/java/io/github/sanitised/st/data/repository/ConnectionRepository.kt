@@ -5,6 +5,10 @@ import io.github.sanitised.st.api.ConnectionTestResult
 import io.github.sanitised.st.api.SecretProviderState
 import io.github.sanitised.st.api.SettingsSnapshot
 import io.github.sanitised.st.api.TavernCoreApi
+import io.github.sanitised.st.api.applyConnectionProfileToSettings
+import io.github.sanitised.st.api.deleteConnectionProfileFromSettings
+import io.github.sanitised.st.api.listConnectionProfilesFromSettings
+import io.github.sanitised.st.api.saveConnectionProfileToSettings
 
 interface ConnectionRepository {
     suspend fun getSettings(): Map<String, Any?>
@@ -18,6 +22,17 @@ interface ConnectionRepository {
     suspend fun testConnection(mode: String, sourceValue: String, apiServer: String = ""): ConnectionTestResult
     suspend fun listConnectionProfiles(): List<ConnectionProfile>
     suspend fun saveConnectionProfile(profile: ConnectionProfile)
+    suspend fun saveConnectionProfile(name: String, url: String = "") {
+        saveConnectionProfile(
+            ConnectionProfile(
+                label = name,
+                url = url,
+                lastConnection = System.currentTimeMillis()
+            )
+        )
+    }
+    suspend fun deleteConnectionProfile(name: String) {}
+    suspend fun applyConnectionProfile(name: String): Boolean = false
     suspend fun listSettingsSnapshots(): List<SettingsSnapshot>
     suspend fun makeSettingsSnapshot()
     suspend fun loadSettingsSnapshot(name: String): String
@@ -58,11 +73,26 @@ class DefaultConnectionRepository(
     override suspend fun testConnection(mode: String, sourceValue: String, apiServer: String): ConnectionTestResult =
         clientProvider().testConnection(mode, sourceValue, apiServer)
 
-    override suspend fun listConnectionProfiles(): List<ConnectionProfile> =
-        clientProvider().listConnectionProfiles()
+    override suspend fun listConnectionProfiles(): List<ConnectionProfile> {
+        val fromClient = runCatching { clientProvider().listConnectionProfiles() }.getOrDefault(emptyList())
+        if (fromClient.isNotEmpty()) return fromClient
+        return listConnectionProfilesFromSettings(getSettings())
+    }
 
     override suspend fun saveConnectionProfile(profile: ConnectionProfile) {
-        clientProvider().saveConnectionProfile(profile)
+        val updated = saveConnectionProfileToSettings(getSettings(), profile)
+        saveSettings(updated)
+    }
+
+    override suspend fun deleteConnectionProfile(name: String) {
+        val updated = deleteConnectionProfileFromSettings(getSettings(), name)
+        saveSettings(updated)
+    }
+
+    override suspend fun applyConnectionProfile(name: String): Boolean {
+        val updated = applyConnectionProfileToSettings(getSettings(), name) ?: return false
+        saveSettings(updated)
+        return true
     }
 
     override suspend fun listSettingsSnapshots(): List<SettingsSnapshot> =

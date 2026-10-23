@@ -3,6 +3,7 @@
 package io.github.sanitised.st.ui.screens
 
 import java.util.Locale
+import org.json.JSONObject
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -66,6 +67,7 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -178,6 +180,9 @@ fun STProviderDetailScreen(
     var vertexServiceAccountJson by remember { mutableStateOf("") }
 
     var customApiFormat by remember { mutableStateOf("openai_compat") }
+    var customClaudePromptCaching by remember { mutableStateOf(false) }
+    var customOpenaiResponsesWebsocket by remember { mutableStateOf(false) }
+    var bypassStatusCheck by remember { mutableStateOf(false) }
     var customIncludeHeaders by remember { mutableStateOf("") }
     var customIncludeBody by remember { mutableStateOf("") }
     var customExcludeBody by remember { mutableStateOf("") }
@@ -201,8 +206,28 @@ fun STProviderDetailScreen(
     var verifyErrorMessage by remember { mutableStateOf<String?>(null) }
     
     val running = status.state == NodeState.RUNNING
+    val pid = providerId
     val providerDefinition = remember(providerId) {
         apiConnectionProviderForId(providerId) ?: apiConnectionProviderForId("openai")!!
+    }
+    val supportsReverseProxy = remember(pid) {
+        pid in setOf("openai", "claude", "mistralai", "makersuite", "vertexai", "deepseek", "xai", "zai", "moonshot")
+    }
+    val defaultModels = remember(pid) {
+        val extraDefaultModels = mapOf(
+            "perplexity" to listOf("sonar-pro", "sonar", "sonar-reasoning-pro", "sonar-reasoning", "sonar-deep-research"),
+            "ai21" to listOf("jamba-large-1.6", "jamba-mini-1.6", "jamba-1.5-large", "jamba-1.5-mini"),
+            "cometapi" to listOf("gpt-4o", "claude-3-7-sonnet-20250219", "gemini-2.5-pro", "deepseek-r1")
+        )
+        extraDefaultModels[pid] ?: providerDefinition.defaultModels
+    }
+    val secretKeys = remember(pid) {
+        val extraSecretKeys = mapOf(
+            "perplexity" to "api_key_perplexity",
+            "ai21" to "api_key_ai21",
+            "cometapi" to "api_key_cometapi"
+        )
+        extraSecretKeys[pid]?.let { listOf(it) } ?: providerDefinition.secretKeys
     }
     var providerState by remember(providerDefinition.id) {
         mutableStateOf<ApiConnectionProviderState?>(null)
@@ -210,7 +235,7 @@ fun STProviderDetailScreen(
     
     LaunchedEffect(running, baseUrl, providerId, connectionRepository) {
         verifyStatus = ConnectionVerificationRegistry.get(providerDefinition.id)
-        modelsList = providerDefinition.defaultModels
+        modelsList = defaultModels
         if (running) {
             runCatching {
                 val coreSettings = connectionRepository.getSettings()
@@ -251,6 +276,9 @@ fun STProviderDetailScreen(
                 vertexExpressProjectId = (groupMap["vertexai_express_project_id"] as? String).orEmpty()
 
                 customApiFormat = (groupMap["custom_api_format"] as? String)?.takeIf { it.isNotBlank() } ?: "openai_compat"
+                customClaudePromptCaching = (groupMap["custom_claude_prompt_caching"] as? Boolean) ?: false
+                customOpenaiResponsesWebsocket = (groupMap["custom_openai_responses_websocket"] as? Boolean) ?: false
+                bypassStatusCheck = (groupMap["bypass_status_check"] as? Boolean) ?: false
                 customIncludeHeaders = (groupMap["custom_include_headers"] as? String).orEmpty()
                 customIncludeBody = (groupMap["custom_include_body"] as? String).orEmpty()
                 customExcludeBody = (groupMap["custom_exclude_body"] as? String).orEmpty()
@@ -267,7 +295,7 @@ fun STProviderDetailScreen(
                 nanogptPaygOverride = (groupMap["nanogpt_payg_override"] as? Boolean) ?: false
 
                 selectedModel = modelForProvider(coreSettings, providerDefinition)
-                    .ifBlank { providerDefinition.defaultModels.firstOrNull().orEmpty() }
+                    .ifBlank { defaultModels.firstOrNull().orEmpty() }
                 
                 val secretsList = connectionRepository.listSecrets()
                 providerState = buildApiConnectionUiState(
@@ -277,7 +305,7 @@ fun STProviderDetailScreen(
                     selectedProviderId = providerDefinition.id,
                     selectedMode = providerDefinition.mode
                 ).activeProvider
-                val primaryKey = providerDefinition.secretKeys.firstOrNull()
+                val primaryKey = secretKeys.firstOrNull()
                 val firstEntry = primaryKey?.let { key ->
                     secretsList.firstOrNull { it.key == key }?.entries?.let { entries ->
                         entries.firstOrNull { it.active } ?: entries.firstOrNull()
@@ -305,7 +333,7 @@ fun STProviderDetailScreen(
                         sourceValue = providerDefinition.sourceValue.orEmpty(),
                         apiServer = customUrl
                     )
-                    modelsList = fetched.ifEmpty { providerDefinition.defaultModels }
+                    modelsList = fetched.ifEmpty { defaultModels }
                     if (selectedModel.isBlank() && modelsList.isNotEmpty()) {
                         selectedModel = modelsList.first()
                     }
@@ -318,7 +346,7 @@ fun STProviderDetailScreen(
         }
     }
 
-    suspend fun persistCurrentConnectionSettings() {
+    suspend fun persistSettings(showToast: Boolean) {
         val updatedSettings = settingsWithSelectedApiProvider(
             settings = settings,
             provider = providerDefinition
@@ -335,7 +363,7 @@ fun STProviderDetailScreen(
         } else null
 
         val finalModel = selectedModel.trim()
-            .ifBlank { providerDefinition.defaultModels.firstOrNull().orEmpty() }
+            .ifBlank { defaultModels.firstOrNull().orEmpty() }
         if (groupSettings != null && !modelKey.isNullOrBlank()) {
             groupSettings[modelKey] = finalModel
         }
@@ -347,11 +375,15 @@ fun STProviderDetailScreen(
                     if (providerDefinition.sourceValue == "custom") {
                         groupSettings["custom_url"] = trimmedUrl
                         groupSettings["reverse_proxy"] = ""
+                        groupSettings["proxy_password"] = ""
                         groupSettings["custom_api_format"] = customApiFormat
+                        groupSettings["custom_claude_prompt_caching"] = customClaudePromptCaching
+                        groupSettings["custom_openai_responses_websocket"] = customOpenaiResponsesWebsocket
+                        groupSettings["bypass_status_check"] = bypassStatusCheck
                         groupSettings["custom_include_headers"] = customIncludeHeaders.trim()
                         groupSettings["custom_include_body"] = customIncludeBody.trim()
                         groupSettings["custom_exclude_body"] = customExcludeBody.trim()
-                    } else if (providerDefinition.supportsReverseProxy) {
+                    } else if (supportsReverseProxy) {
                         groupSettings["reverse_proxy"] = trimmedUrl
                         val effectiveProxyPass = proxyPassword.trim().ifBlank {
                             if (trimmedUrl.isNotBlank()) apiKey.trim() else ""
@@ -368,8 +400,12 @@ fun STProviderDetailScreen(
                             groupSettings["proxy_password_$src"] =
                                 (groupSettings["proxy_password"] as? String).orEmpty()
                         }
+                        if (providerDefinition.id == "openai") {
+                            groupSettings["bypass_status_check"] = bypassStatusCheck
+                        }
                     } else {
                         groupSettings["reverse_proxy"] = ""
+                        groupSettings["proxy_password"] = ""
                     }
 
                     providerDefinition.endpointSettingKey?.let { endpointKey ->
@@ -430,8 +466,8 @@ fun STProviderDetailScreen(
             }
         } else {
             val newSecret = apiKey.trim()
-            if (newSecret.isNotBlank() && providerDefinition.secretKeys.isNotEmpty()) {
-                connectionRepository.writeSecret(providerDefinition.secretKeys.first(), newSecret, "默认密钥")
+            if (newSecret.isNotBlank() && secretKeys.isNotEmpty()) {
+                connectionRepository.writeSecret(secretKeys.first(), newSecret, "默认密钥")
                 configuredSecretMask = "*******" + newSecret.takeLast(3)
                 hasConfiguredSecret = true
                 apiKey = ""
@@ -441,6 +477,9 @@ fun STProviderDetailScreen(
             runCatching {
                 connectionRepository.writeSecret("minimax_group_id", minimaxGroupId.trim(), "MiniMax Group ID")
             }
+        }
+        if (showToast) {
+            onShowMessage("连接配置已成功保存！")
         }
     }
     
@@ -457,9 +496,8 @@ fun STProviderDetailScreen(
                 onClick = {
                     scope.launch {
                         runCatching {
-                            persistCurrentConnectionSettings()
+                            persistSettings(showToast = true)
                             onSettingsChanged()
-                            onShowMessage("连接配置已成功保存！")
                             onBack()
                         }.onFailure {
                             onShowMessage("保存失败：${it.message}")
@@ -553,12 +591,12 @@ fun STProviderDetailScreen(
             }
 
             // 2. Google Vertex AI specific settings (Express vs Full Service Account JSON, Region, Project ID)
-            if (providerDefinition.id == "vertexai") {
+            if (pid == "vertexai") {
                 ProviderOptionChipSelector(
-                    title = "认证模式 (Vertex AI Auth Mode)",
+                    title = "认证模式 (vertexai_auth_mode)",
                     options = listOf(
                         "express" to "Express 模式 (API Key)",
-                        "full" to "Full 模式 (Service Account JSON)"
+                        "full" to "完整模式 (Service Account JSON)"
                     ),
                     selectedValue = vertexAuthMode,
                     onSelect = { mode ->
@@ -567,44 +605,108 @@ fun STProviderDetailScreen(
                     }
                 )
 
-                STGlassTextField(
-                    value = vertexRegion,
-                    onValueChange = { vertexRegion = it },
-                    label = "Vertex AI 区域 (Region)",
-                    placeholder = "us-central1"
-                )
-                ProviderOptionChipSelector(
-                    title = "常用区域快捷选择",
-                    options = listOf(
-                        "us-central1" to "us-central1",
-                        "global" to "global",
-                        "us" to "us",
-                        "eu" to "eu",
-                        "asia-northeast1" to "asia-northeast1"
-                    ),
-                    selectedValue = vertexRegion,
-                    onSelect = { vertexRegion = it }
+                val regionQuickOptions = listOf(
+                    "global" to "global",
+                    "us-central1" to "us-central1",
+                    "us-east5" to "us-east5",
+                    "europe-west1" to "europe-west1",
+                    "asia-northeast1" to "asia-northeast1"
                 )
 
                 if (vertexAuthMode == "express") {
                     STGlassTextField(
                         value = vertexExpressProjectId,
                         onValueChange = { vertexExpressProjectId = it },
-                        label = "GCP Project ID (可选，留空使用全局 Express 端点)",
+                        label = "GCP Project ID (Express 可选)",
                         placeholder = "my-gcp-project-id"
                     )
+                    Text(
+                        text = "Express 模式下默认无需选择区域（由 Google 自动按账号归属地路由）。仅当填写了 Project ID 时区域设置才生效。若遇到模型 404 报错，可从报错信息 `projects/xxxx/` 中提取 Project ID 填入此处。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                    if (vertexExpressProjectId.isNotBlank()) {
+                        STGlassTextField(
+                            value = vertexRegion,
+                            onValueChange = { vertexRegion = it },
+                            label = "Vertex AI 区域 (Region)",
+                            placeholder = "global"
+                        )
+                        ProviderOptionChipSelector(
+                            title = "常用区域快捷选择",
+                            options = regionQuickOptions,
+                            selectedValue = vertexRegion,
+                            onSelect = { vertexRegion = it }
+                        )
+                    } else {
+                        Text(
+                            text = "当前未填写 Project ID，将自动使用 Google 全局端点 (global)。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                    }
+                    val reverseProxy = customUrl
+                    if (selectedModel.startsWith("claude") && reverseProxy.isBlank()) {
+                        Text(
+                            text = "提示：Vertex AI Express 模式不支持 Claude 模型，请切换至完整模式 (Service Account) 或配置反向代理。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFFF9800),
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                    }
                 } else {
+                    STGlassTextField(
+                        value = vertexRegion,
+                        onValueChange = { vertexRegion = it },
+                        label = "Vertex AI 区域 (Region)",
+                        placeholder = "us-central1"
+                    )
+                    ProviderOptionChipSelector(
+                        title = "常用区域快捷选择",
+                        options = regionQuickOptions,
+                        selectedValue = vertexRegion,
+                        onSelect = { vertexRegion = it }
+                    )
                     STGlassTextField(
                         value = vertexServiceAccountJson,
                         onValueChange = { vertexServiceAccountJson = it },
                         label = if (hasConfiguredVertexSa) "Service Account JSON (已配置 $configuredVertexSaMask)" else "Service Account JSON 密钥全文",
                         placeholder = if (hasConfiguredVertexSa) "留空保持现有 JSON 凭证，粘贴新 JSON 可覆盖" else "粘贴包含 project_id、private_key、client_email 的完整 JSON"
                     )
+                    val trimmedSaJson = vertexServiceAccountJson.trim()
+                    if (trimmedSaJson.isNotEmpty()) {
+                        val requiredFields = listOf("type", "project_id", "private_key", "client_email", "client_id")
+                        val validationResult = remember(trimmedSaJson) {
+                            runCatching {
+                                val jsonObj = JSONObject(trimmedSaJson)
+                                val missing = requiredFields.filter { jsonObj.optString(it).isBlank() }
+                                if (missing.isEmpty()) {
+                                    val projectId = jsonObj.optString("project_id")
+                                    val clientEmail = jsonObj.optString("client_email")
+                                    true to "✓ JSON 格式有效：项目 $projectId ($clientEmail)"
+                                } else {
+                                    false to "JSON 缺少必填字段：${missing.joinToString(", ")}"
+                                }
+                            }.getOrElse {
+                                false to "JSON 语法错误，请检查是否粘贴了完整的 Service Account JSON（需包含 ${requiredFields.joinToString(", ")}）"
+                            }
+                        }
+                        Text(
+                            text = validationResult.second,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (validationResult.first) STThemeTertiary else STThemeError,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 
             // 3. Custom OpenAI-compatible protocol & advanced body/headers
-            if (providerDefinition.id == "custom") {
+            if (pid == "custom") {
                 STGlassTextField(
                     value = customUrl,
                     onValueChange = { customUrl = it },
@@ -612,18 +714,32 @@ fun STProviderDetailScreen(
                     placeholder = providerDefinition.endpointHint
                 )
                 ProviderOptionChipSelector(
-                    title = "上游 API 协议格式 (Custom API Format)",
+                    title = "API 协议格式 (custom_api_format)",
                     options = listOf(
-                        "openai_compat" to "OpenAI Chat 兼容",
-                        "openai_responses" to "OpenAI Responses",
-                        "claude_messages" to "Claude Messages",
-                        "gemini_interactions" to "Gemini Interactions",
-                        "gemini_generate_content" to "Gemini GenerateContent"
+                        "openai_compat" to "OpenAI 兼容 (/chat/completions)",
+                        "openai_responses" to "OpenAI Responses (/responses)",
+                        "claude_messages" to "Claude Messages (/messages)",
+                        "gemini_generate_content" to "Gemini (generateContent)",
+                        "gemini_interactions" to "Gemini (Interactions)"
                     ),
                     selectedValue = customApiFormat,
                     onSelect = { customApiFormat = it }
                 )
-            } else if (providerDefinition.mode == "cc" && providerDefinition.supportsReverseProxy) {
+                if (customApiFormat == "openai_responses") {
+                    STSwitchRow(
+                        "使用 WebSocket 模式 (custom_openai_responses_websocket)",
+                        "启用 OpenAI Responses WebSocket 传输",
+                        customOpenaiResponsesWebsocket
+                    ) { customOpenaiResponsesWebsocket = it }
+                }
+                if (customApiFormat == "claude_messages") {
+                    STSwitchRow(
+                        "启用 Claude Prompt Caching (custom_claude_prompt_caching)",
+                        "在 Claude Messages 协议下附带缓存断点",
+                        customClaudePromptCaching
+                    ) { customClaudePromptCaching = it }
+                }
+            } else if (providerDefinition.mode == "cc" && supportsReverseProxy) {
                 STGlassTextField(
                     value = customUrl,
                     onValueChange = { customUrl = it },
@@ -725,8 +841,8 @@ fun STProviderDetailScreen(
             }
 
             // 9. API Key Input (shown unless Vertex AI Full mode without reverse proxy)
-            val showStandardApiKeyField = providerDefinition.secretKeys.isNotEmpty() &&
-                !(providerDefinition.id == "vertexai" && vertexAuthMode == "full" && customUrl.isBlank())
+            val showStandardApiKeyField = secretKeys.isNotEmpty() &&
+                !(pid == "vertexai" && vertexAuthMode == "full" && customUrl.isBlank())
             if (showStandardApiKeyField) {
                 STGlassTextField(
                     value = apiKey,
@@ -746,31 +862,39 @@ fun STProviderDetailScreen(
                 )
             }
 
+            if (pid == "custom" || pid == "openai") {
+                STSwitchRow(
+                    "跳过状态检查 (bypass_status_check)",
+                    "跳过连接前的状态探测请求",
+                    bypassStatusCheck
+                ) { bypassStatusCheck = it }
+            }
+
             // Custom additional headers/body (for custom provider)
-            if (providerDefinition.id == "custom") {
+            if (pid == "custom") {
                 STGlassTextField(
                     value = customIncludeHeaders,
                     onValueChange = { customIncludeHeaders = it },
-                    label = "附加请求头 (Custom Headers，可选 JSON 或 Key: Value)",
+                    label = "自定义附加请求头 (custom_include_headers)",
                     placeholder = "{\"X-Custom-Header\": \"value\"}"
                 )
                 STGlassTextField(
                     value = customIncludeBody,
                     onValueChange = { customIncludeBody = it },
-                    label = "附加请求体字段 (Include Body，可选 JSON 或 YAML)",
+                    label = "自定义附加请求体 JSON (custom_include_body)",
                     placeholder = "{\"top_k\": 40}"
                 )
                 STGlassTextField(
                     value = customExcludeBody,
                     onValueChange = { customExcludeBody = it },
-                    label = "排除请求体字段 (Exclude Body，逗号或换行分隔)",
+                    label = "自定义排除请求体字段 (custom_exclude_body)",
                     placeholder = "frequency_penalty, presence_penalty"
                 )
             }
 
             val hasPendingCredential = apiKey.isNotBlank() ||
-                (providerDefinition.id == "vertexai" && vertexAuthMode == "full" && vertexServiceAccountJson.isNotBlank()) ||
-                (providerDefinition.id == "pollinations" && endpointOptionValue == "anonymous")
+                (pid == "vertexai" && vertexAuthMode == "full" && vertexServiceAccountJson.isNotBlank()) ||
+                (pid == "pollinations" && endpointOptionValue == "anonymous")
             val canTest = running && (hasPendingCredential || hasConfiguredSecret || !providerDefinition.requiresSecret)
             val isTesting = verifyStatus == ConnectionVerifyStatus.TESTING
             Button(
@@ -780,7 +904,7 @@ fun STProviderDetailScreen(
                         ConnectionVerificationRegistry.record(providerDefinition.id, ConnectionVerifyStatus.TESTING)
                         verifyErrorMessage = null
                         runCatching {
-                            persistCurrentConnectionSettings()
+                            persistSettings(showToast = false)
                             connectionRepository.testConnection(
                                 mode = providerDefinition.mode,
                                 sourceValue = providerDefinition.sourceValue.orEmpty(),
@@ -796,7 +920,7 @@ fun STProviderDetailScreen(
                                         selectedModel = result.models.first()
                                     }
                                 } else if (modelsList.isEmpty()) {
-                                    modelsList = providerDefinition.defaultModels
+                                    modelsList = defaultModels
                                 }
                                 onSettingsChanged()
                                 onShowMessage("连接成功，可用模型 ${modelsList.size} 个")
@@ -808,7 +932,7 @@ fun STProviderDetailScreen(
                         }.onFailure { e ->
                             verifyStatus = ConnectionVerifyStatus.FAILED
                             ConnectionVerificationRegistry.record(providerDefinition.id, ConnectionVerifyStatus.FAILED)
-                            verifyErrorMessage = e.message?.take(80) ?: "连接失败"
+                            verifyErrorMessage = e.message?.take(200) ?: "连接失败"
                         }
                     }
                 },
@@ -848,6 +972,8 @@ fun STProviderDetailScreen(
                 }
             }
 
+            val testOk = verifyStatus == ConnectionVerifyStatus.SUCCESS
+            val testResult = verifyErrorMessage.orEmpty()
             if (verifyStatus == ConnectionVerifyStatus.FAILED && verifyErrorMessage != null) {
                 Text(
                     text = verifyErrorMessage!!,
@@ -855,6 +981,32 @@ fun STProviderDetailScreen(
                     color = STThemeError,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
+                if (pid == "vertexai" && !testOk) {
+                    val extractedProjectId = remember(testResult) {
+                        Regex("projects/([^/\\s']+)/locations/").find(testResult)?.groupValues?.getOrNull(1)
+                    }
+                    if (!extractedProjectId.isNullOrBlank()) {
+                        FilledTonalButton(
+                            onClick = {
+                                vertexExpressProjectId = extractedProjectId
+                                vertexRegion = "global"
+                                scope.launch {
+                                    runCatching {
+                                        persistSettings(showToast = true)
+                                        onSettingsChanged()
+                                    }.onFailure {
+                                        onShowMessage("保存失败：${it.message}")
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                        ) {
+                            Text("一键填入报错中的 Project ID ($extractedProjectId) 并设为 global 区域")
+                        }
+                    }
+                }
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), modifier = Modifier.padding(vertical = 12.dp))
@@ -863,7 +1015,7 @@ fun STProviderDetailScreen(
                 value = selectedModel,
                 onValueChange = { selectedModel = it },
                 label = "当前模型 ID (可手动输入或从下方列表选择)",
-                placeholder = providerDefinition.defaultModels.firstOrNull() ?: "输入模型名称"
+                placeholder = defaultModels.firstOrNull() ?: "输入模型名称"
             )
 
             Row(
@@ -892,7 +1044,7 @@ fun STProviderDetailScreen(
                                     animationSpec = tween(800, easing = LinearEasing)
                                 )
                                 runCatching {
-                                    persistCurrentConnectionSettings()
+                                    persistSettings(showToast = false)
                                     val fetched = connectionRepository.fetchModels(
                                         mode = providerDefinition.mode,
                                         sourceValue = providerDefinition.sourceValue.orEmpty(),
@@ -905,7 +1057,7 @@ fun STProviderDetailScreen(
                                         }
                                         onShowMessage("已从服务端获取 ${fetched.size} 个模型")
                                     } else {
-                                        modelsList = providerDefinition.defaultModels
+                                        modelsList = defaultModels
                                         onShowMessage("在线模型列表为空，已显示内置推荐模型")
                                     }
                                 }.onFailure {
@@ -918,7 +1070,7 @@ fun STProviderDetailScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Refresh,
-                        contentDescription = "刷新模型列表",
+                        contentDescription = "拉取模型列表",
                         tint = STThemePrimary,
                         modifier = Modifier.rotate(angle.value)
                     )

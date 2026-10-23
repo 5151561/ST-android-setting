@@ -64,9 +64,13 @@ object TextPromptBuilder {
     ): TextPromptBuildResult {
         unsupportedReason(settings)?.let { return TextPromptBuildResult.Unsupported(it) }
         val textGen = settings.mapValue("textgenerationwebui_settings")
+        val oai = settings.mapValue("oai_settings")
         val apiType = textGen.stringValue("type").ifBlank { "ooba" }
-        val maxTokens = settings.intValue("amount_gen", 300)
-        val maxContext = textGen.intValue("max_context", DEFAULT_MAX_CONTEXT)
+        val maxTokens = settings.intValue("amount_gen", oai.intValue("openai_max_tokens", 300))
+        val maxContext = textGen.intValue(
+            "max_context",
+            settings.intValue("max_context", oai.intValue("openai_max_context", DEFAULT_MAX_CONTEXT))
+        )
         val model = modelForApiType(textGen, apiType)
 
         val powerUser = settings.mapValue("power_user")
@@ -89,6 +93,14 @@ object TextPromptBuilder {
             template = template,
         )
         val stopStrings = StopStringBuilder.build(instruct, context, userName, character.name)
+        val temp = textGen.doubleValue("temp", oai.doubleValue("temp_openai", oai.doubleValue("temp", 0.7)))
+        val topP = textGen.doubleValue("top_p", oai.doubleValue("top_p_openai", 1.0))
+        val topK = textGen.intValue("top_k", oai.intValue("top_k", oai.intValue("top_k_openai", 0)))
+        val minP = textGen.doubleValue("min_p", oai.doubleValue("min_p", oai.doubleValue("min_p_openai", 0.0)))
+        val repPen = textGen.doubleValue(
+            "rep_pen",
+            oai.doubleValue("repetition_penalty", oai.doubleValue("rep_pen", oai.doubleValue("rep_pen_openai", 1.0)))
+        )
         val payload = linkedMapOf<String, Any?>(
             "prompt" to prompt,
             "model" to model,
@@ -98,14 +110,17 @@ object TextPromptBuilder {
             "max_new_tokens" to maxTokens,
             "max_tokens" to maxTokens,
             "truncation_length" to maxContext,
-            "temperature" to textGen.doubleValue("temp", 0.7),
-            "top_p" to textGen.doubleValue("top_p", 1.0),
-            "top_k" to textGen.intValue("top_k", 0),
-            "repetition_penalty" to textGen.doubleValue("rep_pen", 1.0),
-            "rep_pen" to textGen.doubleValue("rep_pen", 1.0),
+            "temperature" to temp,
+            "top_p" to topP,
+            "top_k" to topK,
+            "repetition_penalty" to repPen,
+            "rep_pen" to repPen,
             "stopping_strings" to stopStrings,
             "stop" to stopStrings,
         )
+        if (minP > 0.0 || textGen.containsKey("min_p")) {
+            payload["min_p"] = minP
+        }
         if (apiType == "ollama" || apiType == "llamacpp") {
             payload["num_ctx"] = maxContext
         }

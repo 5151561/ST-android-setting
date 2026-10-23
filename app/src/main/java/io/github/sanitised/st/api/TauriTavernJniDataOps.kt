@@ -591,42 +591,366 @@ internal suspend fun TauriTavernJniClient.doRestorePreset(apiId: String, name: S
     }
 }
 
-internal suspend fun TauriTavernJniClient.doListConnectionProfiles(): List<ConnectionProfile> {
-    val settings = doGetSettings()
-    return settings
-        .anyMapValue("power_user")
-        .listMapValue("servers")
-        .map {
-            ConnectionProfile(
-                label = it.stringAnyValue("label"),
-                url = it.stringAnyValue("url"),
-                lastConnection = it.longAnyValue("lastConnection")
+private val reverseProxySupportedSources = setOf(
+    "openai", "claude", "mistralai", "makersuite", "vertexai", "deepseek", "xai", "zai", "moonshot"
+)
+
+internal fun connectionModelKeyForSource(source: String): String = when (source) {
+    "openai" -> "openai_model"
+    "claude" -> "claude_model"
+    "makersuite" -> "google_model"
+    "vertexai" -> "vertexai_model"
+    "openrouter" -> "openrouter_model"
+    "ai21" -> "ai21_model"
+    "mistralai" -> "mistralai_model"
+    "custom" -> "custom_model"
+    "cohere" -> "cohere_model"
+    "perplexity" -> "perplexity_model"
+    "groq" -> "groq_model"
+    "siliconflow" -> "siliconflow_model"
+    "nanogpt" -> "nanogpt_model"
+    "deepseek" -> "deepseek_model"
+    "xai" -> "xai_model"
+    "pollinations" -> "pollinations_model"
+    "moonshot" -> "moonshot_model"
+    "fireworks" -> "fireworks_model"
+    "cometapi" -> "cometapi_model"
+    "azure_openai" -> "azure_openai_model"
+    "zai" -> "zai_model"
+    "chutes" -> "chutes_model"
+    "minimax" -> "minimax_model"
+    "opencode" -> "opencode_model"
+    "aws_bedrock" -> "aws_bedrock_model"
+    "workers_ai" -> "workers_ai_model"
+    else -> "${source}_model"
+}
+
+internal fun listConnectionProfilesFromSettings(settings: Map<String, Any?>): List<ConnectionProfile> {
+    val result = mutableListOf<ConnectionProfile>()
+    val seenNames = mutableSetOf<String>()
+
+    settings.listMapValue("connection_profiles").forEach { item ->
+        val name = item.stringAnyValue("name").ifBlank { item.stringAnyValue("label") }.trim()
+        if (name.isNotBlank() && seenNames.add(name)) {
+            val source = item.stringAnyValue("source")
+            val model = item.stringAnyValue("model")
+            val rawUrl = item.stringAnyValue("url")
+                .ifBlank { item.stringAnyValue("custom_url") }
+                .ifBlank { item.stringAnyValue("reverse_proxy") }
+                .ifBlank {
+                    listOf(source, model).filter { it.isNotBlank() }.joinToString(" · ")
+                }
+            result.add(
+                ConnectionProfile(
+                    label = name,
+                    url = rawUrl,
+                    lastConnection = item.longAnyValue("lastConnection")
+                )
             )
         }
-        .filter { it.url.isNotBlank() }
-        .sortedByDescending { it.lastConnection }
+    }
+
+    settings.anyMapValue("power_user").listMapValue("servers").forEach { item ->
+        val label = item.stringAnyValue("label").trim()
+        val url = item.stringAnyValue("url").trim()
+        val effectiveName = label.ifBlank { url }
+        if (effectiveName.isNotBlank() && url.isNotBlank() && seenNames.add(effectiveName)) {
+            result.add(
+                ConnectionProfile(
+                    label = effectiveName,
+                    url = url,
+                    lastConnection = item.longAnyValue("lastConnection")
+                )
+            )
+        }
+    }
+
+    return result.sortedByDescending { it.lastConnection }
+}
+
+internal fun saveConnectionProfileToSettings(
+    settings: Map<String, Any?>,
+    profile: ConnectionProfile
+): Map<String, Any?> {
+    val merged = settings.toMutableMap()
+    val mainApi = merged.stringAnyValue("main_api").ifBlank { "openai" }
+    val oai = merged.anyMapValue("oai_settings")
+    val textGen = merged.anyMapValue("textgenerationwebui_settings")
+    val source = when (mainApi) {
+        "openai" -> oai.stringAnyValue("chat_completion_source").ifBlank { "openai" }
+        "textgenerationwebui" -> textGen.stringAnyValue("type").ifBlank { "ooba" }
+        else -> mainApi
+    }
+    val model = when (mainApi) {
+        "openai" -> oai.stringAnyValue(connectionModelKeyForSource(source))
+        "textgenerationwebui" -> {
+            val key = if (source == "ooba") "custom_model" else "${source}_model"
+            textGen.stringAnyValue(key)
+        }
+        else -> ""
+    }
+    val reverseProxy = if (mainApi == "openai" && source in reverseProxySupportedSources) {
+        oai.stringAnyValue("reverse_proxy_$source").ifBlank { oai.stringAnyValue("reverse_proxy") }
+    } else {
+        ""
+    }
+    val proxyPassword = if (mainApi == "openai" && source in reverseProxySupportedSources) {
+        oai.stringAnyValue("proxy_password_$source").ifBlank { oai.stringAnyValue("proxy_password") }
+    } else {
+        ""
+    }
+    val customUrl = if (mainApi == "openai" && source == "custom") {
+        oai.stringAnyValue("custom_url")
+    } else {
+        ""
+    }
+    val customApiFormat = oai.stringAnyValue("custom_api_format").ifBlank { "openai_compat" }
+    val vertexAuthMode = oai.stringAnyValue("vertexai_auth_mode").ifBlank { "express" }
+    val vertexRegion = oai.stringAnyValue("vertexai_region").ifBlank { "us-central1" }
+    val vertexProjectId = oai.stringAnyValue("vertexai_express_project_id")
+
+    val resolvedUrl = profile.url.trim().ifBlank {
+        when {
+            mainApi == "openai" && source == "custom" -> customUrl
+            mainApi == "openai" && reverseProxy.isNotBlank() -> reverseProxy
+            mainApi == "textgenerationwebui" -> merged.stringAnyValue("api_server_textgenerationwebui")
+            else -> listOf(source, model).filter { it.isNotBlank() }.joinToString(" · ")
+        }
+    }
+    val now = profile.lastConnection.takeIf { it > 0 } ?: System.currentTimeMillis()
+    val profileName = profile.label.trim().ifBlank { resolvedUrl.ifBlank { source } }
+
+    val profilesList = merged.listMapValue("connection_profiles").map { it.toMutableMap() }.toMutableList()
+    val snapshotEntry = linkedMapOf<String, Any?>(
+        "name" to profileName,
+        "label" to profileName,
+        "url" to resolvedUrl,
+        "lastConnection" to now,
+        "main_api" to mainApi,
+        "source" to source,
+        "model" to model,
+        "reverse_proxy" to reverseProxy,
+        "proxy_password" to proxyPassword,
+        "custom_url" to customUrl,
+        "custom_api_format" to customApiFormat,
+        "vertexai_auth_mode" to vertexAuthMode,
+        "vertexai_region" to vertexRegion,
+        "vertexai_express_project_id" to vertexProjectId
+    )
+    val existingProfileIdx = profilesList.indexOfFirst { item ->
+        val itemName = item.stringAnyValue("name").ifBlank { item.stringAnyValue("label") }
+        itemName == profileName
+    }
+    if (existingProfileIdx >= 0) {
+        profilesList[existingProfileIdx] = snapshotEntry
+    } else {
+        profilesList.add(snapshotEntry)
+    }
+    merged["connection_profiles"] = profilesList
+
+    val powerUser = merged.anyMapValue("power_user").toMutableMap()
+    val servers = powerUser.listMapValue("servers").toMutableList()
+    val existingServerIdx = servers.indexOfFirst { item ->
+        item.stringAnyValue("label") == profileName
+    }
+    val serverEntry = linkedMapOf<String, Any?>(
+        "label" to profileName,
+        "url" to resolvedUrl,
+        "lastConnection" to now
+    )
+    if (existingServerIdx >= 0) {
+        servers[existingServerIdx] = serverEntry
+    } else {
+        servers.add(serverEntry)
+    }
+    powerUser["servers"] = servers
+    powerUser["last_connection"] = profileName
+    merged["power_user"] = powerUser
+    return merged
+}
+
+internal fun deleteConnectionProfileFromSettings(
+    settings: Map<String, Any?>,
+    name: String
+): Map<String, Any?> {
+    val target = name.trim()
+    val merged = settings.toMutableMap()
+    val profilesList = merged.listMapValue("connection_profiles").filterNot { item ->
+        val itemName = item.stringAnyValue("name").ifBlank { item.stringAnyValue("label") }.trim()
+        itemName == target
+    }
+    merged["connection_profiles"] = profilesList
+
+    val powerUser = merged.anyMapValue("power_user").toMutableMap()
+    val servers = powerUser.listMapValue("servers").filterNot { item ->
+        val label = item.stringAnyValue("label").trim()
+        val url = item.stringAnyValue("url").trim()
+        label == target || (label.isBlank() && url == target)
+    }
+    powerUser["servers"] = servers
+    if (powerUser.stringAnyValue("last_connection") == target) {
+        powerUser.remove("last_connection")
+    }
+    merged["power_user"] = powerUser
+    return merged
+}
+
+internal fun applyConnectionProfileToSettings(
+    settings: Map<String, Any?>,
+    name: String
+): Map<String, Any?>? {
+    val target = name.trim()
+    val merged = settings.toMutableMap()
+    val profilesList = merged.listMapValue("connection_profiles").map { it.toMutableMap() }.toMutableList()
+    val profileIdx = profilesList.indexOfFirst { item ->
+        val itemName = item.stringAnyValue("name").ifBlank { item.stringAnyValue("label") }.trim()
+        itemName == target
+    }
+    val now = System.currentTimeMillis()
+    if (profileIdx >= 0) {
+        val prof = profilesList[profileIdx]
+        prof["lastConnection"] = now
+        profilesList[profileIdx] = prof
+        merged["connection_profiles"] = profilesList
+
+        val mainApi = prof.stringAnyValue("main_api").ifBlank { "openai" }
+        val source = prof.stringAnyValue("source")
+        val model = prof.stringAnyValue("model")
+        val url = prof.stringAnyValue("url")
+        val reverseProxy = prof.stringAnyValue("reverse_proxy")
+        val proxyPassword = prof.stringAnyValue("proxy_password")
+        val customUrl = prof.stringAnyValue("custom_url")
+        val customApiFormat = prof.stringAnyValue("custom_api_format")
+        val vertexAuthMode = prof.stringAnyValue("vertexai_auth_mode")
+        val vertexRegion = prof.stringAnyValue("vertexai_region")
+        val vertexProjectId = prof.stringAnyValue("vertexai_express_project_id")
+
+        merged.remove("api_type")
+        merged["main_api"] = mainApi
+
+        when (mainApi) {
+            "openai" -> {
+                val oai = merged.anyMapValue("oai_settings").toMutableMap()
+                val effectiveSource = source.ifBlank { oai.stringAnyValue("chat_completion_source").ifBlank { "openai" } }
+                oai["chat_completion_source"] = effectiveSource
+                if (model.isNotBlank()) {
+                    oai[connectionModelKeyForSource(effectiveSource)] = model
+                }
+                if (effectiveSource == "custom") {
+                    oai["custom_url"] = customUrl.ifBlank { url }
+                    if (customApiFormat.isNotBlank()) {
+                        oai["custom_api_format"] = customApiFormat
+                    }
+                    oai["reverse_proxy"] = ""
+                    oai["proxy_password"] = ""
+                } else if (effectiveSource in reverseProxySupportedSources) {
+                    oai["reverse_proxy"] = reverseProxy
+                    oai["reverse_proxy_$effectiveSource"] = reverseProxy
+                    oai["proxy_password"] = proxyPassword
+                    oai["proxy_password_$effectiveSource"] = proxyPassword
+                } else {
+                    oai["reverse_proxy"] = ""
+                    oai["proxy_password"] = ""
+                }
+                if (effectiveSource == "vertexai") {
+                    if (vertexAuthMode.isNotBlank()) {
+                        oai["vertexai_auth_mode"] = vertexAuthMode
+                    }
+                    if (vertexRegion.isNotBlank()) {
+                        oai["vertexai_region"] = vertexRegion
+                    }
+                    oai["vertexai_express_project_id"] = vertexProjectId
+                }
+                merged["oai_settings"] = oai
+            }
+            "textgenerationwebui" -> {
+                val textGen = merged.anyMapValue("textgenerationwebui_settings").toMutableMap()
+                val effectiveType = source.ifBlank { textGen.stringAnyValue("type").ifBlank { "ooba" } }
+                textGen["type"] = effectiveType
+                if (model.isNotBlank()) {
+                    val key = if (effectiveType == "ooba") "custom_model" else "${effectiveType}_model"
+                    textGen[key] = model
+                }
+                if (url.isNotBlank()) {
+                    merged["api_server_textgenerationwebui"] = url
+                }
+                merged["textgenerationwebui_settings"] = textGen
+            }
+        }
+
+        val powerUser = merged.anyMapValue("power_user").toMutableMap()
+        powerUser["last_connection"] = target
+        val servers = powerUser.listMapValue("servers").map { it.toMutableMap() }.toMutableList()
+        val serverIdx = servers.indexOfFirst { it.stringAnyValue("label").trim() == target }
+        if (serverIdx >= 0) {
+            servers[serverIdx]["lastConnection"] = now
+            powerUser["servers"] = servers
+        }
+        merged["power_user"] = powerUser
+        return merged
+    }
+
+    val powerUser = merged.anyMapValue("power_user").toMutableMap()
+    val servers = powerUser.listMapValue("servers").map { it.toMutableMap() }.toMutableList()
+    val serverIdx = servers.indexOfFirst { item ->
+        val label = item.stringAnyValue("label").trim()
+        val url = item.stringAnyValue("url").trim()
+        label == target || (label.isBlank() && url == target)
+    }
+    if (serverIdx >= 0) {
+        val srv = servers[serverIdx]
+        srv["lastConnection"] = now
+        servers[serverIdx] = srv
+        powerUser["servers"] = servers
+        powerUser["last_connection"] = target
+        merged["power_user"] = powerUser
+        val url = srv.stringAnyValue("url").trim()
+        if (url.isNotBlank() && merged.stringAnyValue("main_api").ifBlank { "openai" } == "openai") {
+            val oai = merged.anyMapValue("oai_settings").toMutableMap()
+            val src = oai.stringAnyValue("chat_completion_source").ifBlank { "openai" }
+            if (src == "custom") {
+                oai["custom_url"] = url
+            } else if (src in reverseProxySupportedSources) {
+                oai["reverse_proxy"] = url
+                oai["reverse_proxy_$src"] = url
+            }
+            merged["oai_settings"] = oai
+        }
+        return merged
+    }
+
+    return null
+}
+
+internal suspend fun TauriTavernJniClient.doListConnectionProfiles(): List<ConnectionProfile> {
+    val settings = doGetSettings()
+    return listConnectionProfilesFromSettings(settings)
 }
 
 internal suspend fun TauriTavernJniClient.doSaveConnectionProfile(profile: ConnectionProfile) {
-    val merged = doGetSettings().toMutableMap()
-    val powerUser = merged.anyMapValue("power_user").toMutableMap()
-    val servers = powerUser.listMapValue("servers").toMutableList()
-    val existingIndex = servers.indexOfFirst { item ->
-        item.stringAnyValue("label") == profile.label && item.stringAnyValue("url") == profile.url
-    }
-    val saved = linkedMapOf(
-        "label" to profile.label,
-        "url" to profile.url,
-        "lastConnection" to (profile.lastConnection.takeIf { it > 0 } ?: System.currentTimeMillis())
+    val updated = saveConnectionProfileToSettings(doGetSettings(), profile)
+    doSaveSettings(updated)
+}
+
+internal suspend fun TauriTavernJniClient.doSaveConnectionProfile(name: String, url: String = "") {
+    doSaveConnectionProfile(
+        ConnectionProfile(
+            label = name,
+            url = url,
+            lastConnection = System.currentTimeMillis()
+        )
     )
-    if (existingIndex >= 0) {
-        servers[existingIndex] = saved
-    } else {
-        servers.add(saved)
-    }
-    powerUser["servers"] = servers
-    merged["power_user"] = powerUser
-    doSaveSettings(merged)
+}
+
+internal suspend fun TauriTavernJniClient.doDeleteConnectionProfile(name: String) {
+    val updated = deleteConnectionProfileFromSettings(doGetSettings(), name)
+    doSaveSettings(updated)
+}
+
+internal suspend fun TauriTavernJniClient.doApplyConnectionProfile(name: String): Boolean {
+    val updated = applyConnectionProfileToSettings(doGetSettings(), name) ?: return false
+    doSaveSettings(updated)
+    return true
 }
 
 internal suspend fun TauriTavernJniClient.doListChatBackups(): List<ChatBackupSummary> {

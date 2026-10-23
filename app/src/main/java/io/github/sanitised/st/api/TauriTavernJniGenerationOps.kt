@@ -67,9 +67,19 @@ private suspend fun TauriTavernJniClient.buildStatusPayload(
             payload[key] = value
         }
     }
+    if (sourceValue == "custom") {
+        payload["custom_api_format"] = (oai["custom_api_format"] as? String)?.takeIf { it.isNotBlank() } ?: "openai_compat"
+        if ((oai["custom_include_headers"] as? String)?.isNotBlank() == true) {
+            payload["custom_include_headers"] = oai["custom_include_headers"]
+        }
+    }
+    if (sourceValue == "pollinations") {
+        payload["pollinations_endpoint"] = (oai["pollinations_endpoint"] as? String)?.takeIf { it.isNotBlank() } ?: "text"
+    }
     if (sourceValue == "vertexai") {
         payload.putIfAbsent("vertexai_auth_mode", "express")
         payload.putIfAbsent("vertexai_region", "us-central1")
+        payload.putIfAbsent("vertexai_express_project_id", (oai["vertexai_express_project_id"] as? String).orEmpty())
     }
     return payload to oai
 }
@@ -148,7 +158,36 @@ internal suspend fun TauriTavernJniClient.doTestConnection(
             )
         }
         if (map != null && map["bypass"] == true) {
-            val configuredModel = (oai["${sourceValue}_model"] as? String)?.trim().orEmpty()
+            val modelMap = mapOf(
+                "openai" to "openai_model",
+                "claude" to "claude_model",
+                "makersuite" to "google_model",
+                "vertexai" to "vertexai_model",
+                "openrouter" to "openrouter_model",
+                "ai21" to "ai21_model",
+                "mistralai" to "mistralai_model",
+                "custom" to "custom_model",
+                "cohere" to "cohere_model",
+                "perplexity" to "perplexity_model",
+                "groq" to "groq_model",
+                "siliconflow" to "siliconflow_model",
+                "nanogpt" to "nanogpt_model",
+                "deepseek" to "deepseek_model",
+                "xai" to "xai_model",
+                "pollinations" to "pollinations_model",
+                "moonshot" to "moonshot_model",
+                "fireworks" to "fireworks_model",
+                "cometapi" to "cometapi_model",
+                "azure_openai" to "azure_openai_model",
+                "zai" to "zai_model",
+                "chutes" to "chutes_model",
+                "minimax" to "minimax_model",
+                "opencode" to "opencode_model",
+                "aws_bedrock" to "aws_bedrock_model",
+                "workers_ai" to "workers_ai_model"
+            )
+            val modelKey = modelMap[sourceValue] ?: "${sourceValue}_model"
+            val configuredModel = (oai[modelKey] as? String)?.trim().orEmpty()
             val probeModel = configuredModel.ifBlank {
                 when (sourceValue) {
                     "minimax" -> "MiniMax-M2.7"
@@ -162,6 +201,20 @@ internal suspend fun TauriTavernJniClient.doTestConnection(
                     put("messages", listOf(mapOf("role" to "user", "content" to "Hi")))
                     put("max_tokens", 1)
                     put("stream", false)
+                    if (sourceValue == "custom") {
+                        put("custom_api_format", (oai["custom_api_format"] as? String)?.takeIf { it.isNotBlank() } ?: "openai_compat")
+                        put("custom_url", (payload["custom_url"] as? String).orEmpty())
+                        put("custom_include_headers", (oai["custom_include_headers"] as? String).orEmpty())
+                        put("custom_include_body", (oai["custom_include_body"] as? String).orEmpty())
+                        put("custom_exclude_body", (oai["custom_exclude_body"] as? String).orEmpty())
+                        put("custom_claude_prompt_caching", (oai["custom_claude_prompt_caching"] as? Boolean) ?: false)
+                        put("custom_openai_responses_websocket", (oai["custom_openai_responses_websocket"] as? Boolean) ?: false)
+                    }
+                    if (sourceValue == "vertexai") {
+                        put("vertexai_auth_mode", (oai["vertexai_auth_mode"] as? String)?.takeIf { it.isNotBlank() } ?: "express")
+                        put("vertexai_region", (oai["vertexai_region"] as? String)?.takeIf { it.isNotBlank() } ?: "us-central1")
+                        put("vertexai_express_project_id", (oai["vertexai_express_project_id"] as? String).orEmpty())
+                    }
                 }
                 doGenerateChatCompletion(probePayload)
             }

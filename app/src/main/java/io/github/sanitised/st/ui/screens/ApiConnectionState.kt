@@ -202,14 +202,16 @@ internal fun settingsWithSelectedApiProvider(
     when {
         provider.mode == "cc" && provider.sourceValue != null -> {
             val oaiSettings = updated.mapAnyValue("oai_settings").toMutableMap()
-            oaiSettings["chat_completion_source"] = provider.sourceValue
-            val scopedProxyKey = "reverse_proxy_${provider.sourceValue}"
-            if (oaiSettings.containsKey(scopedProxyKey)) {
-                oaiSettings["reverse_proxy"] = oaiSettings.stringAnyValue(scopedProxyKey)
-            }
-            val scopedProxyPassKey = "proxy_password_${provider.sourceValue}"
-            if (oaiSettings.containsKey(scopedProxyPassKey)) {
-                oaiSettings["proxy_password"] = oaiSettings.stringAnyValue(scopedProxyPassKey)
+            val src = provider.sourceValue
+            oaiSettings["chat_completion_source"] = src
+            val supportsProxy = provider.supportsReverseProxy ||
+                src in setOf("openai", "claude", "mistralai", "makersuite", "vertexai", "deepseek", "xai", "zai", "moonshot")
+            if (supportsProxy) {
+                oaiSettings["reverse_proxy"] = oaiSettings.stringAnyValue("reverse_proxy_$src")
+                oaiSettings["proxy_password"] = oaiSettings.stringAnyValue("proxy_password_$src")
+            } else {
+                oaiSettings["reverse_proxy"] = ""
+                oaiSettings["proxy_password"] = ""
             }
             updated["oai_settings"] = oaiSettings
         }
@@ -694,6 +696,40 @@ private val apiConnectionProviders = listOf(
         requiresSecret = false
     ),
     ApiConnectionProviderDefinition(
+        id = "vllm",
+        label = "vLLM",
+        icon = "V",
+        mode = "tc",
+        mainApi = "textgenerationwebui",
+        sourceValue = "vllm",
+        secretKeys = listOf("api_key_vllm"),
+        modelSettingsGroup = "textgenerationwebui_settings",
+        modelKey = "vllm_model"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "huggingface",
+        label = "HuggingFace",
+        icon = "H",
+        mode = "tc",
+        mainApi = "textgenerationwebui",
+        sourceValue = "huggingface",
+        secretKeys = emptyList(),
+        modelSettingsGroup = "textgenerationwebui_settings",
+        modelKey = "huggingface_model",
+        requiresSecret = false
+    ),
+    ApiConnectionProviderDefinition(
+        id = "generic",
+        label = "Generic OpenAI",
+        icon = "G",
+        mode = "tc",
+        mainApi = "textgenerationwebui",
+        sourceValue = "generic",
+        secretKeys = listOf("api_key_generic"),
+        modelSettingsGroup = "textgenerationwebui_settings",
+        modelKey = "generic_model"
+    ),
+    ApiConnectionProviderDefinition(
         id = "koboldhorde",
         label = "AI Horde",
         icon = "H",
@@ -757,10 +793,16 @@ private val providerAliases = mapOf(
     "nanogpt" to "nanogpt",
     "chutes" to "chutes",
     "pollinations" to "pollinations",
+    "perplexity" to "perplexity",
+    "ai21" to "ai21",
+    "cometapi" to "cometapi",
+    "vllm" to "vllm",
+    "huggingface" to "huggingface",
+    "generic" to "generic",
+    "genericopenai" to "generic",
     "custom" to "custom",
     "openaicompatible" to "custom",
-    "mistralai" to "custom",
-    "perplexity" to "custom"
+    "mistralai" to "custom"
 )
 
 private fun String.normalizedProviderId(): String {

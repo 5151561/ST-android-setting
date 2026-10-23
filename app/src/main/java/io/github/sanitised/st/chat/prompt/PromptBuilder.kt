@@ -54,9 +54,11 @@ object PromptBuilder {
             .replace(CHAR_MACRO, charName)
             .replace(USER_MACRO, userName)
 
+        val fallbackSystemPrompt = (oai["sysprompt_text"] as? String)?.takeIf { it.isNotBlank() }
         val systemMessages = buildSystemMessages(
             character = character,
             sub = ::sub,
+            fallbackSystemPrompt = fallbackSystemPrompt,
             worldInfoBefore = sub(worldInfoBefore),
             worldInfoAfter = sub(worldInfoAfter),
             personaDescription = sub(personaDescription),
@@ -77,13 +79,25 @@ object PromptBuilder {
             )
         }
 
+        val resolvedAuthorsNote = authorsNote.takeIf { it.isNotBlank() }
+            ?: (oai["depth_prompt_prompt"] as? String)?.takeIf { it.isNotBlank() }
+            ?: (settings["author_note"] as? String).orEmpty()
+        val resolvedAuthorsNoteDepth = if (authorsNote.isNotBlank()) {
+            authorsNoteDepth
+        } else {
+            oai.intValue("depth_prompt_depth", authorsNoteDepth).coerceAtLeast(0)
+        }
+
         // Author's note: injected as a system turn `depth` messages from the end
         // (ST default depth 4), but never before the leading system prompt.
-        if (authorsNote.isNotBlank()) {
+        if (resolvedAuthorsNote.isNotBlank()) {
             val minIndex = systemMessages.size
-            val insertAt = (messages.size - authorsNoteDepth).coerceIn(minIndex, messages.size)
-            messages.add(insertAt, mapOf("role" to "system", "content" to sub(authorsNote)))
+            val insertAt = (messages.size - resolvedAuthorsNoteDepth).coerceIn(minIndex, messages.size)
+            messages.add(insertAt, mapOf("role" to "system", "content" to sub(resolvedAuthorsNote)))
         }
+
+        val rawPostProc = (oai["custom_prompt_post_processing"] as? String)?.trim().orEmpty()
+        val normalizedPostProc = if (rawPostProc.equals("none", ignoreCase = true)) "" else rawPostProc
 
         val payload = linkedMapOf<String, Any?>(
             "messages" to messages,
@@ -101,14 +115,60 @@ object PromptBuilder {
             "logit_bias" to null,
             "group_names" to emptyList<String>(),
             "include_reasoning" to oai.booleanValue("show_thoughts", false),
-            "reasoning_effort" to (oai["reasoning_effort"] as? String ?: "auto"),
             "enable_web_search" to oai.booleanValue("enable_web_search", false),
             "request_images" to oai.booleanValue("request_images", false),
             "request_image_resolution" to (oai["request_image_resolution"] as? String ?: "auto"),
             "request_image_aspect_ratio" to (oai["request_image_aspect_ratio"] as? String ?: "auto"),
-            "custom_prompt_post_processing" to (oai["custom_prompt_post_processing"] as? String ?: "none"),
-            "verbosity" to (oai["verbosity"] as? String ?: "auto"),
+            "custom_prompt_post_processing" to normalizedPostProc,
         )
+
+        val reasoningEffort = (oai["reasoning_effort"] as? String)?.trim().orEmpty().ifEmpty { "auto" }
+        if (source !in setOf("custom", "pollinations") || !reasoningEffort.equals("auto", ignoreCase = true)) {
+            payload["reasoning_effort"] = reasoningEffort
+        }
+
+        val verbosity = (oai["verbosity"] as? String)?.trim().orEmpty()
+        payload["verbosity"] = if (verbosity.equals("auto", ignoreCase = true)) "" else verbosity
+
+        val topK = numDouble(oai["top_k"] ?: oai["top_k_openai"], 0.0).toInt()
+        if (topK > 0) {
+            payload["top_k"] = topK
+        }
+
+        val minP = numDouble(oai["min_p"] ?: oai["min_p_openai"], 0.0)
+        if (minP > 0.0) {
+            payload["min_p"] = minP
+        }
+
+        val rawRepPen = oai["repetition_penalty"] ?: oai["rep_pen"] ?: oai["rep_pen_openai"]
+        if (rawRepPen != null) {
+            val repPen = numDouble(rawRepPen, 1.0)
+            if (repPen > 0.0 && repPen != 1.0) {
+                payload["repetition_penalty"] = repPen
+                payload["rep_pen"] = repPen
+            }
+        }
+
+        val topA = numDouble(oai["top_a"] ?: oai["top_a_openai"], 0.0)
+        if (topA > 0.0) {
+            payload["top_a"] = topA
+        }
+
+        val seed = numInt(oai["seed"], -1)
+        if (seed >= 0) {
+            payload["seed"] = seed
+        }
+
+        if (oai.booleanValue("claude_fast_mode", false)) {
+            payload["claude_fast_mode"] = true
+        }
+        if (oai.booleanValue("custom_claude_prompt_caching", false)) {
+            payload["custom_claude_prompt_caching"] = true
+        }
+        if (oai.booleanValue("custom_openai_responses_websocket", false)) {
+            payload["custom_openai_responses_websocket"] = true
+        }
+
         val reverseProxy = ((oai["reverse_proxy"] as? String)?.takeIf { it.isNotBlank() }
             ?: (oai["reverse_proxy_$source"] as? String)?.takeIf { it.isNotBlank() })
         if (reverseProxy != null) {
@@ -165,6 +225,7 @@ object PromptBuilder {
     private fun buildSystemMessages(
         character: CharacterDetail,
         sub: (String) -> String,
+        fallbackSystemPrompt: String? = null,
         worldInfoBefore: String,
         worldInfoAfter: String,
         personaDescription: String,
@@ -175,7 +236,10 @@ object PromptBuilder {
             if (content.isNotBlank()) messages += mapOf("role" to role, "content" to content.trim())
         }
 
-        add(content = sub(character.systemPrompt).ifBlank { sub(defaultMainPrompt(character.name)) })
+        val mainPrompt = character.systemPrompt.takeIf { it.isNotBlank() }
+            ?: fallbackSystemPrompt?.takeIf { it.isNotBlank() }
+            ?: defaultMainPrompt(character.name)
+        add(content = sub(mainPrompt))
         extensionPrompts
             .filter { it.position == ExtensionPromptPosition.BEFORE_PROMPT }
             .forEach { add(role = it.role, content = sub(it.content)) }
@@ -225,16 +289,22 @@ object PromptBuilder {
         entries.associate { (k, v) -> k.toString() to v }
 
     private fun Map<String, Any?>.intValue(key: String, default: Int): Int =
-        when (val v = this[key]) {
-            is Number -> v.toInt()
-            is String -> v.toIntOrNull() ?: default
+        numInt(this[key], default)
+
+    private fun Map<String, Any?>.doubleValue(key: String, default: Double): Double =
+        numDouble(this[key], default)
+
+    private fun numInt(value: Any?, default: Int): Int =
+        when (value) {
+            is Number -> value.toInt()
+            is String -> value.trim().toIntOrNull() ?: value.trim().toDoubleOrNull()?.toInt() ?: default
             else -> default
         }
 
-    private fun Map<String, Any?>.doubleValue(key: String, default: Double): Double =
-        when (val v = this[key]) {
-            is Number -> v.toDouble()
-            is String -> v.toDoubleOrNull() ?: default
+    private fun numDouble(value: Any?, default: Double): Double =
+        when (value) {
+            is Number -> value.toDouble()
+            is String -> value.trim().toDoubleOrNull() ?: default
             else -> default
         }
 
