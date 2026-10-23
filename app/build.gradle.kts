@@ -6,6 +6,12 @@ plugins {
     id("com.google.dagger.hilt.android")
 }
 
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+}
+
 val fallbackVersionName = "0.4.0"
 
 android {
@@ -110,6 +116,40 @@ android {
             useLegacyPackaging = true
         }
     }
+
+    testOptions {
+        unitTests.all {
+            val hostReleaseDir = rootProject.file("rust/tt-android-jni/target/release").absolutePath
+            val hostDebugDir = rootProject.file("rust/tt-android-jni/target/debug").absolutePath
+            val existingLibPath = System.getProperty("java.library.path").orEmpty()
+            val combinedPath = listOf(hostReleaseDir, hostDebugDir, existingLibPath)
+                .filter { it.isNotBlank() }
+                .joinToString(File.pathSeparator)
+            it.systemProperty("java.library.path", combinedPath)
+        }
+    }
+}
+
+val buildRustJniHost by tasks.registering(Exec::class) {
+    description = "Builds libtauritavern_jni for the host OS (for JVM unit tests) and stages default assets."
+    group = "build"
+    workingDir = rootProject.projectDir
+    commandLine("bash", "ci/scripts/build_rust_jni.sh", "host")
+}
+
+val buildRustJniAndroid by tasks.registering(Exec::class) {
+    description = "Builds libtauritavern_jni.so for Android ABIs (if NDK is present) and stages default assets."
+    group = "build"
+    workingDir = rootProject.projectDir
+    commandLine("bash", "ci/scripts/build_rust_jni.sh", "all")
+}
+
+tasks.withType<Test>().configureEach {
+    dependsOn(buildRustJniHost)
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(buildRustJniAndroid)
 }
 
 dependencies {

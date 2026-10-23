@@ -63,6 +63,7 @@ import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.data.repository.DefaultPersonaPresetRepository
 import io.github.sanitised.st.data.repository.PersonaPresetRepository
 import io.github.sanitised.st.data.tavernApi
+import io.github.sanitised.st.ui.LocalTavernImageInterceptor
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
 
@@ -174,8 +175,13 @@ fun STBackgroundsScreen(
             if (chatBackground.isBlank()) {
                 Text("未设置背景（聊天使用纯色）", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
+                val bgModel: Any = remember(context, chatBackground) {
+                    LocalTavernImageInterceptor.resolveLocalFile(context, chatBackground)
+                        ?.takeIf { it.exists() }
+                        ?: chatBackground
+                }
                 AsyncImage(
-                    model = chatBackground,
+                    model = bgModel,
                     contentDescription = "当前背景",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.matchParentSize().clip(RoundedCornerShape(16.dp))
@@ -277,13 +283,20 @@ fun STBackgroundsScreen(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BackgroundTile(bg: String, baseUrl: String, modifier: Modifier = Modifier, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val context = LocalContext.current
+    val thumbUrl = remember(baseUrl, bg) { bgThumbUrl(baseUrl, bg) }
+    val thumbModel: Any = remember(context, thumbUrl) {
+        LocalTavernImageInterceptor.resolveLocalFile(context, thumbUrl)
+            ?.takeIf { it.exists() }
+            ?: thumbUrl
+    }
     Box(
         modifier = modifier.aspectRatio(16f / 10f).clip(RoundedCornerShape(14.dp))
             .background(Brush.linearGradient(gradientFor(bg.hashCode())))
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
-        AsyncImage(model = bgThumbUrl(baseUrl, bg), contentDescription = bg, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+        AsyncImage(model = thumbModel, contentDescription = bg, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
         Row(
             modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x8C000000))))

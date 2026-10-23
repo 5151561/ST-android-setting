@@ -28,7 +28,7 @@ git submodule update --init --recursive
 
 仅有本地 JVM 单元测试（`app/src/test/`），无 instrumented test。无自定义 lint 配置。
 
-`gradle.properties` 中的 `org.gradle.java.home` 是开发机专用路径（当前指向 VSCode redhat.java 扩展自带的 JDK 21，扩展升级后路径会失效，需同步更新该行和 `GradleJavaHomeTest`）。
+项目通过 `app/build.gradle.kts` 中的 `java.toolchain` 绑定 JDK 21，无需在 `gradle.properties` 中硬编码本地绝对路径；`GradleJavaHomeTest` 会校验运行时 JVM 主版本。
 
 ## Architecture
 

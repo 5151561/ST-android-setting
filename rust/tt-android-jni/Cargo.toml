@@ -1,0 +1,35 @@
+[package]
+name = "tt-android-jni"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "tauritavern_jni"
+crate-type = ["cdylib", "rlib"]
+
+[workspace]
+
+[dependencies]
+tt-domain = { path = "../../TauriTavern/src-tauri/crates/tt-domain" }
+tt-contracts = { path = "../../TauriTavern/src-tauri/crates/tt-contracts" }
+tt-ports = { path = "../../TauriTavern/src-tauri/crates/tt-ports" }
+tt-application = { path = "../../TauriTavern/src-tauri/crates/tt-application" }
+tt-adapter-storage-core = { path = "../../TauriTavern/src-tauri/crates/tt-adapter-storage-core" }
+tt-adapter-storage-userdata = { path = "../../TauriTavern/src-tauri/crates/tt-adapter-storage-userdata" }
+tt-adapter-media = { path = "../../TauriTavern/src-tauri/crates/tt-adapter-media" }
+tt-adapter-http = { path = "../../TauriTavern/src-tauri/crates/tt-adapter-http" }
+tt-adapter-provider-http = { path = "../../TauriTavern/src-tauri/crates/tt-adapter-provider-http" }
+
+jni = "0.21"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+base64 = "0.23"
+uuid = { version = "1.4", features = ["v4", "serde", "std"] }
+url = "2.5.8"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3.8"

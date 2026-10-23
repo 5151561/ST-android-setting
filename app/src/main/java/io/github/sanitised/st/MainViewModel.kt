@@ -13,13 +13,14 @@ import io.github.sanitised.st.data.LocalTavernClientProvider
 import io.github.sanitised.st.data.preferences.UserPreferencesRepository
 import io.github.sanitised.st.data.repository.ConnectionRepository
 import io.github.sanitised.st.data.repository.DefaultConnectionRepository
+import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
@@ -43,23 +44,12 @@ class MainViewModel @Inject constructor(
     val userMessage = _userMessage.asStateFlow()
     private var userMessageId = 0L
 
-    // Updated by MainActivity when the service connection changes.
-    var nodeService: NodeService? = null
+    val runtimeStatus: StateFlow<NodeStatus> = TauriTavernRuntime.status
 
     private val backupManager = BackupManager(
         application = application,
         scope = viewModelScope,
         setBusyOperation = { busyOperation.value = it },
-        getNodeService = { nodeService },
-        appendServiceLog = { message -> appendServiceLog(message) }
-    )
-
-    private val customInstallManager = CustomInstallManager(
-        application = application,
-        scope = viewModelScope,
-        getBusyOperation = { busyOperation.value },
-        setBusyOperation = { busyOperation.value = it },
-        postUserMessage = { message -> postUserMessage(message) },
         appendServiceLog = { message -> appendServiceLog(message) }
     )
 
@@ -76,17 +66,29 @@ class MainViewModel @Inject constructor(
         postUserMessage = { message -> postUserMessage(message) }
     )
 
-    val isCustomInstalled: State<Boolean> = customInstallManager.isCustomInstalled
-    val customInstallLabel: State<String?> = customInstallManager.customInstallLabel
-    val customRepoInput: State<String> = customInstallManager.customRepoInput
-    val isLoadingCustomRefs: State<Boolean> = customInstallManager.isLoadingCustomRefs
-    val customRepoValidationMessage: State<String> = customInstallManager.customRepoValidationMessage
-    val customInstallValidationMessage: State<String> = customInstallManager.customInstallValidationMessage
-    val customFeaturedRefs: State<List<CustomRepoRefOption>> = customInstallManager.customFeaturedRefs
-    val customAllRefs: State<List<CustomRepoRefOption>> = customInstallManager.customAllRefs
-    val selectedCustomRefKey: State<String?> = customInstallManager.selectedCustomRefKey
-    val customOperationCard: State<OperationCardState> = customInstallManager.customOperationCard
-    val customOperationCardAnchor: State<CustomOperationAnchor> = customInstallManager.customOperationCardAnchor
+    private val _isCustomInstalled = mutableStateOf(false)
+    val isCustomInstalled: State<Boolean> = _isCustomInstalled
+    private val _customInstallLabel = mutableStateOf<String?>(null)
+    val customInstallLabel: State<String?> = _customInstallLabel
+    private val _customRepoInput = mutableStateOf("")
+    val customRepoInput: State<String> = _customRepoInput
+    private val _isLoadingCustomRefs = mutableStateOf(false)
+    val isLoadingCustomRefs: State<Boolean> = _isLoadingCustomRefs
+    private val _customRepoValidationMessage = mutableStateOf("")
+    val customRepoValidationMessage: State<String> = _customRepoValidationMessage
+    private val _customInstallValidationMessage = mutableStateOf("")
+    val customInstallValidationMessage: State<String> = _customInstallValidationMessage
+    private val _customFeaturedRefs = mutableStateOf<List<CustomRepoRefOption>>(emptyList())
+    val customFeaturedRefs: State<List<CustomRepoRefOption>> = _customFeaturedRefs
+    private val _customAllRefs = mutableStateOf<List<CustomRepoRefOption>>(emptyList())
+    val customAllRefs: State<List<CustomRepoRefOption>> = _customAllRefs
+    private val _selectedCustomRefKey = mutableStateOf<String?>(null)
+    val selectedCustomRefKey: State<String?> = _selectedCustomRefKey
+    private val _customOperationCard = mutableStateOf(OperationCardState())
+    val customOperationCard: State<OperationCardState> = _customOperationCard
+    private val _customOperationCardAnchor = mutableStateOf<CustomOperationAnchor?>(null)
+    val customOperationCardAnchor: State<CustomOperationAnchor?> = _customOperationCardAnchor
+
     val backupOperationCard: State<OperationCardState> = backupManager.backupOperationCard
     val backupOperationCardAnchor: State<BackupOperationAnchor> = backupManager.backupOperationCardAnchor
     private val _settingsSnapshots = mutableStateOf<List<SettingsSnapshot>>(emptyList())
@@ -117,7 +119,6 @@ class MainViewModel @Inject constructor(
 
     override fun onCleared() {
         updateManager.onCleared()
-        customInstallManager.onCleared()
         super.onCleared()
     }
 
@@ -132,12 +133,38 @@ class MainViewModel @Inject constructor(
             null -> ""
         }
 
+    fun initializeRuntime() {
+        val application = getApplication<Application>()
+        viewModelScope.launch {
+            TauriTavernRuntime.ensureInitialized(application)
+                .onFailure { error ->
+                    postUserMessage(error.message ?: "TauriTavern Rust 核心初始化失败")
+                }
+        }
+    }
+
+    fun restartRuntime() {
+        val application = getApplication<Application>()
+        viewModelScope.launch {
+            TauriTavernRuntime.restart(application)
+                .onSuccess { postUserMessage("TauriTavern Rust 核心已重新加载") }
+                .onFailure { error ->
+                    postUserMessage(error.message ?: "TauriTavern Rust 核心重载失败")
+                }
+        }
+    }
+
+    fun stopRuntime() {
+        TauriTavernRuntime.stop(getApplication())
+        postUserMessage("TauriTavern Rust 核心已暂停")
+    }
+
     fun export(uri: Uri) {
-        backupManager.export(uri)
+        backupManager.exportDataBackup(uri)
     }
 
     fun import(uri: Uri) {
-        backupManager.import(uri)
+        backupManager.importDataBackup(uri)
     }
 
     fun refreshSettingsSnapshots(port: Int) {
@@ -264,35 +291,71 @@ class MainViewModel @Inject constructor(
     }
 
     fun installCustomZip(uri: Uri) {
-        customInstallManager.installCustomZip(uri)
+        postUserMessage("已内置 TauriTavern Rust 核心，无需安装外部 JS 压缩包")
     }
 
     fun resetToDefault() {
-        customInstallManager.resetToDefault()
+        val application = getApplication<Application>()
+        if (busyOperation.value != null) return
+        busyOperation.value = BusyOperation.RESETTING
+        viewModelScope.launch {
+            val result = TauriTavernRuntime.reinitializeDefaultContent(application)
+            busyOperation.value = null
+            result
+                .onSuccess { postUserMessage("已重新初始化内置默认资源与模板") }
+                .onFailure { error ->
+                    postUserMessage(error.message ?: "重置默认模板失败")
+                }
+        }
     }
 
     fun setCustomRepoInput(value: String) {
-        customInstallManager.setCustomRepoInput(value)
+        _customRepoInput.value = value
     }
 
     fun selectCustomRepoRef(key: String) {
-        customInstallManager.selectCustomRepoRef(key)
+        _selectedCustomRefKey.value = key
     }
 
     fun loadCustomRepoRefs() {
-        customInstallManager.loadCustomRepoRefs()
+        postUserMessage("已内置 TauriTavern Rust 核心，无需下载远程 JS 分支")
     }
 
     fun startCustomRepoInstall() {
-        customInstallManager.startCustomRepoInstall()
+        postUserMessage("已内置 TauriTavern Rust 核心，无需安装远程 JS 分支")
     }
 
     fun cancelCustomSourceDownload() {
-        customInstallManager.cancelCustomSourceDownload()
+        // No-op: custom JS source download has been replaced by embedded Rust JNI core.
     }
 
     fun removeUserData() {
-        customInstallManager.removeUserData()
+        val application = getApplication<Application>()
+        if (busyOperation.value != null) return
+        busyOperation.value = BusyOperation.REMOVING_DATA
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val paths = AppPaths(application)
+                    if (paths.dataDir.exists()) paths.dataDir.deleteRecursively()
+                    if (paths.configDir.exists()) paths.configDir.deleteRecursively()
+                    paths.dataDir.mkdirs()
+                    paths.configDir.mkdirs()
+                    TauriTavernRuntime.reinitializeDefaultContent(application).getOrThrow()
+                }
+            }
+            busyOperation.value = null
+            result
+                .onSuccess {
+                    appendServiceLog("User data removed and TauriTavern default content reinitialized")
+                    postUserMessage("已清空用户数据并重新初始化默认模板")
+                }
+                .onFailure { error ->
+                    val message = "清空用户数据失败: ${error.message ?: application.getString(R.string.unknown_error)}"
+                    appendServiceLog(message)
+                    postUserMessage(message)
+                }
+        }
     }
 
     fun setBubbleStyle(enabled: Boolean) {
@@ -424,11 +487,6 @@ class MainViewModel @Inject constructor(
     }
 
     private suspend fun appendServiceLog(message: String) {
-        withContext(Dispatchers.IO) {
-            val logsDir = AppPaths(getApplication<Application>()).logsDir
-            if (!logsDir.exists()) logsDir.mkdirs()
-            val logFile = File(logsDir, "service.log")
-            logFile.appendText(formatServiceLogLine(message), Charsets.UTF_8)
-        }
+        TauriTavernRuntime.appendLog(getApplication(), message)
     }
 }

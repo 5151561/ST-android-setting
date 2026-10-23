@@ -1,15 +1,12 @@
 package io.github.sanitised.st
 
 import android.Manifest
-import android.content.ComponentName
 import android.content.Intent
-import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.IBinder
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -35,12 +32,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.rememberNavController
@@ -70,28 +67,14 @@ import io.github.sanitised.st.ui.theme.STAppTheme
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    private val nodeServiceState = mutableStateOf<NodeService?>(null)
-
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
-
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as? NodeService.LocalBinder
-            nodeServiceState.value = binder?.getService()
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            nodeServiceState.value = null
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -99,20 +82,8 @@ class MainActivity : ComponentActivity() {
         val versionLabel = runCatching {
             packageManager.getPackageInfo(packageName, 0).versionName ?: getString(R.string.unknown_short)
         }.getOrElse { getString(R.string.unknown) }
-        val bundledInfo = NodePayload(this).readManifestInfo()
-        val stLabel = bundledInfo?.let {
-            when {
-                !it.stVersion.isNullOrBlank() -> getString(R.string.sillytavern_label, it.stVersion)
-                !it.stCommit.isNullOrBlank() -> getString(R.string.sillytavern_label, it.stCommit)
-                else -> getString(R.string.sillytavern_unknown)
-            }
-        } ?: getString(R.string.sillytavern_unknown)
-        val nodeLabel = bundledInfo?.let {
-            val nodeValue = it.nodeTag?.takeIf(String::isNotBlank)
-                ?: it.nodeVersion?.takeIf(String::isNotBlank)
-                ?: it.nodeCommit?.takeIf(String::isNotBlank)
-            if (nodeValue == null) getString(R.string.node_unknown) else getString(R.string.node_label, nodeValue)
-        } ?: getString(R.string.node_unknown)
+        val stLabel = TauriTavernRuntime.CORE_LABEL
+        val nodeLabel = TauriTavernRuntime.ENGINE_LABEL
         val appContainer = (application as STApplication).container.apply {
             updateLocalPort(readConfiguredPort())
         }
@@ -122,10 +93,6 @@ class MainActivity : ComponentActivity() {
                 factory = ChatViewModel.factory(appContainer.tavernClientProvider::get)
             )
             val navController = rememberNavController()
-            // 只观察「是否在首页」这个布尔(库快照刷新需要它),而不是在根作用域读
-            // navBackStackEntry:后者会让每次导航都整棵重组本作用域(约千行)。
-            // State 值不变不触发重组,所以只有进入/离开首页两个时刻各重组一次。
-            // 抽屉高亮/是否显示外壳的路由推导收进 STAppChrome,随导航重组的只有它。
             val isOnHome by produceState(initialValue = true, navController) {
                 navController.currentBackStackEntryFlow.collect { entry ->
                     value = entry.destination.route == STRoutes.HOME
@@ -154,10 +121,7 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
-            val statusState = remember { mutableStateOf(NodeStatus(NodeState.STOPPED, "Idle")) }
-            val autoOpenBrowserTriggeredForCurrentRun = rememberSaveable { mutableStateOf(false) }
-            val tavernReadyForAutoOpen = remember { mutableStateOf(false) }
-            val wasReadyToAutoOpen = remember { mutableStateOf(false) }
+            val statusState = remember { mutableStateOf(TauriTavernRuntime.status.value) }
             val pendingDialogState = rememberSaveable(stateSaver = pendingDialogStateSaver()) {
                 mutableStateOf<PendingDialog?>(null)
             }
@@ -172,10 +136,14 @@ class MainActivity : ComponentActivity() {
             var connectedCount by remember { mutableStateOf(0) }
             var drawerAccount by remember { mutableStateOf<STDrawerAccount?>(null) }
             val running = statusState.value.state == NodeState.RUNNING
-            LaunchedEffect(running, statusState.value.port) {
+
+            LaunchedEffect(Unit) {
+                TauriTavernRuntime.ensureInitialized(this@MainActivity)
+            }
+
+            LaunchedEffect(running) {
                 if (running) {
                     runCatching {
-                        appContainer.updateLocalPort(statusState.value.port)
                         val client = appContainer.tavernClientProvider.get()
                         val secretsList = client.listSecrets()
                         connectedCount = configuredApiConnectionProviderCount(secretsList)
@@ -188,57 +156,18 @@ class MainActivity : ComponentActivity() {
                     drawerAccount = null
                 }
             }
-            LaunchedEffect(statusState.value.state, statusState.value.port) {
-                if (statusState.value.state != NodeState.RUNNING) {
-                    tavernReadyForAutoOpen.value = false
-                    return@LaunchedEffect
-                }
-                tavernReadyForAutoOpen.value = false
-                appContainer.updateLocalPort(statusState.value.port)
-                val client = appContainer.tavernClientProvider.get()
-                val deadline = System.currentTimeMillis() + 60_000L
-                while (
-                    statusState.value.state == NodeState.RUNNING &&
-                    !tavernReadyForAutoOpen.value &&
-                    System.currentTimeMillis() < deadline
-                ) {
-                    val ok = withContext(Dispatchers.IO) { client.healthCheck().ok }
-                    if (ok) {
-                        tavernReadyForAutoOpen.value = true
-                        break
-                    }
-                    delay(1000)
-                }
-            }
-            val readyToAutoOpen = statusState.value.state == NodeState.RUNNING && tavernReadyForAutoOpen.value
-            LaunchedEffect(readyToAutoOpen, viewModel.autoOpenBrowserWhenReady.value) {
-                val justBecameReady = readyToAutoOpen && !wasReadyToAutoOpen.value
-                if (
-                    viewModel.autoOpenBrowserWhenReady.value && justBecameReady &&
-                    !autoOpenBrowserTriggeredForCurrentRun.value
-                ) {
-                    openSillyTavernInBrowser(statusState.value.port)
-                    autoOpenBrowserTriggeredForCurrentRun.value = true
-                }
-                wasReadyToAutoOpen.value = readyToAutoOpen
-            }
 
             val listener = remember {
                 object : NodeStatusListener {
                     override fun onStatus(status: NodeStatus) {
                         appContainer.updateLocalPort(status.port)
                         scope.launch(Dispatchers.Main) {
-                            val previousState = statusState.value.state
-                            if (previousState == NodeState.RUNNING && status.state != NodeState.RUNNING) {
-                                autoOpenBrowserTriggeredForCurrentRun.value = false
-                            }
                             statusState.value = status
                         }
                     }
                 }
             }
-            // refreshKey 带上「是否在首页」:从聊天屏回到列表时重扫本地文件,
-            // 未读/预览/排序才反映刚刚发生的对话。
+
             val librarySnapshot by rememberLocalTavernLibrarySnapshot(
                 dataRoot = appPaths.dataDir,
                 serverRunning = statusState.value.state == NodeState.RUNNING,
@@ -246,11 +175,9 @@ class MainActivity : ComponentActivity() {
                 refreshKey = statusState.value.state to isOnHome
             )
 
-            val service = nodeServiceState.value
-            DisposableEffect(service) {
-                viewModel.nodeService = service
-                service?.registerListener(listener)
-                onDispose { service?.unregisterListener(listener) }
+            DisposableEffect(Unit) {
+                TauriTavernRuntime.registerListener(listener)
+                onDispose { TauriTavernRuntime.unregisterListener(listener) }
             }
             DisposableEffect(lifecycleOwner) {
                 val observer = LifecycleEventObserver { _, event ->
@@ -280,16 +207,7 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode
             val themeColorSource by viewModel.themeColorSource
             val useDarkTheme = themeMode.shouldUseDarkTheme(systemInDarkTheme)
-            val currentStLabel = if (viewModel.isCustomInstalled.value) {
-                val customLabel = viewModel.customInstallLabel.value
-                if (customLabel.isNullOrBlank()) {
-                    getString(R.string.sillytavern_custom_version)
-                } else {
-                    getString(R.string.sillytavern_custom_with_label, customLabel)
-                }
-            } else {
-                stLabel
-            }
+            val currentStLabel = stLabel
             SideEffect {
                 enableEdgeToEdge(
                     statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { useDarkTheme },
@@ -384,14 +302,11 @@ class MainActivity : ComponentActivity() {
             }
             val navigateMainTab: (String) -> Unit = { route ->
                 if (!navController.isReadyForNav()) {
-                    // 上一次导航的过渡动画还没结束,丢弃这次点击,避免 NavHost 白屏。
+                    // Ignore duplicate navigation while transition is still running.
                 } else if (route == STRoutes.LOGIN) {
-                    // 抽屉「退出登录」走通用导航：先向后端注销并清本地会话 cookie，再进登录页，
-                    // 否则旧会话 cookie 仍在共享 jar 里，后续私有接口会沿用上一个账户。
                     scope.launch {
                         if (statusState.value.state == NodeState.RUNNING) {
                             runCatching {
-                                appContainer.updateLocalPort(statusState.value.port)
                                 appContainer.tavernClientProvider.get().logoutUser()
                             }
                         }
@@ -440,7 +355,7 @@ class MainActivity : ComponentActivity() {
                         STRoutes.CHARACTERS -> item.copy(badgeText = librarySnapshot.characters.size.takeIf { it > 0 }?.toString())
                         STRoutes.CONNECTIONS -> item.copy(supportingText = "${connectedCount} 个已配置")
                         STRoutes.MANAGE_ST -> item.copy(
-                            supportingText = if (statusState.value.state == NodeState.RUNNING) "运行中" else "未运行"
+                            supportingText = if (statusState.value.state == NodeState.RUNNING) "已就绪" else "未就绪"
                         )
                         else -> item
                     }
@@ -529,29 +444,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        bindService(Intent(this, NodeService::class.java), serviceConnection, BIND_AUTO_CREATE)
-    }
-
-    override fun onStop() {
-        super.onStop()
-        unbindService(serviceConnection)
-    }
-
     private fun startNode() {
-        maybeRequestNotificationPermission()
-        val port = readConfiguredPort()
-        val intent = Intent(this, NodeService::class.java).apply {
-            action = NodeService.ACTION_START
-            putExtra(NodeService.EXTRA_PORT, port)
+        lifecycleScope.launch {
+            TauriTavernRuntime.restart(this@MainActivity)
         }
-        ContextCompat.startForegroundService(this, intent)
     }
 
     private fun stopNode() {
-        val intent = Intent(this, NodeService::class.java).apply { action = NodeService.ACTION_STOP }
-        startService(intent)
+        TauriTavernRuntime.stop(this)
     }
 
     private fun openBatteryOptimizationSettings() {

@@ -4,8 +4,8 @@ import android.app.Application
 import io.github.sanitised.st.AppPaths
 import io.github.sanitised.st.DEFAULT_PORT
 import io.github.sanitised.st.SillyTavernUrl
+import io.github.sanitised.st.api.TauriTavernJniClient
 import io.github.sanitised.st.api.TavernCoreApi
-import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.data.preferences.UserPreferencesRepository
 import io.github.sanitised.st.data.repository.ConnectionRepository
 import io.github.sanitised.st.data.repository.DefaultConnectionRepository
@@ -17,8 +17,8 @@ import io.github.sanitised.st.data.repository.PersonaPresetRepository
 import io.github.sanitised.st.data.repository.WorldInfoRepository
 
 /**
- * 应用级手动依赖容器。动态端口属于连接配置，而不是界面状态；所有数据层入口
- * 通过同一个 provider 读取它，避免每个屏幕各自拼接地址和创建客户端。
+ * 应用级手动依赖容器。所有数据层入口通过同一个 provider 获取 [TavernCoreApi]，
+ * 默认由基于 JNI 的 [TauriTavernJniClient] 提供，不再依赖本地 HTTP 端口。
  */
 class AppContainer(application: Application) {
     private val localLibraryReader = LocalTavernLibraryReader(AppPaths(application).dataDir)
@@ -50,7 +50,7 @@ class AppContainer(application: Application) {
 
 class LocalTavernClientProvider(
     initialPort: Int = DEFAULT_PORT,
-    private val clientFactory: (String) -> TavernCoreApi = ::TavernCoreClient,
+    private val clientFactory: (String) -> TavernCoreApi = { TauriTavernJniClient.instance },
 ) {
     @Volatile
     private var localPort: Int = initialPort.validPort()
@@ -67,8 +67,7 @@ class LocalTavernClientProvider(
 }
 
 /**
- * 数据层统一 API 入口工厂，避免 UI 屏幕直接依赖和实例化 [TavernCoreClient] 实现类。
+ * 数据层统一 API 入口工厂，直接返回基于 JNI 的 [TauriTavernJniClient]，避免 UI 屏幕直接依赖 HTTP 客户端。
  */
-fun tavernApi(baseUrl: String): TavernCoreApi = TavernCoreClient(baseUrl = baseUrl)
-fun tavernApiForPort(port: Int): TavernCoreApi = TavernCoreClient(baseUrl = SillyTavernUrl.localWebUrl(port))
-
+fun tavernApi(baseUrl: String = ""): TavernCoreApi = TauriTavernJniClient.instance
+fun tavernApiForPort(port: Int = DEFAULT_PORT): TavernCoreApi = TauriTavernJniClient.instance

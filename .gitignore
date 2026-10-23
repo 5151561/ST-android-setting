@@ -37,13 +37,12 @@ google-services.json
 # Android Profiling
 *.hprof
 
-# Node/NDK build outputs
+# Rust & TauriTavern build/staged outputs
 /out/
+/rust/**/target/
+/TauriTavern/src-tauri/target/
 /app/src/main/jniLibs/**/*.so
-/app/src/main/assets/node_payload/bin/**/*.so
-/app/src/main/assets/node_payload/bin/**/node
-/app/src/main/assets/node_payload/st_bundle.tar
-/app/src/main/assets/node_payload/st_bundle.tar.gz
-/app/src/main/assets/node_payload/npm.tar
-/app/src/main/assets/node_payload/manifest.json
+/app/src/main/assets/tauritavern_default/
+/app/src/main/assets/tt-default/
+/app/src/main/assets/node_payload/
 /app/src/main/assets/legal/sillytavern_package-lock.json

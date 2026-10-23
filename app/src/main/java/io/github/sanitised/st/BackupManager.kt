@@ -13,7 +13,6 @@ internal class BackupManager(
     private val application: Application,
     private val scope: CoroutineScope,
     private val setBusyOperation: (BusyOperation?) -> Unit,
-    private val getNodeService: () -> NodeService?,
     private val appendServiceLog: suspend (String) -> Unit
 ) {
     private val operationCardController = OperationCardController(scope)
@@ -23,7 +22,9 @@ internal class BackupManager(
     private fun s(resId: Int): String = application.getString(resId)
     private fun s(resId: Int, vararg args: Any): String = application.getString(resId, *args)
 
-    fun export(uri: Uri) {
+    fun export(uri: Uri) = exportDataBackup(uri)
+
+    fun exportDataBackup(uri: Uri) {
         setBusyOperation(BusyOperation.EXPORTING)
         startBackupOperationCard(
             title = s(R.string.backup_op_exporting_title),
@@ -51,7 +52,9 @@ internal class BackupManager(
         }
     }
 
-    fun import(uri: Uri) {
+    fun import(uri: Uri) = importDataBackup(uri)
+
+    fun importDataBackup(uri: Uri) {
         setBusyOperation(BusyOperation.IMPORTING)
         startBackupOperationCard(
             title = s(R.string.backup_op_importing_title),
@@ -70,18 +73,16 @@ internal class BackupManager(
                     }
                 }
             }
-            val postInstallResult = if (importResult.isSuccess) {
-                withContext(Dispatchers.IO) {
-                    getNodeService()?.runPostInstallNow()
-                } ?: Result.failure(IllegalStateException("Service not available"))
+            val runtimeResult = if (importResult.isSuccess) {
+                TauriTavernRuntime.restart(application).map { }
             } else {
                 Result.success(Unit)
             }
             val msg = when {
                 importResult.isFailure ->
                     s(R.string.backup_import_failed, importResult.exceptionOrNull()?.message ?: s(R.string.unknown_error))
-                postInstallResult.isFailure ->
-                    s(R.string.backup_import_post_install_failed, postInstallResult.exceptionOrNull()?.message ?: s(R.string.unknown_error))
+                runtimeResult.isFailure ->
+                    s(R.string.backup_import_post_install_failed, runtimeResult.exceptionOrNull()?.message ?: s(R.string.unknown_error))
                 else -> s(R.string.backup_import_complete)
             }
             setBusyOperation(null)

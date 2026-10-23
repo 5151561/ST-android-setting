@@ -35,4 +35,14 @@ class GradleJavaHomeTest {
         val javaVersionLine = releaseFile.readLines().firstOrNull { it.startsWith("JAVA_VERSION=") }
         assertEquals("JAVA_VERSION=\"21.0.11\"", javaVersionLine)
     }
+
+    /**
+     * 校验测试运行时的 JVM 主版本为 Java 21。
+     * 当项目配置了 Gradle Java Toolchain 时，Gradle 会自动保证使用 JDK 21 运行编译与测试。
+     */
+    @Test
+    fun runtimeJvmMajorVersionIs21() {
+        val javaVersion = System.getProperty("java.version").orEmpty()
+        assertTrue("JVM runtime should be Java 21, but was: $javaVersion", javaVersion.startsWith("21"))
+    }
 }

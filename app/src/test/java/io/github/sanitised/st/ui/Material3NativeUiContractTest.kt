@@ -70,13 +70,11 @@ class Material3NativeUiContractTest {
     }
 
     @Test
-    fun mainActivityAutoOpensBrowserWhenServiceBecomesReadyAndPreferenceIsEnabled() {
+    fun mainActivityInitializesTauriTavernRuntimeAndObservesStatus() {
         val mainActivityFile = mainActivityAndNavigationSources()
 
-        assertTrue(mainActivityFile.contains("val tavernReadyForAutoOpen = remember { mutableStateOf(false) }"))
-        assertTrue(mainActivityFile.contains("client.healthCheck().ok"))
-        assertTrue(mainActivityFile.contains("viewModel.autoOpenBrowserWhenReady.value && justBecameReady"))
-        assertTrue(mainActivityFile.contains("openSillyTavernInBrowser(statusState.value.port)"))
-        assertTrue(mainActivityFile.contains("autoOpenBrowserTriggeredForCurrentRun.value = true"))
+        assertTrue(mainActivityFile.contains("TauriTavernRuntime.ensureInitialized"))
+        assertTrue(mainActivityFile.contains("TauriTavernRuntime.registerListener(listener)"))
+        assertTrue(mainActivityFile.contains("TauriTavernRuntime.unregisterListener(listener)"))
     }
 }

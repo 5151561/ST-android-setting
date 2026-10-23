@@ -6,6 +6,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import io.github.sanitised.st.AppPaths
+import io.github.sanitised.st.api.TavernCoreApi
 import io.github.sanitised.st.data.AppContainer
 import io.github.sanitised.st.data.CharacterRepository
 import io.github.sanitised.st.data.LocalTavernClientProvider
@@ -38,6 +39,10 @@ object AppModule {
     @Singleton
     fun provideLocalTavernClientProvider(container: AppContainer): LocalTavernClientProvider =
         container.tavernClientProvider
+
+    @Provides
+    fun provideTavernCoreApi(provider: LocalTavernClientProvider): TavernCoreApi =
+        provider.get()
 
     @Provides
     @Singleton

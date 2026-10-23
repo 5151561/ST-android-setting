@@ -1,5 +1,7 @@
 package io.github.sanitised.st.data
 
+import android.content.Context
+import io.github.sanitised.st.AppPaths
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.api.GroupSummary
@@ -12,6 +14,15 @@ class LocalTavernLibraryReader(
     private val dataRoot: File,
     private val userHandle: String = DEFAULT_USER_HANDLE
 ) {
+    constructor(
+        context: Context,
+        userHandle: String = DEFAULT_USER_HANDLE
+    ) : this(
+        dataRoot = AppPaths.dataDir(context),
+        userHandle = userHandle
+    )
+
+    fun resolveUserRoot(): File = userDir
     fun listCharacters(limit: Int = DEFAULT_LIST_LIMIT): List<CharacterSummary> {
         val charactersDir = File(userDir, "characters")
         return charactersDir.safeFiles()
@@ -106,7 +117,7 @@ class LocalTavernLibraryReader(
     }
 
     private val userDir: File
-        get() = File(dataRoot, userHandle)
+        get() = if (dataRoot.name == userHandle) dataRoot else File(dataRoot, userHandle)
 
     private fun File.safeFiles(): List<File> =
         runCatching { listFiles()?.toList().orEmpty() }.getOrDefault(emptyList())
@@ -168,10 +179,15 @@ class LocalTavernLibraryReader(
         return (value["mes"] as? String)?.trim()?.takeIf { it.isNotBlank() }
     }
 
-    private companion object {
+    companion object {
         const val DEFAULT_USER_HANDLE = "default-user"
-        const val DEFAULT_LIST_LIMIT = 5
-        const val PREVIEW_TAIL_BYTES = 64 * 1024
-        val CHARACTER_EXTENSIONS = setOf("png", "json", "charx")
+        private const val DEFAULT_LIST_LIMIT = 5
+        private const val PREVIEW_TAIL_BYTES = 64 * 1024
+        private val CHARACTER_EXTENSIONS = setOf("png", "json", "charx")
+
+        fun resolveUserRoot(
+            context: Context,
+            userHandle: String = DEFAULT_USER_HANDLE
+        ): File = File(AppPaths.dataDir(context), userHandle)
     }
 }

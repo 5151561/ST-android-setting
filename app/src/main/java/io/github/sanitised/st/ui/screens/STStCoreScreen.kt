@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
@@ -29,7 +29,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,62 +38,67 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import io.github.sanitised.st.AppPaths
 import io.github.sanitised.st.BackupOperationAnchor
 import io.github.sanitised.st.CustomOperationAnchor
 import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
+import io.github.sanitised.st.TauriTavernRuntime
 import io.github.sanitised.st.api.SettingsSnapshot
 import kotlinx.coroutines.delay
 
 @Composable
 fun STStCoreScreen(
     status: NodeStatus,
-    stLabel: String,
-    nodeLabel: String,
-    isCustomInstalled: Boolean,
-    customInstalledLabel: String?,
-    busyMessage: String,
-    settingsSnapshots: List<SettingsSnapshot>,
-    settingsSnapshotsLoading: Boolean,
-    settingsSnapshotMessage: String,
-    showBackupOperationCard: Boolean,
-    backupOperationTitle: String,
-    backupOperationDetails: String,
-    backupOperationProgressPercent: Int?,
-    backupOperationAnchor: BackupOperationAnchor?,
-    showCustomOperationCard: Boolean,
-    customOperationTitle: String,
-    customOperationDetails: String,
-    customOperationProgressPercent: Int?,
-    customOperationCancelable: Boolean,
-    customOperationAnchor: CustomOperationAnchor?,
+    stLabel: String = TauriTavernRuntime.CORE_LABEL,
+    nodeLabel: String = TauriTavernRuntime.ENGINE_LABEL,
+    isCustomInstalled: Boolean = false,
+    customInstalledLabel: String? = null,
+    busyMessage: String = "",
+    settingsSnapshots: List<SettingsSnapshot> = emptyList(),
+    settingsSnapshotsLoading: Boolean = false,
+    settingsSnapshotMessage: String = "",
+    showBackupOperationCard: Boolean = false,
+    backupOperationTitle: String = "",
+    backupOperationDetails: String = "",
+    backupOperationProgressPercent: Int? = null,
+    backupOperationAnchor: BackupOperationAnchor? = null,
+    showCustomOperationCard: Boolean = false,
+    customOperationTitle: String = "",
+    customOperationDetails: String = "",
+    customOperationProgressPercent: Int? = null,
+    customOperationCancelable: Boolean = false,
+    customOperationAnchor: CustomOperationAnchor? = null,
     onBack: () -> Unit,
     onStartService: () -> Unit,
     onStopService: () -> Unit,
-    onOpenBrowser: () -> Unit,
+    onOpenBrowser: () -> Unit = {},
     onShowLogs: () -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
-    onRefreshSettingsSnapshots: () -> Unit,
-    onCreateSettingsSnapshot: () -> Unit,
-    onRestoreSettingsSnapshot: (String) -> Unit,
-    onLoadCustomZip: () -> Unit,
+    onRefreshSettingsSnapshots: () -> Unit = {},
+    onCreateSettingsSnapshot: () -> Unit = {},
+    onRestoreSettingsSnapshot: (String) -> Unit = {},
+    onLoadCustomZip: () -> Unit = {},
     onResetToDefault: () -> Unit,
     onRemoveUserData: () -> Unit,
-    onCancelCustomOperation: () -> Unit,
-    autoStartService: Boolean,
-    onAutoStartServiceChanged: (Boolean) -> Unit,
-    autoOpenBrowser: Boolean,
-    onAutoOpenBrowserChanged: (Boolean) -> Unit,
-    onShowMessage: (String) -> Unit,
+    onCancelCustomOperation: () -> Unit = {},
+    autoStartService: Boolean = true,
+    onAutoStartServiceChanged: (Boolean) -> Unit = {},
+    autoOpenBrowser: Boolean = false,
+    onAutoOpenBrowserChanged: (Boolean) -> Unit = {},
+    onShowMessage: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val dataDirPath = remember(context) { AppPaths.dataDir(context).absolutePath }
+    val defaultContentPath = remember(context) { AppPaths.defaultContentDir(context).absolutePath }
     val running = status.state == NodeState.RUNNING
     val starting = status.state == NodeState.STARTING
 
-    // Live Uptime calculation
     var uptimeSec by remember(running) { mutableStateOf(0) }
     LaunchedEffect(running) {
         if (running) {
@@ -115,72 +119,104 @@ fun STStCoreScreen(
         "—"
     }
 
-    var allowBackgroundRun by remember { mutableStateOf(true) }
-
-    STBackRoot(title = "ST 核心", onBack = onBack, modifier = modifier, actions = {
-        STIconButton(Icons.Filled.MoreVert, "更多", { onShowMessage("更多内核操作功能开发中") })
+    STBackRoot(title = "TauriTavern 核心", onBack = onBack, modifier = modifier, actions = {
+        STIconButton(Icons.Filled.MoreVert, "更多", { onShowMessage("TauriTavern Rust 核心由进程内 JNI 直接驱动") })
     }) {
-        STStStatusHero(status, stLabel, nodeLabel, onStartService, onStopService, onOpenBrowser)
-        
-        if (running || starting) {
-            Surface(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("进程 PID", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(
-                            text = if (running) "${status.pid ?: "—"}" else "—",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                            color = MaterialTheme.colorScheme.onSurface
+        STStStatusHero(
+            status = status,
+            stLabel = stLabel,
+            nodeLabel = nodeLabel,
+            onStart = onStartService,
+            onStop = onStopService,
+            onReinitDefault = onResetToDefault
+        )
+
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerLowest,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("运行架构", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = "Rust JNI (libtauritavern_jni.so)",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("宿主进程 PID", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = if (running || starting) "${status.pid ?: "—"}" else "—",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("运行时长", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(uptimeText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Text("数据目录 (DataDirectory)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = dataDirPath,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Text("内置模板目录 (DefaultContent)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = defaultContentPath,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("内核健康状态", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (running) Icons.Filled.CheckCircle else Icons.Filled.Face,
+                            contentDescription = null,
+                            tint = if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
                         )
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("运行时长", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(uptimeText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("监听地址", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("127.0.0.1:${status.port}", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurface)
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("健康检查", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = if (running) Icons.Filled.CheckCircle else Icons.Filled.Face,
-                                contentDescription = null,
-                                tint = if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                text = if (running) "已就绪" else "等待 HTTP 200…",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = when (status.state) {
+                                NodeState.RUNNING -> "JNI 已就绪"
+                                NodeState.STARTING -> "正在初始化…"
+                                NodeState.ERROR -> status.message.ifBlank { "初始化失败" }
+                                else -> "未激活"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -197,66 +233,42 @@ fun STStCoreScreen(
                 if (customOperationCancelable) onCancelCustomOperation()
             }
         }
-        
-        STSectionHeader("管理")
+
+        STSectionHeader("核心维护与数据")
         STSettingsGroup {
             STListItem(
-                headline = "内核版本",
-                supporting = if (isCustomInstalled) "自定义 · ${customInstalledLabel.orEmpty()}" else "自带 · $stLabel",
-                leading = { STTileIcon(Icons.Filled.Settings, tint = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) },
+                headline = "重新初始化默认模板",
+                supporting = "释放内置 FirstHop.json、默认角色卡与预设到 DataDirectory",
+                leading = { STTileIcon(Icons.Filled.RestartAlt, tint = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) },
                 divider = true,
-                onClick = onLoadCustomZip
+                onClick = onResetToDefault
             )
             STListItem(
-                headline = "数据备份与快照",
-                supporting = "导出或导入完整数据",
+                headline = "导出数据备份",
+                supporting = "打包导出角色、世界书、聊天记录与设置",
                 leading = { STTileIcon(Icons.Filled.Upload, tint = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) },
                 divider = true,
                 onClick = onExport
             )
             STListItem(
+                headline = "导入数据备份",
+                supporting = "从备份归档恢复并重载 TauriTavern 核心",
+                leading = { STTileIcon(Icons.Filled.Download, tint = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) },
+                divider = true,
+                onClick = onImport
+            )
+            STListItem(
                 headline = "运行日志",
-                supporting = "stdout · stderr · service",
+                supporting = "查看 TauriTavern Rust 核心与备份操作日志",
                 leading = { STTileIcon(Icons.Filled.Info, tint = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer) },
                 divider = true,
                 onClick = onShowLogs
             )
             STListItem(
                 headline = "清除用户数据",
-                supporting = "危险操作，清除全部数据",
+                supporting = "危险操作：清空 DataDirectory 并恢复初始状态",
                 leading = { STTileIcon(Icons.Filled.Delete, tint = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer) },
-                divider = true,
                 onClick = onRemoveUserData
-            )
-            STListItem(
-                headline = "恢复自带内核",
-                supporting = "清理自定义 ST 版本",
-                leading = { STTileIcon(Icons.Filled.RestartAlt, tint = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface) },
-                onClick = onResetToDefault
-            )
-        }
-
-        STSectionHeader("自动化")
-        STListSurface(modifier = Modifier.padding(horizontal = 16.dp)) {
-            STListItem(
-                headline = "启动 App 时自动唤起服务",
-                supporting = "进入主屏后立即拉起 Node 进程",
-                trailing = { Switch(checked = autoStartService, onCheckedChange = onAutoStartServiceChanged) },
-                divider = true,
-                onClick = { onAutoStartServiceChanged(!autoStartService) }
-            )
-            STListItem(
-                headline = "服务就绪后自动打开浏览器",
-                supporting = "对 :8000 进行 TCP 探测后跳转",
-                trailing = { Switch(checked = autoOpenBrowser, onCheckedChange = onAutoOpenBrowserChanged) },
-                divider = true,
-                onClick = { onAutoOpenBrowserChanged(!autoOpenBrowser) }
-            )
-            STListItem(
-                headline = "允许后台持续运行",
-                supporting = "加入电池白名单后更稳定",
-                trailing = { Switch(checked = allowBackgroundRun, onCheckedChange = { allowBackgroundRun = it }) },
-                onClick = { allowBackgroundRun = !allowBackgroundRun }
             )
         }
 
@@ -285,35 +297,57 @@ fun STStCoreScreen(
 }
 
 @Composable
-private fun STStStatusHero(status: NodeStatus, stLabel: String, nodeLabel: String, onStart: () -> Unit, onStop: () -> Unit, onOpen: () -> Unit) {
+private fun STStStatusHero(
+    status: NodeStatus,
+    stLabel: String,
+    nodeLabel: String,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onReinitDefault: () -> Unit
+) {
     val running = status.state == NodeState.RUNNING
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             STStatusDot(if (running) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline)
             Spacer(Modifier.width(10.dp))
-            Text(if (running) "运行中" else "已停止", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(if (running) "进程内运行中" else "未激活", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.weight(1f))
-            STBadge(":${status.port}")
+            STBadge("Rust JNI")
         }
-        Text(if (running) "SillyTavern 正在为你运行" else "SillyTavern 已停止", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 12.dp))
-        Text("$stLabel · $nodeLabel", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+        Text(
+            if (running) "TauriTavern Rust 核心已就绪" else "TauriTavern Rust 核心未激活",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = 12.dp)
+        )
+        Text(
+            "$stLabel · $nodeLabel",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp, bottom = 14.dp)
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (running) {
-                Button(onClick = onOpen, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew, null)
+                Button(onClick = onStart, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.RestartAlt, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("在浏览器打开")
+                    Text("重载核心")
                 }
                 OutlinedButton(onClick = onStop) {
                     Icon(Icons.Filled.Stop, null)
                     Spacer(Modifier.width(6.dp))
-                    Text("停止")
+                    Text("暂停")
                 }
             } else {
                 Button(onClick = onStart, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.PlayArrow, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("启动服务")
+                    Text("初始化核心")
+                }
+                OutlinedButton(onClick = onReinitDefault) {
+                    Icon(Icons.Filled.Settings, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("重置模板")
                 }
             }
         }

@@ -45,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import io.github.sanitised.st.ui.LocalTavernImageInterceptor
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -75,7 +77,7 @@ internal fun stAvatarImageUrl(baseUrl: String, imageUrl: String?): String? {
     }
     val normalizedBase = baseUrl.trimEnd('/')
     return when {
-        normalizedBase.isBlank() -> trimmed
+        normalizedBase.isBlank() -> "/thumbnail?type=avatar&file=${trimmed.urlEncodedPathSegment()}"
         trimmed.startsWith("/thumbnail") -> normalizedBase + trimmed
         trimmed.startsWith("thumbnail") -> "$normalizedBase/$trimmed"
         trimmed.startsWith("/") -> normalizedBase + trimmed
@@ -188,11 +190,16 @@ fun STAvatar(
     ringColor: Color? = null,
     gradient: List<Long> = stGradientFor(0)
 ) {
+    val context = LocalContext.current
     val density = LocalDensity.current
     val shape = if (square) RoundedCornerShape((size.value * 0.18f).dp) else CircleShape
     val sizePx = remember(size, density) { with(density) { size.toPx() } }
     var imageLoadFailed by remember(imageUrl, baseUrl) { mutableStateOf(false) }
-    val imageModel = remember(imageUrl, baseUrl) { stAvatarImageUrl(baseUrl, imageUrl) }
+    val imageModel: Any? = remember(context, imageUrl, baseUrl) {
+        stAvatarImageUrl(baseUrl, imageUrl)?.let { url ->
+            LocalTavernImageInterceptor.resolveLocalFile(context, url)?.takeIf { it.exists() } ?: url
+        }
+    }
     Box(
         modifier = modifier
             .size(size)

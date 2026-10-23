@@ -51,11 +51,11 @@ docker run --rm \
   bash -lc '\
     set -euo pipefail; \
     export HOME="/workspace/.home"; \
-    export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-/tmp/.npm}"; \
+    export CARGO_HOME="${CARGO_HOME:-/workspace/.cargo}"; \
     export GRADLE_USER_HOME="${GRADLE_USER_HOME:-/workspace/.gradle}"; \
     export ANDROID_USER_HOME="/workspace/.android"; \
     unset ANDROID_SDK_HOME ANDROID_PREFS_ROOT; \
-    mkdir -p "$HOME" "$NPM_CONFIG_CACHE" "$GRADLE_USER_HOME" "$ANDROID_USER_HOME"; \
+    mkdir -p "$HOME" "$CARGO_HOME" "$GRADLE_USER_HOME" "$ANDROID_USER_HOME"; \
     touch "$ANDROID_USER_HOME/repositories.cfg" 2>/dev/null || true; \
     BUILD_MODE="debug"; \
     if [ -n "${RELEASE_KEYSTORE_B64:-}" ]; then \
@@ -86,26 +86,10 @@ docker run --rm \
     fi; \
     export ANDROID_NDK_HOME="$NDK_ROOT"; \
     export ANDROID_API=26; \
-    ABI_TRIPLE="aarch64-linux-android"; \
-    SYSROOT_LIB="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib"; \
-    LIBCXX_PATH="$SYSROOT_LIB/$ABI_TRIPLE/$ANDROID_API/libc++_shared.so"; \
-    if [ ! -f "$LIBCXX_PATH" ]; then \
-      LIBCXX_PATH="$SYSROOT_LIB/$ABI_TRIPLE/libc++_shared.so"; \
-    fi; \
-    if [ ! -f "$LIBCXX_PATH" ]; then \
-      echo "Expected libc++_shared.so not found for $ABI_TRIPLE (API $ANDROID_API) under $SYSROOT_LIB"; \
-      find "$SYSROOT_LIB" -path "*/libc++_shared.so" -print || true; \
-      exit 1; \
-    fi; \
-    python3 ci/scripts/check_elf_align.py "$TOOLCHAIN/bin/llvm-readelf" "$LIBCXX_PATH"; \
-    ./tools/node/scripts/build_node_android.sh arm64; \
-    mkdir -p app/src/main/jniLibs/arm64-v8a; \
-    cp out/android/arm64/node app/src/main/jniLibs/arm64-v8a/libnode.so; \
-    cp "$LIBCXX_PATH" app/src/main/jniLibs/arm64-v8a/libc++_shared.so; \
+    export ANDROID_ABIS="${ANDROID_ABIS:-arm64-v8a}"; \
+    bash ci/scripts/build_rust_jni.sh android; \
     python3 ci/scripts/check_elf_align.py "$TOOLCHAIN/bin/llvm-readelf" \
-      app/src/main/jniLibs/arm64-v8a/libnode.so \
-      app/src/main/jniLibs/arm64-v8a/libc++_shared.so; \
-    bash ci/scripts/build_st_bundle.sh; \
+      app/src/main/jniLibs/arm64-v8a/libtauritavern_jni.so; \
     GRADLE_JAVA_HOME="${JAVA_HOME:-}"; \
     if [ -z "$GRADLE_JAVA_HOME" ] || [ ! -x "$GRADLE_JAVA_HOME/bin/java" ]; then \
       GRADLE_JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"; \
