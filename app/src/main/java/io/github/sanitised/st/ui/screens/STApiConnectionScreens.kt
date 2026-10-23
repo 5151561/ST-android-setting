@@ -168,8 +168,20 @@ fun STApiConnectionScreen(
 
     var activeMode by remember { mutableStateOf("cc") }
     var activeProviderId by remember { mutableStateOf<String?>(null) }
+    var refreshTrigger by remember { mutableStateOf(0) }
 
-    LaunchedEffect(running, baseUrl, connectionRepository) {
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                refreshTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(running, baseUrl, connectionRepository, refreshTrigger) {
         if (running) {
             runCatching {
                 profiles = connectionRepository.listConnectionProfiles()
@@ -200,7 +212,7 @@ fun STApiConnectionScreen(
             selectedProfileName = first.label
         }
     }
-    val connectionState = remember(settings, secrets, running, activeMode, activeProviderId) {
+    val connectionState = remember(settings, secrets, running, activeMode, activeProviderId, refreshTrigger) {
         buildApiConnectionUiState(
             settings = settings,
             secrets = secrets,
@@ -301,6 +313,8 @@ fun STApiConnectionScreen(
                 connectionStatusText = connectionState.connectionStatusText,
                 connectionStatusOk = connectionState.connectionStatusOk,
                 activeSecretLabel = connectionState.activeProvider.activeSecretLabel,
+                verificationStatusText = connectionState.verificationStatusText,
+                verificationStatusTone = connectionState.verificationStatusTone,
                 onConfigure = {
                     onOpenProviderDetail(connectionState.activeProvider.id)
                 }
@@ -350,15 +364,15 @@ fun STApiConnectionScreen(
                 PremiumSectionHeader(title = "本地与社区反代")
                 STListItem(
                     headline = "自定义 OpenAI 兼容反代 (Reverse Proxy)",
-                    supporting = "可自定义 API 根地址，完美适配自建 OneAPI",
+                    supporting = "可自定义 API 根地址，完美适配自建 OneAPI / NewAPI",
                     leading = { STTileIcon(Icons.Filled.Code) },
-                    onClick = { onShowMessage("自建配置功能开发中，可通过配置详细后端进行调整") }
+                    onClick = { onOpenProviderDetail("custom") }
                 )
                 STListItem(
                     headline = "KoboldAI Horde 共享池",
                     supporting = "使用社区免费志愿贡献者的 GPU 算力",
                     leading = { STTileIcon(Icons.Filled.Face) },
-                    onClick = { onShowMessage("Horde 配置功能开发中") }
+                    onClick = { onOpenProviderDetail("koboldhorde") }
                 )
             } else if (activeMode == "tc") {
                 PremiumSectionHeader(title = "当前后端的指令模版契约")
@@ -530,6 +544,8 @@ private fun STActiveConnectionCard(
     connectionStatusText: String,
     connectionStatusOk: Boolean,
     activeSecretLabel: String?,
+    verificationStatusText: String = "尚未测试",
+    verificationStatusTone: String? = null,
     onConfigure: () -> Unit
 ) {
     val title = when (activeMode) {
@@ -607,7 +623,8 @@ private fun STActiveConnectionCard(
             )
             STStat(
                 label = "连接验证",
-                value = "尚未测试"
+                value = verificationStatusText,
+                tone = verificationStatusTone
             )
         }
     }

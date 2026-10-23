@@ -25,6 +25,8 @@ object TauriTavernRuntime {
     const val ENGINE_LABEL: String = "Rust JNI (In-Process)"
     private const val ASSET_DEFAULT_CONTENT_PATH = "tt-default/content"
     private const val ASSET_TAURITAVERN_DEFAULT_PATH = "tauritavern_default"
+    private const val ASSET_TAURITAVERN_DEFAULT_CONTENT_PATH = "tauritavern_default/content"
+    private const val ASSET_TAURITAVERN_DEFAULT_CONFIG_PATH = "tauritavern_default/config.yaml"
 
     private val initMutex = Mutex()
     private val listeners = CopyOnWriteArraySet<NodeStatusListener>()
@@ -81,7 +83,7 @@ object TauriTavernRuntime {
                 if (forceReextractDefaultContent && defaultContentDir.exists()) {
                     defaultContentDir.deleteRecursively()
                 }
-                prepareDefaultContentDirectory(appContext.assets, defaultContentDir)
+                prepareDefaultContentDirectory(appContext.assets, defaultContentDir, configDir)
 
                 appendLogInternal(
                     logsDir = logsDir,
@@ -168,28 +170,54 @@ object TauriTavernRuntime {
     private fun currentPid(): Long? =
         runCatching { Process.myPid().toLong() }.getOrNull()?.takeIf { it > 0L }
 
-    private fun prepareDefaultContentDirectory(assets: AssetManager, targetDir: File) {
+    private fun prepareDefaultContentDirectory(
+        assets: AssetManager,
+        targetDir: File,
+        configDir: File? = null
+    ) {
         targetDir.mkdirs()
-        val standardSubdirs = listOf(
-            "characters",
-            "worlds",
-            "Chat Completion Prompts",
-            "Context",
-            "Instruct",
-            "QuickReplies",
-            "SysPrompt",
-            "TextGen Settings",
-            "NovelAI Settings",
-            "KoboldAI Settings",
-            "themes",
-            "movingUI",
-            "User Avatars"
-        )
-        standardSubdirs.forEach { subdir ->
-            File(targetDir, subdir).mkdirs()
+
+        // Self-heal legacy nested extraction where `tauritavern_default` was copied directly
+        // into `default/content`, producing `default/content/content/...`.
+        val nestedContentDir = File(targetDir, "content")
+        if (nestedContentDir.isDirectory) {
+            nestedContentDir.deleteRecursively()
         }
+
+        // Copy default config.yaml into runtime default dir and user config dir if missing
         runCatching {
-            copyAssetTreeIfPresent(assets, ASSET_TAURITAVERN_DEFAULT_PATH, targetDir)
+            assets.open(ASSET_TAURITAVERN_DEFAULT_CONFIG_PATH).use { input ->
+                val defaultConfig = File(targetDir.parentFile ?: targetDir, "config.yaml")
+                if (!defaultConfig.isFile || defaultConfig.length() == 0L) {
+                    defaultConfig.parentFile?.mkdirs()
+                    defaultConfig.outputStream().use { output -> input.copyTo(output) }
+                }
+            }
+        }
+        if (configDir != null) {
+            runCatching {
+                val userConfig = File(configDir, "config.yaml")
+                if (!userConfig.isFile || userConfig.length() == 0L) {
+                    assets.open(ASSET_TAURITAVERN_DEFAULT_CONFIG_PATH).use { input ->
+                        userConfig.parentFile?.mkdirs()
+                        userConfig.outputStream().use { output -> input.copyTo(output) }
+                    }
+                }
+            }
+        }
+
+        val hasTauriTavernContentSubdir = runCatching {
+            !assets.list(ASSET_TAURITAVERN_DEFAULT_CONTENT_PATH).isNullOrEmpty()
+        }.getOrDefault(false)
+
+        if (hasTauriTavernContentSubdir) {
+            runCatching {
+                copyAssetTreeIfPresent(assets, ASSET_TAURITAVERN_DEFAULT_CONTENT_PATH, targetDir)
+            }
+        } else {
+            runCatching {
+                copyAssetTreeIfPresent(assets, ASSET_TAURITAVERN_DEFAULT_PATH, targetDir)
+            }
         }
         runCatching {
             copyAssetTreeIfPresent(assets, ASSET_DEFAULT_CONTENT_PATH, targetDir)
@@ -205,8 +233,13 @@ object TauriTavernRuntime {
         if (children.isEmpty()) {
             runCatching {
                 assets.open(assetPath).use { input ->
+                    if (destDir.isDirectory) {
+                        destDir.deleteRecursively()
+                    }
                     destDir.parentFile?.mkdirs()
-                    destDir.outputStream().use { output -> input.copyTo(output) }
+                    if (!destDir.isFile || destDir.length() == 0L) {
+                        destDir.outputStream().use { output -> input.copyTo(output) }
+                    }
                 }
             }
             return
@@ -221,13 +254,16 @@ object TauriTavernRuntime {
             } else {
                 val copiedAsFile = runCatching {
                     assets.open(childAssetPath).use { input ->
+                        if (childDest.isDirectory) {
+                            childDest.deleteRecursively()
+                        }
                         childDest.parentFile?.mkdirs()
-                        if (!childDest.exists()) {
+                        if (!childDest.isFile || childDest.length() == 0L) {
                             childDest.outputStream().use { output -> input.copyTo(output) }
                         }
                     }
                 }.isSuccess
-                if (!copiedAsFile) {
+                if (!copiedAsFile && !childDest.exists()) {
                     childDest.mkdirs()
                 }
             }

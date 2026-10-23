@@ -16,13 +16,15 @@ internal suspend fun TauriTavernJniClient.doFetchModels(
     apiServer: String
 ): List<String> {
     return runCatching {
+        val trimmedServer = apiServer.trim()
         val payload = linkedMapOf<String, Any?>(
             "chat_completion_source" to sourceValue,
             "textgenerationwebui_type" to sourceValue,
             "api_type" to sourceValue,
-            "api_server" to apiServer.ifBlank { null },
-            "reverse_proxy" to apiServer.ifBlank { null },
-            "custom_url" to apiServer.ifBlank { null }
+            "api_server" to trimmedServer,
+            "reverse_proxy" to if (sourceValue == "custom") "" else trimmedServer,
+            "proxy_password" to "",
+            "custom_url" to if (sourceValue == "custom") trimmedServer else ""
         )
         val data = invokeRaw("chat_completion_status", payload + mapOf("request" to payload))
         val list = when (data) {
@@ -50,13 +52,15 @@ internal suspend fun TauriTavernJniClient.doTestConnection(
     apiServer: String
 ): ConnectionTestResult {
     return try {
+        val trimmedServer = apiServer.trim()
         val payload = linkedMapOf<String, Any?>(
             "chat_completion_source" to sourceValue,
             "textgenerationwebui_type" to sourceValue,
             "api_type" to sourceValue,
-            "api_server" to apiServer.ifBlank { null },
-            "reverse_proxy" to apiServer.ifBlank { null },
-            "custom_url" to apiServer.ifBlank { null }
+            "api_server" to trimmedServer,
+            "reverse_proxy" to if (sourceValue == "custom") "" else trimmedServer,
+            "proxy_password" to "",
+            "custom_url" to if (sourceValue == "custom") trimmedServer else ""
         )
         val data = invokeRaw("chat_completion_status", payload + mapOf("request" to payload))
         val map = data as? Map<*, *>
@@ -67,6 +71,26 @@ internal suspend fun TauriTavernJniClient.doTestConnection(
                 success = false,
                 errorMessage = msg ?: "API 返回错误，请检查密钥"
             )
+        }
+        if (map != null && map["bypass"] == true) {
+            val probeModel = when (sourceValue) {
+                "minimax" -> "MiniMax-M2.7"
+                "vertexai" -> "gemini-2.5-flash"
+                else -> ""
+            }
+            if (probeModel.isNotBlank()) {
+                val probePayload = linkedMapOf<String, Any?>(
+                    "chat_completion_source" to sourceValue,
+                    "model" to probeModel,
+                    "messages" to listOf(mapOf("role" to "user", "content" to "Hi")),
+                    "max_tokens" to 1,
+                    "stream" to false,
+                    "reverse_proxy" to if (sourceValue == "custom") "" else trimmedServer,
+                    "proxy_password" to "",
+                    "custom_url" to if (sourceValue == "custom") trimmedServer else ""
+                )
+                doGenerateChatCompletion(probePayload)
+            }
         }
         val models = parseModelList(jsonValue(data)).ifEmpty {
             doFetchModels(mode, sourceValue, apiServer)

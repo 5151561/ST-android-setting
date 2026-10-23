@@ -354,17 +354,19 @@ internal fun TavernCoreClient.postStatusCheck(
     sourceValue: String,
     apiServer: String
 ): String {
+    val trimmedServer = apiServer.trim()
     return when (mode) {
         "cc" -> postJson(
             "api/backends/chat-completions/status",
             jsonObject(
                 "chat_completion_source" to sourceValue,
-                "reverse_proxy" to apiServer.ifBlank { null },
-                "proxy_password" to if (apiServer.isNotBlank()) "" else null
+                "reverse_proxy" to if (sourceValue == "custom") "" else trimmedServer,
+                "proxy_password" to "",
+                "custom_url" to if (sourceValue == "custom") trimmedServer else ""
             )
         )
         "tc" -> {
-            val server = apiServer.ifBlank {
+            val server = trimmedServer.ifBlank {
                 resolveTextGenServer(fetchSettings().settings, sourceValue)
             }
             postJson(
@@ -377,7 +379,12 @@ internal fun TavernCoreClient.postStatusCheck(
         }
         else -> postJson(
             "api/backends/chat-completions/status",
-            jsonObject("chat_completion_source" to sourceValue)
+            jsonObject(
+                "chat_completion_source" to sourceValue,
+                "reverse_proxy" to "",
+                "proxy_password" to "",
+                "custom_url" to ""
+            )
         )
     }
 }

@@ -68,16 +68,26 @@ fun STAISettingsScreen(
     var freqPenalty by remember { mutableFloatStateOf(0f) }
     var presPenalty by remember { mutableFloatStateOf(0f) }
     var streamingEnabled by remember { mutableStateOf(true) }
+    var showThoughts by remember { mutableStateOf(false) }
+    var useSysprompt by remember { mutableStateOf(true) }
 
     fun loadFromSettings(s: Map<String, Any?>) {
         val oai = (s["oai_settings"] as? Map<*, *>)?.entries?.associate { (k, v) -> k.toString() to v } ?: emptyMap()
-        temp = oai.floatValue("temp", 1.0f)
+        temp = oai.floatValue("temp_openai", oai.floatValue("temp", 1.0f))
         topP = oai.floatValue("top_p_openai", 1.0f)
-        topK = oai.floatValue("top_k_openai", 0f).coerceIn(0f, 1f)
+        topK = oai.floatValue("top_k_openai", 0f).coerceIn(0f, 100f)
         minP = oai.floatValue("min_p_openai", 0f)
-        freqPenalty = oai.floatValue("frequency_penalty_openai", 0f)
-        presPenalty = oai.floatValue("presence_penalty_openai", 0f)
+        freqPenalty = oai.floatValue("freq_pen_openai", oai.floatValue("frequency_penalty_openai", 0f))
+        presPenalty = oai.floatValue("pres_pen_openai", oai.floatValue("presence_penalty_openai", 0f))
         streamingEnabled = when (val v = oai["stream_openai"]) {
+            is Boolean -> v
+            else -> true
+        }
+        showThoughts = when (val v = oai["show_thoughts"]) {
+            is Boolean -> v
+            else -> false
+        }
+        useSysprompt = when (val v = oai["use_sysprompt"]) {
             is Boolean -> v
             else -> true
         }
@@ -130,13 +140,18 @@ fun STAISettingsScreen(
                         val oai = ((updated["oai_settings"] as? Map<*, *>)
                             ?.entries?.associate { (k, v) -> k.toString() to v }
                             ?: emptyMap()).toMutableMap()
+                        oai["temp_openai"] = temp
                         oai["temp"] = temp
                         oai["top_p_openai"] = topP
-                        oai["top_k_openai"] = topK
+                        oai["top_k_openai"] = topK.toInt()
                         oai["min_p_openai"] = minP
+                        oai["freq_pen_openai"] = freqPenalty
                         oai["frequency_penalty_openai"] = freqPenalty
+                        oai["pres_pen_openai"] = presPenalty
                         oai["presence_penalty_openai"] = presPenalty
                         oai["stream_openai"] = streamingEnabled
+                        oai["show_thoughts"] = showThoughts
+                        oai["use_sysprompt"] = useSysprompt
                         updated["oai_settings"] = oai
                         personaPresetRepository.saveSettings(updated)
                         settings = updated
@@ -179,21 +194,20 @@ fun STAISettingsScreen(
             ?.presets?.firstOrNull { it.selected }?.name ?: "—"
         STTemplateRow(Icons.Filled.Code, "Instruct 模板", instructName, "角色名 / 系统提示遵循模型格式", toggle = true)
         STTemplateRow(Icons.Filled.Bookmarks, "上下文模板", contextName, "角色描述 + 场景 + 历史的组织方式")
-        STTemplateRow(Icons.Filled.Tune, "系统提示", syspromptName, "注入到对话最前", toggle = true, checked = true)
+        STTemplateRow(Icons.Filled.Tune, "系统提示", syspromptName, "注入到对话最前", toggle = true, checked = useSysprompt)
         STTemplateRow(Icons.AutoMirrored.Filled.StickyNote2, "作者注 / 深度笔记", "未设置", "按需注入到指定深度")
         STSectionHeader("核心采样")
         STStatefulSlider("温度 Temperature", temp, 0f..2f) { temp = it }
         STStatefulSlider("Top P", topP, 0f..1f) { topP = it }
-        STStatefulSlider("Top K", topK, 0f..1f) { topK = it }
+        STStatefulSlider("Top K", topK, 0f..100f) { topK = it }
         STStatefulSlider("Min P", minP, 0f..1f) { minP = it }
         STSectionHeader("重复抑制")
         STStatefulSlider("频率惩罚", freqPenalty, -2f..2f) { freqPenalty = it }
         STStatefulSlider("存在惩罚", presPenalty, -2f..2f) { presPenalty = it }
         STSectionHeader("高级 — 极少改动")
         STSwitchRow("启用流式输出", "边生成边显示", streamingEnabled) { streamingEnabled = it }
-        STSwitchRow("禁止思考链泄露", "过滤掉 <think> 标签内容", true)
-        STSwitchRow("DRY (动态重复抑制)", "抗循环更激进的算法", false)
-        STSwitchRow("温度最后采样", "先 Top-P 再温度", false)
+        STSwitchRow("包含推理思考链 (Include Reasoning)", "请求模型返回思考过程", showThoughts) { showThoughts = it }
+        STSwitchRow("启用原生 System Prompt", "Google Gemini / Claude 转换 systemInstruction", useSysprompt) { useSysprompt = it }
     }
 }
 

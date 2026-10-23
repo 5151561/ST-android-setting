@@ -45,7 +45,9 @@ object PromptBuilder {
     ): Map<String, Any?> {
         val oai = (settings["oai_settings"] as? Map<*, *>)?.stringKeyed() ?: emptyMap()
         val source = (oai["chat_completion_source"] as? String)?.takeIf { it.isNotBlank() } ?: "openai"
-        val model = modelForProvider(settings, activeApiConnectionProvider(settings))
+        val activeProvider = activeApiConnectionProvider(settings)
+        val model = modelForProvider(settings, activeProvider)
+            .ifBlank { activeProvider.defaultModels.firstOrNull().orEmpty() }
 
         val charName = character.name
         fun sub(text: String): String = text
@@ -110,6 +112,14 @@ object PromptBuilder {
         (oai["reverse_proxy"] as? String)?.takeIf { it.isNotBlank() }?.let { proxy ->
             payload["reverse_proxy"] = proxy
             payload["proxy_password"] = (oai["proxy_password"] as? String).orEmpty()
+        }
+        if (source == "custom") {
+            (oai["custom_url"] as? String)?.takeIf { it.isNotBlank() }?.let { url ->
+                payload["custom_url"] = url
+            }
+        }
+        if (source == "makersuite" || source == "vertexai" || oai.containsKey("use_sysprompt")) {
+            payload["use_sysprompt"] = oai.booleanValue("use_sysprompt", true)
         }
         return payload
     }

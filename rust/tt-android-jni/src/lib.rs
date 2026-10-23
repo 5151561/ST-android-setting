@@ -245,11 +245,31 @@ impl AndroidPresetRepository {
     }
 
     fn default_preset_candidates(&self, name: &str, preset_type: &PresetType) -> Vec<PathBuf> {
-        let filename = format!("{name}.{}", preset_type.extension());
+        let ext = preset_type.extension().trim_start_matches('.');
+        let filename = format!("{name}.{ext}");
+        let short_dir = match preset_type {
+            PresetType::OpenAI => "openai",
+            PresetType::TextGen => "textgen",
+            PresetType::Kobold => "kobold",
+            PresetType::Novel => "novel",
+            PresetType::Instruct => "instruct",
+            PresetType::Context => "context",
+            PresetType::SysPrompt => "sysprompt",
+            PresetType::Reasoning => "reasoning",
+        };
         vec![
             self.default_assets_dir
                 .join("presets")
+                .join(short_dir)
+                .join(&filename),
+            self.default_assets_dir
+                .join("presets")
                 .join(preset_type.directory_name())
+                .join(&filename),
+            self.default_assets_dir
+                .join("content")
+                .join("presets")
+                .join(short_dir)
                 .join(&filename),
             self.default_assets_dir.join("content").join(&filename),
         ]
@@ -368,15 +388,29 @@ pub struct JniAppState {
 }
 
 impl JniAppState {
+    fn resolve_default_content_dir(default_assets_dir: &Path) -> PathBuf {
+        if default_assets_dir.join("index.json").is_file()
+            || default_assets_dir.join("default_Seraphina.png").is_file()
+        {
+            return default_assets_dir.to_path_buf();
+        }
+        let nested_content = default_assets_dir.join("content");
+        if nested_content.is_dir() {
+            return nested_content;
+        }
+        default_assets_dir.to_path_buf()
+    }
+
     /// Initialize all repositories, seed default user files if needed, and wire services.
     pub async fn init(data_root: PathBuf, default_assets_dir: PathBuf) -> Result<Self, String> {
+        let default_content_dir = Self::resolve_default_content_dir(&default_assets_dir);
         let data_directory = DataDirectory::new(data_root.clone());
         data_directory
             .initialize()
             .await
             .map_err(|e| format!("Failed to initialize DataDirectory: {e}"))?;
 
-        Self::seed_defaults_if_missing(&data_root, &default_assets_dir)?;
+        Self::seed_defaults_if_missing(&data_root, &default_content_dir)?;
 
         let default_user_dir = data_directory.default_user().to_path_buf();
         let page_generation = Arc::new(PageGeneration::default());
@@ -396,11 +430,19 @@ impl JniAppState {
             ),
         );
 
+        let default_avatar_path = if data_directory.default_avatar().exists() {
+            data_directory.default_avatar().to_path_buf()
+        } else if default_content_dir.join("default_Seraphina.png").exists() {
+            default_content_dir.join("default_Seraphina.png")
+        } else {
+            data_directory.default_avatar().to_path_buf()
+        };
+
         let character_repository: Arc<dyn CharacterRepository> =
             Arc::new(FileCharacterRepository::with_chat_repository(
                 data_directory.characters().to_path_buf(),
                 data_directory.chats().to_path_buf(),
-                data_directory.default_avatar().to_path_buf(),
+                default_avatar_path,
                 chat_aliases,
                 file_chat_repository.clone(),
             ));
@@ -412,7 +454,7 @@ impl JniAppState {
 
         let preset_repository: Arc<dyn PresetRepository> = Arc::new(AndroidPresetRepository::new(
             default_user_dir.clone(),
-            default_assets_dir.clone(),
+            default_content_dir.clone(),
         ));
 
         let world_info_repository: Arc<dyn WorldInfoRepository> =
@@ -422,7 +464,7 @@ impl JniAppState {
                 COMMIT_FRAME_BYTES,
             ));
 
-        let default_settings_path = default_assets_dir.join("settings.json");
+        let default_settings_path = default_content_dir.join("settings.json");
         let default_user_settings: Value = if default_settings_path.exists() {
             std::fs::read_to_string(&default_settings_path)
                 .ok()
@@ -586,7 +628,7 @@ impl JniAppState {
 
         Ok(Self {
             data_root,
-            default_assets_dir,
+            default_assets_dir: default_content_dir,
             character_service,
             chat_service,
             chat_commit_service,
@@ -608,79 +650,242 @@ impl JniAppState {
         })
     }
 
+    fn copy_dir_recursive_if_missing(src_dir: &Path, dst_dir: &Path) {
+        if !src_dir.is_dir() {
+            return;
+        }
+        let _ = std::fs::create_dir_all(dst_dir);
+        if let Ok(entries) = std::fs::read_dir(src_dir) {
+            for entry in entries.flatten() {
+                let src_path = entry.path();
+                let Some(file_name) = src_path.file_name() else {
+                    continue;
+                };
+                let dst_path = dst_dir.join(file_name);
+                if src_path.is_dir() {
+                    Self::copy_dir_recursive_if_missing(&src_path, &dst_path);
+                } else if src_path.is_file() && !dst_path.exists() {
+                    if let Some(parent) = dst_path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let _ = std::fs::copy(&src_path, &dst_path);
+                }
+            }
+        }
+    }
+
+    fn map_content_type_target(
+        content_type: &str,
+        data_root: &Path,
+        user_dir: &Path,
+    ) -> Option<(bool, PathBuf)> {
+        match content_type {
+            "settings" => Some(( false, user_dir.to_path_buf() )),
+            "character" | "sprites" => Some(( false, user_dir.join("characters") )),
+            "background" => Some(( false, user_dir.join("backgrounds") )),
+            "world" => Some(( false, user_dir.join("worlds") )),
+            "avatar" => Some(( false, user_dir.join("User Avatars") )),
+            "theme" => Some(( false, user_dir.join("themes") )),
+            "workflow" => Some(( false, user_dir.join("user").join("workflows") )),
+            "kobold_preset" => Some(( false, user_dir.join("KoboldAI Settings") )),
+            "openai_preset" => Some(( false, user_dir.join("OpenAI Settings") )),
+            "novel_preset" => Some(( false, user_dir.join("NovelAI Settings") )),
+            "textgen_preset" => Some(( false, user_dir.join("TextGen Settings") )),
+            "instruct" => Some(( false, user_dir.join("instruct") )),
+            "context" => Some(( false, user_dir.join("context") )),
+            "moving_ui" => Some(( false, user_dir.join("movingUI") )),
+            "quick_replies" => Some(( false, user_dir.join("QuickReplies") )),
+            "sysprompt" => Some(( false, user_dir.join("sysprompt") )),
+            "reasoning" => Some(( false, user_dir.join("reasoning") )),
+            "error_page" => Some(( true, data_root.join("_errors") )),
+            "stylesheet" => Some(( true, data_root.join("_css") )),
+            _ => None,
+        }
+    }
+
+    fn read_content_log_sync(path: &Path) -> Vec<String> {
+        std::fs::read_to_string(path)
+            .ok()
+            .map(|text| {
+                text.lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn write_content_log_sync(path: &Path, entries: &[String]) {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(path, entries.join("\n"));
+    }
+
+    fn has_any_character_card(chars_dir: &Path) -> bool {
+        std::fs::read_dir(chars_dir)
+            .ok()
+            .map(|entries| {
+                entries.flatten().any(|entry| {
+                    let path = entry.path();
+                    path.is_file()
+                        && path
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .map(|ext| {
+                                ext.eq_ignore_ascii_case("png")
+                                    || ext.eq_ignore_ascii_case("json")
+                                    || ext.eq_ignore_ascii_case("webp")
+                            })
+                            .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false)
+    }
+
     fn seed_defaults_if_missing(data_root: &Path, default_assets_dir: &Path) -> Result<(), String> {
-        if !default_assets_dir.exists() {
+        let content_dir = Self::resolve_default_content_dir(default_assets_dir);
+        if !content_dir.exists() {
             return Ok(());
         }
         let user_dir = data_root.join("default-user");
         let _ = std::fs::create_dir_all(&user_dir);
 
-        // Seed settings.json if missing
-        let src_settings = default_assets_dir.join("settings.json");
+        // 1. Seed from index.json when available (matches upstream FileContentRepository)
+        let index_path = content_dir.join("index.json");
+        if index_path.is_file() {
+            if let Ok(index_str) = std::fs::read_to_string(&index_path) {
+                if let Ok(items) = serde_json::from_str::<Vec<Value>>(&index_str) {
+                    let user_log_path = user_dir.join("content.log");
+                    let global_log_path = data_root.join("content.log");
+                    let mut user_log = Self::read_content_log_sync(&user_log_path);
+                    let mut global_log = Self::read_content_log_sync(&global_log_path);
+                    let mut user_log_dirty = false;
+                    let mut global_log_dirty = false;
+
+                    for item in items {
+                        let Some(filename) = item.get("filename").and_then(|v| v.as_str()) else {
+                            continue;
+                        };
+                        let Some(content_type) = item.get("type").and_then(|v| v.as_str()) else {
+                            continue;
+                        };
+                        let Some((is_global, target_dir)) =
+                            Self::map_content_type_target(content_type, data_root, &user_dir)
+                        else {
+                            continue;
+                        };
+
+                        let log = if is_global {
+                            &mut global_log
+                        } else {
+                            &mut user_log
+                        };
+                        if log.iter().any(|entry| entry == filename) {
+                            continue;
+                        }
+
+                        let src_path = content_dir.join(filename);
+                        if !src_path.exists() {
+                            continue;
+                        }
+                        let Some(base_name) = Path::new(filename).file_name() else {
+                            continue;
+                        };
+                        let _ = std::fs::create_dir_all(&target_dir);
+                        let dst_path = target_dir.join(base_name);
+
+                        if src_path.is_dir() {
+                            Self::copy_dir_recursive_if_missing(&src_path, &dst_path);
+                        } else if !dst_path.exists() {
+                            let _ = std::fs::copy(&src_path, &dst_path);
+                        }
+
+                        log.push(filename.to_string());
+                        if is_global {
+                            global_log_dirty = true;
+                        } else {
+                            user_log_dirty = true;
+                        }
+                    }
+
+                    if user_log_dirty {
+                        Self::write_content_log_sync(&user_log_path, &user_log);
+                    }
+                    if global_log_dirty {
+                        Self::write_content_log_sync(&global_log_path, &global_log);
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback & self-healing for synthetic test directories or earlier incomplete runs
+        let src_settings = content_dir.join("settings.json");
         let dst_settings = user_dir.join("settings.json");
-        if src_settings.exists() && !dst_settings.exists() {
+        if src_settings.is_file() && !dst_settings.exists() {
             let _ = std::fs::copy(&src_settings, &dst_settings);
         }
 
-        // Seed default presets into user directories if empty
-        let presets_src = default_assets_dir.join("presets");
-        if presets_src.exists() {
+        let presets_src = content_dir.join("presets");
+        if presets_src.is_dir() {
             if let Ok(entries) = std::fs::read_dir(&presets_src) {
                 for entry in entries.flatten() {
                     let src_sub = entry.path();
                     if src_sub.is_dir() {
-                        if let Some(dir_name) = src_sub.file_name() {
-                            let dst_sub = user_dir.join(dir_name);
-                            let _ = std::fs::create_dir_all(&dst_sub);
-                            if let Ok(files) = std::fs::read_dir(&src_sub) {
-                                for file_entry in files.flatten() {
-                                    let file_path = file_entry.path();
-                                    if file_path.is_file() {
-                                        if let Some(fname) = file_path.file_name() {
-                                            let dst_file = dst_sub.join(fname);
-                                            if !dst_file.exists() {
-                                                let _ = std::fs::copy(&file_path, &dst_file);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        if let Some(dir_name) = src_sub.file_name().and_then(|s| s.to_str()) {
+                            let target_subdir = match dir_name {
+                                "openai" => "OpenAI Settings",
+                                "textgen" => "TextGen Settings",
+                                "kobold" => "KoboldAI Settings",
+                                "novel" => "NovelAI Settings",
+                                "moving-ui" => "movingUI",
+                                "quick-replies" => "QuickReplies",
+                                other => other,
+                            };
+                            let dst_sub = user_dir.join(target_subdir);
+                            Self::copy_dir_recursive_if_missing(&src_sub, &dst_sub);
                         }
                     }
                 }
             }
         }
 
-        // Seed default themes if missing
-        let themes_src = default_assets_dir.join("themes");
-        let themes_dst = user_dir.join("themes");
-        if themes_src.exists() {
-            let _ = std::fs::create_dir_all(&themes_dst);
-            if let Ok(files) = std::fs::read_dir(&themes_src) {
-                for file_entry in files.flatten() {
-                    let file_path = file_entry.path();
-                    if file_path.is_file() {
-                        if let Some(fname) = file_path.file_name() {
-                            let dst_file = themes_dst.join(fname);
-                            if !dst_file.exists() {
-                                let _ = std::fs::copy(&file_path, &dst_file);
-                            }
-                        }
-                    }
-                }
-            }
+        let themes_src = content_dir.join("themes");
+        if themes_src.is_dir() {
+            Self::copy_dir_recursive_if_missing(&themes_src, &user_dir.join("themes"));
         }
 
-        // Seed default character if characters directory has no png/json cards yet
+        let backgrounds_src = content_dir.join("backgrounds");
+        if backgrounds_src.is_dir() {
+            Self::copy_dir_recursive_if_missing(&backgrounds_src, &user_dir.join("backgrounds"));
+        }
+
+        let eldoria_src = content_dir.join("Eldoria.json");
+        let eldoria_dst = user_dir.join("worlds").join("Eldoria.json");
+        if eldoria_src.is_file() && !eldoria_dst.exists() {
+            let _ = std::fs::create_dir_all(user_dir.join("worlds"));
+            let _ = std::fs::copy(&eldoria_src, &eldoria_dst);
+        }
+
+        let avatar_src = content_dir.join("user-default.png");
+        let avatar_dst = user_dir.join("User Avatars").join("user-default.png");
+        if avatar_src.is_file() && !avatar_dst.exists() {
+            let _ = std::fs::create_dir_all(user_dir.join("User Avatars"));
+            let _ = std::fs::copy(&avatar_src, &avatar_dst);
+        }
+
+        // Self-heal default character if characters directory has no png/json cards yet
         let chars_dst = user_dir.join("characters");
         let _ = std::fs::create_dir_all(&chars_dst);
-        let has_characters = std::fs::read_dir(&chars_dst)
-            .map(|mut it| it.any(|e| e.is_ok()))
-            .unwrap_or(false);
-        if !has_characters {
-            let default_char = default_assets_dir.join("default_Seraphina.png");
-            if default_char.exists() {
+        if !Self::has_any_character_card(&chars_dst) {
+            let default_char = content_dir.join("default_Seraphina.png");
+            if default_char.is_file() {
                 let _ = std::fs::copy(&default_char, chars_dst.join("default_Seraphina.png"));
+            }
+            let default_sprites = content_dir.join("Seraphina");
+            if default_sprites.is_dir() {
+                Self::copy_dir_recursive_if_missing(&default_sprites, &chars_dst.join("Seraphina"));
             }
         }
 
@@ -3716,11 +3921,88 @@ mod tests {
             Some("AndroidTester")
         );
 
-        // 4. Presets seeded from TauriTavern/default/presets
+        // 4. Presets seeded from TauriTavern/default/content/presets
         let presets_env = state
             .invoke("get_presets", r#"{"preset_type":"openai"}"#)
             .await;
         assert!(presets_env.ok, "get_presets failed: {:?}", presets_env.error);
+        let openai_presets = presets_env
+            .data
+            .as_ref()
+            .and_then(|d| d.get("preset_names"))
+            .and_then(|d| d.as_array())
+            .expect("openai preset_names array");
+        assert!(
+            openai_presets.iter().any(|v| v.as_str() == Some("Default")),
+            "expected Default openai preset to be seeded, got: {openai_presets:?}"
+        );
+
+        let default_preset_env = state
+            .invoke(
+                "preset_restore_default",
+                r#"{"name":"Default","preset_type":"openai"}"#,
+            )
+            .await;
+        assert!(
+            default_preset_env.ok,
+            "preset_restore_default failed: {:?}",
+            default_preset_env.error
+        );
+        assert!(
+            default_preset_env
+                .data
+                .as_ref()
+                .and_then(|d| d.as_object())
+                .map(|o| !o.is_empty())
+                .unwrap_or(false),
+            "expected non-empty restored default preset"
+        );
+
+        // Verify default character (Seraphina), world (Eldoria), and user avatar are seeded
+        let initial_chars = state.invoke("get_characters", r#"{"shallow":false}"#).await;
+        assert!(
+            initial_chars.ok,
+            "initial get_characters failed: {:?}",
+            initial_chars.error
+        );
+        let initial_chars_arr = initial_chars
+            .data
+            .as_ref()
+            .and_then(|d| d.as_array())
+            .expect("initial characters array");
+        assert!(
+            initial_chars_arr.iter().any(|c| {
+                c.get("name").and_then(|v| v.as_str()) == Some("Seraphina")
+                    && c.get("avatar").and_then(|v| v.as_str()) == Some("default_Seraphina.png")
+            }),
+            "expected default character Seraphina to be seeded, got: {initial_chars_arr:?}"
+        );
+
+        let initial_worlds = state.invoke("get_worlds", "{}").await;
+        assert!(initial_worlds.ok);
+        let worlds_arr = initial_worlds
+            .data
+            .as_ref()
+            .and_then(|d| d.as_array())
+            .expect("worlds array");
+        assert!(
+            worlds_arr.iter().any(|w| w.as_str() == Some("Eldoria")),
+            "expected default world Eldoria to be seeded, got: {worlds_arr:?}"
+        );
+
+        let initial_avatars = state.invoke("get_avatars", "{}").await;
+        assert!(initial_avatars.ok);
+        let avatars_arr = initial_avatars
+            .data
+            .as_ref()
+            .and_then(|d| d.as_array())
+            .expect("avatars array");
+        assert!(
+            avatars_arr
+                .iter()
+                .any(|a| a.as_str() == Some("user-default.png")),
+            "expected user-default.png avatar to be seeded, got: {avatars_arr:?}"
+        );
 
         // Save custom preset
         let save_preset = state

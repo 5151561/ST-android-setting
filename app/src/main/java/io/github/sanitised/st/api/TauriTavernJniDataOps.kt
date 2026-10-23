@@ -476,20 +476,42 @@ private suspend fun TauriTavernJniClient.loadPresetCategoryOrFallback(
     embeddedCategory: PresetCategory
 ): PresetCategory {
     if (embeddedCategory.presets.isNotEmpty()) return embeddedCategory
-    val list = runCatching {
-        invokeAsListOfMaps("presets_list", mapOf("preset_type" to apiId, "api_id" to apiId))
-    }.getOrDefault(emptyList())
-    if (list.isEmpty()) return embeddedCategory
-    val docs = list.mapNotNull { item ->
-        val name = item.stringAnyValue("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-        val content = item["content"] ?: item
-        PresetSummary(
-            apiId = apiId,
-            name = name,
-            content = jsonValue(content),
-            selected = name == selectedName
-        )
+    val raw = runCatching {
+        invokeRaw("presets_list", mapOf("preset_type" to apiId, "api_id" to apiId))
+    }.getOrNull() ?: return embeddedCategory
+
+    val docs: List<PresetSummary> = when (raw) {
+        is Map<*, *> -> {
+            val presetsObj = (raw["presets"] as? Map<*, *>) ?: raw
+            val orderedNames = (raw["preset_names"] as? List<*>)
+                ?.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) }
+                ?: presetsObj.keys.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) }.sorted()
+            orderedNames.mapNotNull { name ->
+                val content = presetsObj[name] ?: return@mapNotNull null
+                PresetSummary(
+                    apiId = apiId,
+                    name = name,
+                    content = jsonValue(content),
+                    selected = name == selectedName
+                )
+            }
+        }
+        is List<*> -> {
+            raw.mapNotNull { entry ->
+                val item = (entry as? Map<*, *>)?.toStringKeyMap() ?: return@mapNotNull null
+                val name = item.stringAnyValue("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val content = item["content"] ?: item["data"] ?: item
+                PresetSummary(
+                    apiId = apiId,
+                    name = name,
+                    content = jsonValue(content),
+                    selected = name == selectedName
+                )
+            }
+        }
+        else -> emptyList()
     }
+    if (docs.isEmpty()) return embeddedCategory
     return PresetCategory(apiId = apiId, title = title, presets = docs)
 }
 
@@ -528,6 +550,13 @@ internal suspend fun TauriTavernJniClient.doSelectPreset(apiId: String, name: St
             val preset = response
                 .listMapValue(apiId)
                 .firstOrNull { it.stringAnyValue("name") == name }
+                ?: runCatching {
+                    val presetData = invokeAsMap(
+                        "presets_list",
+                        mapOf("preset_type" to apiId, "apiId" to apiId, "api_id" to apiId)
+                    )
+                    presetData.anyMapValue("presets").anyMapValue(name)
+                }.getOrNull()?.takeIf { it.isNotEmpty() }
             val current = powerUser.anyMapValue(apiId).toMutableMap()
             preset?.forEach { (presetKey, presetValue) ->
                 current[presetKey] = presetValue

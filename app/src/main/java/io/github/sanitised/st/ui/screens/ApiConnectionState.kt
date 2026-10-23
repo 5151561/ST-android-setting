@@ -20,7 +20,9 @@ internal data class ApiConnectionProviderDefinition(
     val secretKeys: List<String> = emptyList(),
     val modelSettingsGroup: String? = null,
     val modelKey: String? = null,
-    val requiresSecret: Boolean = true
+    val requiresSecret: Boolean = true,
+    val defaultModels: List<String> = emptyList(),
+    val endpointHint: String = "https://api.openai.com/v1"
 )
 
 internal data class ApiConnectionProviderState(
@@ -50,15 +52,29 @@ internal data class ApiConnectionUiState(
     val activeModel: String,
     val serviceStatusText: String,
     val connectionStatusText: String,
-    val connectionStatusOk: Boolean
+    val connectionStatusOk: Boolean,
+    val verificationStatusText: String = "尚未测试",
+    val verificationStatusTone: String? = null
 )
+
+internal object ConnectionVerificationRegistry {
+    private val statusByProviderId = java.util.concurrent.ConcurrentHashMap<String, ConnectionVerifyStatus>()
+
+    fun record(providerId: String, status: ConnectionVerifyStatus) {
+        statusByProviderId[providerId] = status
+    }
+
+    fun get(providerId: String): ConnectionVerifyStatus =
+        statusByProviderId[providerId] ?: ConnectionVerifyStatus.NOT_VERIFIED
+}
 
 internal fun buildApiConnectionUiState(
     settings: Map<String, Any?>,
     secrets: List<SecretProviderState>,
     serviceRunning: Boolean,
     selectedProviderId: String? = null,
-    selectedMode: String? = null
+    selectedMode: String? = null,
+    verificationStatus: ConnectionVerifyStatus? = null
 ): ApiConnectionUiState {
     val settingsProvider = activeApiConnectionProvider(settings)
     val selectedProvider = selectedProviderId
@@ -77,13 +93,30 @@ internal fun buildApiConnectionUiState(
     val activeModel = modelForProvider(settings, activeProviderDefinition)
         .ifBlank { if (serviceRunning) "未选择模型" else "服务未启动" }
     val serviceStatusText = if (serviceRunning) "服务运行中" else "服务未启动"
+    val effectiveVerifyStatus = verificationStatus ?: ConnectionVerificationRegistry.get(activeProvider.id)
     val connectionStatusText = when {
         !serviceRunning -> "服务未启动"
+        effectiveVerifyStatus == ConnectionVerifyStatus.SUCCESS -> "连接正常"
+        effectiveVerifyStatus == ConnectionVerifyStatus.FAILED -> "验证失败"
         activeProvider.hasConfiguredSecret && activeProvider.requiresSecret -> "密钥已配置，尚未验证"
         activeProvider.hasConfiguredSecret -> "无需密钥，尚未验证"
         else -> "未配置密钥"
     }
-    val connectionStatusOk = serviceRunning && activeProvider.hasConfiguredSecret
+    val connectionStatusOk = serviceRunning &&
+        activeProvider.hasConfiguredSecret &&
+        effectiveVerifyStatus != ConnectionVerifyStatus.FAILED
+    val verificationStatusText = when {
+        !serviceRunning -> "服务未启动"
+        effectiveVerifyStatus == ConnectionVerifyStatus.SUCCESS -> "已验证可用"
+        effectiveVerifyStatus == ConnectionVerifyStatus.FAILED -> "验证失败"
+        effectiveVerifyStatus == ConnectionVerifyStatus.TESTING -> "测试中…"
+        else -> "尚未测试"
+    }
+    val verificationStatusTone = when (effectiveVerifyStatus) {
+        ConnectionVerifyStatus.SUCCESS -> "ok"
+        ConnectionVerifyStatus.FAILED -> "error"
+        else -> null
+    }
 
     return ApiConnectionUiState(
         activeMode = visibleMode,
@@ -93,7 +126,9 @@ internal fun buildApiConnectionUiState(
         activeModel = activeModel,
         serviceStatusText = serviceStatusText,
         connectionStatusText = connectionStatusText,
-        connectionStatusOk = connectionStatusOk
+        connectionStatusOk = connectionStatusOk,
+        verificationStatusText = verificationStatusText,
+        verificationStatusTone = verificationStatusTone
     )
 }
 
@@ -165,6 +200,10 @@ internal fun settingsWithSelectedApiProvider(
         provider.mode == "cc" && provider.sourceValue != null -> {
             val oaiSettings = updated.mapAnyValue("oai_settings").toMutableMap()
             oaiSettings["chat_completion_source"] = provider.sourceValue
+            val scopedProxyKey = "reverse_proxy_${provider.sourceValue}"
+            if (oaiSettings.containsKey(scopedProxyKey)) {
+                oaiSettings["reverse_proxy"] = oaiSettings.stringAnyValue(scopedProxyKey)
+            }
             updated["oai_settings"] = oaiSettings
         }
         provider.mainApi == "textgenerationwebui" && provider.sourceValue != null -> {
@@ -177,13 +216,21 @@ internal fun settingsWithSelectedApiProvider(
     return updated
 }
 
+private val legacyPlaceholderModels = setOf(
+    "gpt-5.6-terra",
+    "claude-sonnet-5",
+    "gemini-3.7-flash",
+    "OR_Website"
+)
+
 internal fun modelForProvider(
     settings: Map<String, Any?>,
     provider: ApiConnectionProviderDefinition
 ): String {
     val group = provider.modelSettingsGroup ?: return ""
     val key = provider.modelKey ?: return ""
-    return settings.mapAnyValue(group).stringAnyValue(key)
+    val raw = settings.mapAnyValue(group).stringAnyValue(key).trim()
+    return if (raw in legacyPlaceholderModels) "" else raw
 }
 
 private fun ApiConnectionProviderDefinition.withSecretState(
@@ -220,7 +267,9 @@ private val apiConnectionProviders = listOf(
         sourceValue = "openai",
         secretKeys = listOf("api_key_openai"),
         modelSettingsGroup = "oai_settings",
-        modelKey = "openai_model"
+        modelKey = "openai_model",
+        defaultModels = listOf("gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o3-mini"),
+        endpointHint = "https://api.openai.com/v1"
     ),
     ApiConnectionProviderDefinition(
         id = "anthropic",
@@ -231,7 +280,13 @@ private val apiConnectionProviders = listOf(
         sourceValue = "claude",
         secretKeys = listOf("api_key_claude"),
         modelSettingsGroup = "oai_settings",
-        modelKey = "claude_model"
+        modelKey = "claude_model",
+        defaultModels = listOf(
+            "claude-3-7-sonnet-20250219",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022"
+        ),
+        endpointHint = "https://api.anthropic.com/v1"
     ),
     ApiConnectionProviderDefinition(
         id = "google",
@@ -242,29 +297,15 @@ private val apiConnectionProviders = listOf(
         sourceValue = "makersuite",
         secretKeys = listOf("api_key_makersuite"),
         modelSettingsGroup = "oai_settings",
-        modelKey = "google_model"
-    ),
-    ApiConnectionProviderDefinition(
-        id = "mistralai",
-        label = "Mistral",
-        icon = "M",
-        mode = "cc",
-        mainApi = "openai",
-        sourceValue = "mistralai",
-        secretKeys = listOf("api_key_mistralai"),
-        modelSettingsGroup = "oai_settings",
-        modelKey = "mistralai_model"
-    ),
-    ApiConnectionProviderDefinition(
-        id = "openrouter",
-        label = "OpenRouter",
-        icon = "R",
-        mode = "cc",
-        mainApi = "openai",
-        sourceValue = "openrouter",
-        secretKeys = listOf("api_key_openrouter"),
-        modelSettingsGroup = "oai_settings",
-        modelKey = "openrouter_model"
+        modelKey = "google_model",
+        defaultModels = listOf(
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash"
+        ),
+        endpointHint = "https://generativelanguage.googleapis.com"
     ),
     ApiConnectionProviderDefinition(
         id = "deepseek",
@@ -275,7 +316,27 @@ private val apiConnectionProviders = listOf(
         sourceValue = "deepseek",
         secretKeys = listOf("api_key_deepseek"),
         modelSettingsGroup = "oai_settings",
-        modelKey = "deepseek_model"
+        modelKey = "deepseek_model",
+        defaultModels = listOf("deepseek-chat", "deepseek-reasoner"),
+        endpointHint = "https://api.deepseek.com/v1"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "openrouter",
+        label = "OpenRouter",
+        icon = "R",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "openrouter",
+        secretKeys = listOf("api_key_openrouter"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "openrouter_model",
+        defaultModels = listOf(
+            "openai/gpt-4o-mini",
+            "anthropic/claude-3.7-sonnet",
+            "google/gemini-2.5-pro-preview",
+            "deepseek/deepseek-chat-v3-0324"
+        ),
+        endpointHint = "https://openrouter.ai/api/v1"
     ),
     ApiConnectionProviderDefinition(
         id = "xai",
@@ -286,7 +347,95 @@ private val apiConnectionProviders = listOf(
         sourceValue = "xai",
         secretKeys = listOf("api_key_xai"),
         modelSettingsGroup = "oai_settings",
-        modelKey = "xai_model"
+        modelKey = "xai_model",
+        defaultModels = listOf("grok-3-mini", "grok-3", "grok-2-1212"),
+        endpointHint = "https://api.x.ai/v1"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "groq",
+        label = "Groq",
+        icon = "Q",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "groq",
+        secretKeys = listOf("api_key_groq"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "groq_model",
+        defaultModels = listOf(
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "deepseek-r1-distill-llama-70b"
+        ),
+        endpointHint = "https://api.groq.com/openai/v1"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "moonshot",
+        label = "Moonshot (Kimi)",
+        icon = "K",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "moonshot",
+        secretKeys = listOf("api_key_moonshot"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "moonshot_model",
+        defaultModels = listOf("kimi-k2-0711-preview", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"),
+        endpointHint = "https://api.moonshot.cn/v1"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "siliconflow",
+        label = "硅基流动",
+        icon = "S",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "siliconflow",
+        secretKeys = listOf("api_key_siliconflow"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "siliconflow_model",
+        defaultModels = listOf(
+            "deepseek-ai/DeepSeek-V3",
+            "deepseek-ai/DeepSeek-R1",
+            "Qwen/Qwen2.5-72B-Instruct"
+        ),
+        endpointHint = "https://api.siliconflow.cn/v1"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "zai",
+        label = "智谱 GLM",
+        icon = "Z",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "zai",
+        secretKeys = listOf("api_key_zai"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "zai_model",
+        defaultModels = listOf("glm-4-plus", "glm-4-air", "glm-4-flash"),
+        endpointHint = "https://open.bigmodel.cn/api/paas/v4"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "minimax",
+        label = "MiniMax",
+        icon = "M",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "minimax",
+        secretKeys = listOf("api_key_minimax"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "minimax_model",
+        defaultModels = listOf("MiniMax-M2.7", "MiniMax-Text-01", "abab6.5s-chat"),
+        endpointHint = "https://api.minimax.io/v1"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "mistralai",
+        label = "Mistral",
+        icon = "M",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "mistralai",
+        secretKeys = listOf("api_key_mistralai"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "mistralai_model",
+        defaultModels = listOf("mistral-large-latest", "mistral-small-latest", "codestral-latest"),
+        endpointHint = "https://api.mistral.ai/v1"
     ),
     ApiConnectionProviderDefinition(
         id = "cohere",
@@ -297,7 +446,9 @@ private val apiConnectionProviders = listOf(
         sourceValue = "cohere",
         secretKeys = listOf("api_key_cohere"),
         modelSettingsGroup = "oai_settings",
-        modelKey = "cohere_model"
+        modelKey = "cohere_model",
+        defaultModels = listOf("command-a-03-2025", "command-r-plus-08-2024", "command-r-08-2024"),
+        endpointHint = "https://api.cohere.ai/v2"
     ),
     ApiConnectionProviderDefinition(
         id = "perplexity",
@@ -308,7 +459,23 @@ private val apiConnectionProviders = listOf(
         sourceValue = "perplexity",
         secretKeys = listOf("api_key_perplexity"),
         modelSettingsGroup = "oai_settings",
-        modelKey = "perplexity_model"
+        modelKey = "perplexity_model",
+        defaultModels = listOf("sonar-pro", "sonar", "sonar-reasoning-pro", "sonar-reasoning"),
+        endpointHint = "https://api.perplexity.ai"
+    ),
+    ApiConnectionProviderDefinition(
+        id = "custom",
+        label = "自定义兼容",
+        icon = "U",
+        mode = "cc",
+        mainApi = "openai",
+        sourceValue = "custom",
+        secretKeys = listOf("api_key_custom"),
+        modelSettingsGroup = "oai_settings",
+        modelKey = "custom_model",
+        requiresSecret = false,
+        defaultModels = listOf("gpt-4o-mini", "deepseek-chat", "claude-3-7-sonnet-20250219"),
+        endpointHint = "https://your-oneapi.example.com/v1"
     ),
     ApiConnectionProviderDefinition(
         id = "koboldcpp",
@@ -446,7 +613,17 @@ private val providerAliases = mapOf(
     "novel" to "novelai",
     "novelai" to "novelai",
     "xai" to "xai",
-    "grok" to "xai"
+    "grok" to "xai",
+    "kimi" to "moonshot",
+    "moonshot" to "moonshot",
+    "glm" to "zai",
+    "zhipu" to "zai",
+    "zai" to "zai",
+    "siliconflow" to "siliconflow",
+    "groq" to "groq",
+    "minimax" to "minimax",
+    "custom" to "custom",
+    "openaicompatible" to "custom"
 )
 
 private fun String.normalizedProviderId(): String {

@@ -116,6 +116,37 @@ class ApiConnectionStateTest {
         assertEquals(listOf("api_key_claude"), apiConnectionProviderForId("claude")?.secretKeys)
         assertEquals(listOf("api_key_makersuite"), apiConnectionProviderForId("makersuite")?.secretKeys)
         assertEquals(listOf("api_key_makersuite"), apiConnectionProviderForId("googleAi")?.secretKeys)
+        assertEquals(listOf("api_key_groq"), apiConnectionProviderForId("groq")?.secretKeys)
+        assertEquals(listOf("api_key_moonshot"), apiConnectionProviderForId("kimi")?.secretKeys)
+        assertEquals(listOf("api_key_siliconflow"), apiConnectionProviderForId("siliconflow")?.secretKeys)
+        assertEquals(listOf("api_key_zai"), apiConnectionProviderForId("glm")?.secretKeys)
+        assertEquals(listOf("api_key_minimax"), apiConnectionProviderForId("minimax")?.secretKeys)
+        assertEquals(listOf("api_key_custom"), apiConnectionProviderForId("custom")?.secretKeys)
         assertNull(apiConnectionProviderForId("missing-provider"))
+    }
+
+    @Test
+    fun legacyFictionalPlaceholderModelsAreFilteredOutAndScopedReverseProxyIsIsolated() {
+        val settingsWithFictionalModel = mapOf(
+            "main_api" to "openai",
+            "oai_settings" to mapOf(
+                "chat_completion_source" to "makersuite",
+                "google_model" to "gemini-3.7-flash",
+                "reverse_proxy" to "https://openai-proxy.example.com/v1",
+                "reverse_proxy_openai" to "https://openai-proxy.example.com/v1",
+                "reverse_proxy_makersuite" to ""
+            )
+        )
+        val googleProvider = apiConnectionProviderForId("google")!!
+        assertEquals("", modelForProvider(settingsWithFictionalModel, googleProvider))
+
+        val switchedToGoogle = settingsWithSelectedApiProvider(settingsWithFictionalModel, googleProvider)
+        val oaiAfterGoogle = switchedToGoogle["oai_settings"] as Map<*, *>
+        assertEquals("", oaiAfterGoogle["reverse_proxy"])
+
+        val openaiProvider = apiConnectionProviderForId("openai")!!
+        val switchedBackToOpenAi = settingsWithSelectedApiProvider(switchedToGoogle, openaiProvider)
+        val oaiAfterOpenAi = switchedBackToOpenAi["oai_settings"] as Map<*, *>
+        assertEquals("https://openai-proxy.example.com/v1", oaiAfterOpenAi["reverse_proxy"])
     }
 }

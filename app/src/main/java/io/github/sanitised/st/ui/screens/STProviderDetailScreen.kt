@@ -163,7 +163,8 @@ fun STProviderDetailScreen(
     
     var customUrl by remember { mutableStateOf("") }
     var apiKey by remember { mutableStateOf("") }
-    var initialApiKey by remember { mutableStateOf("") }
+    var configuredSecretMask by remember { mutableStateOf("") }
+    var hasConfiguredSecret by remember { mutableStateOf(false) }
     var isPasswordVisible by remember { mutableStateOf(false) }
     
     var modelsList by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -185,6 +186,8 @@ fun STProviderDetailScreen(
     }
     
     LaunchedEffect(running, baseUrl, providerId, connectionRepository) {
+        verifyStatus = ConnectionVerificationRegistry.get(providerDefinition.id)
+        modelsList = providerDefinition.defaultModels
         if (running) {
             runCatching {
                 val coreSettings = connectionRepository.getSettings()
@@ -195,16 +198,25 @@ fun STProviderDetailScreen(
                     (coreSettings[group] as? Map<*, *>)?.entries?.associate { (k, v) -> k.toString() to v } ?: emptyMap()
                 } else emptyMap()
 
-                customUrl = when (providerDefinition.mode) {
-                    "cc" -> (groupMap["reverse_proxy"] as? String).orEmpty()
-                    "tc" -> coreSettings.stringValue("api_server")
+                customUrl = when {
+                    providerDefinition.sourceValue == "custom" -> (groupMap["custom_url"] as? String).orEmpty()
+                    providerDefinition.mode == "cc" -> {
+                        val scopedKey = "reverse_proxy_${providerDefinition.sourceValue}"
+                        if (groupMap.containsKey(scopedKey)) {
+                            (groupMap[scopedKey] as? String).orEmpty()
+                        } else {
+                            (groupMap["reverse_proxy"] as? String).orEmpty()
+                        }
+                    }
+                    providerDefinition.mode == "tc" -> coreSettings.stringValue("api_server")
                     else -> ""
                 }
 
                 selectedModel = modelForProvider(coreSettings, providerDefinition)
+                    .ifBlank { providerDefinition.defaultModels.firstOrNull().orEmpty() }
 
                 temp = when (providerDefinition.mode) {
-                    "cc" -> groupMap.floatValue("temp", 1.0f)
+                    "cc" -> groupMap.floatValue("temp_openai", groupMap.floatValue("temp", 1.0f))
                     "tc" -> groupMap.floatValue("temp", 1.0f)
                     else -> coreSettings.floatValue("temp", 1.0f)
                 }
@@ -232,17 +244,25 @@ fun STProviderDetailScreen(
                         .mapNotNull { secretKey -> secretsList.firstOrNull { it.key == secretKey } }
                         .flatMap { it.entries.asSequence() }
                         .firstOrNull()
-                apiKey = firstEntry?.value ?: ""
-                initialApiKey = apiKey
+                configuredSecretMask = firstEntry?.value.orEmpty()
+                hasConfiguredSecret = firstEntry != null || !providerDefinition.requiresSecret
+                apiKey = ""
                 
-                isLoadingModels = true
-                modelsList = connectionRepository.fetchModels(
-                    mode = providerDefinition.mode,
-                    sourceValue = providerDefinition.sourceValue.orEmpty(),
-                    apiServer = customUrl
-                )
-                isLoadingModels = false
+                if (hasConfiguredSecret) {
+                    isLoadingModels = true
+                    val fetched = connectionRepository.fetchModels(
+                        mode = providerDefinition.mode,
+                        sourceValue = providerDefinition.sourceValue.orEmpty(),
+                        apiServer = customUrl
+                    )
+                    modelsList = fetched.ifEmpty { providerDefinition.defaultModels }
+                    if (selectedModel.isBlank() && modelsList.isNotEmpty()) {
+                        selectedModel = modelsList.first()
+                    }
+                    isLoadingModels = false
+                }
             }.onFailure {
+                isLoadingModels = false
                 onShowMessage("加载配置失败：${it.message}")
             }
         }
@@ -276,20 +296,32 @@ fun STProviderDetailScreen(
                                     ?: mutableMapOf()
                             } else null
 
+                            val finalModel = selectedModel.trim()
+                                .ifBlank { providerDefinition.defaultModels.firstOrNull().orEmpty() }
                             if (groupSettings != null && !modelKey.isNullOrBlank()) {
-                                groupSettings[modelKey] = selectedModel
+                                groupSettings[modelKey] = finalModel
                             }
 
+                            val trimmedUrl = customUrl.trim()
                             when (providerDefinition.mode) {
                                 "cc" -> {
                                     if (groupSettings != null) {
-                                        if (customUrl.isNotBlank()) groupSettings["reverse_proxy"] = customUrl
+                                        if (providerDefinition.sourceValue == "custom") {
+                                            groupSettings["custom_url"] = trimmedUrl
+                                            groupSettings["reverse_proxy"] = ""
+                                        } else {
+                                            groupSettings["reverse_proxy"] = trimmedUrl
+                                            providerDefinition.sourceValue?.let { src ->
+                                                groupSettings["reverse_proxy_$src"] = trimmedUrl
+                                            }
+                                        }
+                                        groupSettings["temp_openai"] = temp
                                         groupSettings["temp"] = temp
                                         groupSettings["openai_max_context"] = contextSize.toInt()
                                     }
                                 }
                                 "tc" -> {
-                                    if (customUrl.isNotBlank()) updatedSettings["api_server"] = customUrl
+                                    updatedSettings["api_server"] = trimmedUrl
                                     if (groupSettings != null) {
                                         groupSettings["temp"] = temp
                                         groupSettings["max_context"] = contextSize.toInt()
@@ -303,8 +335,9 @@ fun STProviderDetailScreen(
 
                             connectionRepository.saveSettings(updatedSettings)
 
-                            if (apiKey != initialApiKey && providerDefinition.secretKeys.isNotEmpty()) {
-                                connectionRepository.writeSecret(providerDefinition.secretKeys.first(), apiKey, "默认密钥")
+                            val newSecret = apiKey.trim()
+                            if (newSecret.isNotBlank() && providerDefinition.secretKeys.isNotEmpty()) {
+                                connectionRepository.writeSecret(providerDefinition.secretKeys.first(), newSecret, "默认密钥")
                             }
 
                             onSettingsChanged()
@@ -339,7 +372,7 @@ fun STProviderDetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 4.dp)
                     ) {
-                        val configured = providerState?.hasConfiguredSecret == true
+                        val configured = hasConfiguredSecret || providerState?.hasConfiguredSecret == true
                         val statusText = when (verifyStatus) {
                             ConnectionVerifyStatus.SUCCESS -> "连接成功"
                             ConnectionVerifyStatus.FAILED -> verifyErrorMessage ?: "连接失败"
@@ -389,15 +422,19 @@ fun STProviderDetailScreen(
             STGlassTextField(
                 value = customUrl,
                 onValueChange = { customUrl = it },
-                label = if (providerDefinition.mode == "cc") "反向代理 URL (Reverse Proxy)" else "后端服务器地址",
-                placeholder = if (providerDefinition.mode == "cc") "https://api.openai.com/v1" else "http://127.0.0.1:5000"
+                label = when {
+                    providerDefinition.sourceValue == "custom" -> "自定义 OpenAI 兼容 API 地址 (Custom URL)"
+                    providerDefinition.mode == "cc" -> "反向代理 URL (可选，留空使用官方直连)"
+                    else -> "后端服务器地址"
+                },
+                placeholder = if (providerDefinition.mode == "cc") providerDefinition.endpointHint else "http://127.0.0.1:5000"
             )
             
             STGlassTextField(
                 value = apiKey,
                 onValueChange = { apiKey = it },
-                label = "API 密钥 (API Key)",
-                placeholder = "sk-...",
+                label = if (configuredSecretMask.isNotBlank()) "API 密钥 (已配置 $configuredSecretMask)" else "API 密钥 (API Key)",
+                placeholder = if (configuredSecretMask.isNotBlank()) "留空保持现有密钥，输入新密钥可覆盖" else "粘贴真实密钥 (如 AIza... / sk-...)",
                 visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
@@ -410,17 +447,21 @@ fun STProviderDetailScreen(
                 }
             )
 
-            val canTest = running && (apiKey.isNotBlank() || !providerDefinition.requiresSecret)
+            val canTest = running && (apiKey.isNotBlank() || hasConfiguredSecret || !providerDefinition.requiresSecret)
             val isTesting = verifyStatus == ConnectionVerifyStatus.TESTING
             Button(
                 onClick = {
                     scope.launch {
                         verifyStatus = ConnectionVerifyStatus.TESTING
+                        ConnectionVerificationRegistry.record(providerDefinition.id, ConnectionVerifyStatus.TESTING)
                         verifyErrorMessage = null
                         runCatching {
-                            if (apiKey != initialApiKey && providerDefinition.secretKeys.isNotEmpty() && apiKey.isNotBlank()) {
-                                connectionRepository.writeSecret(providerDefinition.secretKeys.first(), apiKey, "默认密钥")
-                                initialApiKey = apiKey
+                            val newSecret = apiKey.trim()
+                            if (newSecret.isNotBlank() && providerDefinition.secretKeys.isNotEmpty()) {
+                                connectionRepository.writeSecret(providerDefinition.secretKeys.first(), newSecret, "默认密钥")
+                                configuredSecretMask = "*******" + newSecret.takeLast(3)
+                                hasConfiguredSecret = true
+                                apiKey = ""
                             }
                             connectionRepository.testConnection(
                                 mode = providerDefinition.mode,
@@ -430,17 +471,24 @@ fun STProviderDetailScreen(
                         }.onSuccess { result ->
                             if (result.success) {
                                 verifyStatus = ConnectionVerifyStatus.SUCCESS
-                                modelsList = result.models
-                                if (result.models.isNotEmpty() && selectedModel.isBlank()) {
-                                    selectedModel = result.models.first()
+                                ConnectionVerificationRegistry.record(providerDefinition.id, ConnectionVerifyStatus.SUCCESS)
+                                if (result.models.isNotEmpty()) {
+                                    modelsList = result.models
+                                    if (selectedModel.isBlank()) {
+                                        selectedModel = result.models.first()
+                                    }
+                                } else if (modelsList.isEmpty()) {
+                                    modelsList = providerDefinition.defaultModels
                                 }
-                                onShowMessage("连接成功，找到 ${result.models.size} 个模型")
+                                onShowMessage("连接成功，可用模型 ${modelsList.size} 个")
                             } else {
                                 verifyStatus = ConnectionVerifyStatus.FAILED
+                                ConnectionVerificationRegistry.record(providerDefinition.id, ConnectionVerifyStatus.FAILED)
                                 verifyErrorMessage = result.errorMessage ?: "连接失败"
                             }
                         }.onFailure { e ->
                             verifyStatus = ConnectionVerifyStatus.FAILED
+                            ConnectionVerificationRegistry.record(providerDefinition.id, ConnectionVerifyStatus.FAILED)
                             verifyErrorMessage = e.message?.take(80) ?: "连接失败"
                         }
                     }
@@ -474,7 +522,7 @@ fun STProviderDetailScreen(
                     Text(
                         text = when {
                             !running -> "服务未启动"
-                            apiKey.isBlank() && providerDefinition.requiresSecret -> "请先填写密钥"
+                            !canTest -> "请先填写密钥"
                             else -> "测试连接"
                         }
                     )
@@ -492,6 +540,13 @@ fun STProviderDetailScreen(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), modifier = Modifier.padding(vertical = 12.dp))
 
+            STGlassTextField(
+                value = selectedModel,
+                onValueChange = { selectedModel = it },
+                label = "当前模型 ID (可手动输入或从下方列表选择)",
+                placeholder = providerDefinition.defaultModels.firstOrNull() ?: "输入模型名称"
+            )
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -499,7 +554,7 @@ fun STProviderDetailScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "可用模型列表",
+                    text = "可用模型列表 (${modelsList.size})",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
@@ -518,12 +573,28 @@ fun STProviderDetailScreen(
                                     animationSpec = tween(800, easing = LinearEasing)
                                 )
                                 runCatching {
-                                    modelsList = connectionRepository.fetchModels(
+                                    val newSecret = apiKey.trim()
+                                    if (newSecret.isNotBlank() && providerDefinition.secretKeys.isNotEmpty()) {
+                                        connectionRepository.writeSecret(providerDefinition.secretKeys.first(), newSecret, "默认密钥")
+                                        configuredSecretMask = "*******" + newSecret.takeLast(3)
+                                        hasConfiguredSecret = true
+                                        apiKey = ""
+                                    }
+                                    val fetched = connectionRepository.fetchModels(
                                         mode = providerDefinition.mode,
                                         sourceValue = providerDefinition.sourceValue.orEmpty(),
                                         apiServer = customUrl
                                     )
-                                    onShowMessage("模型列表已成功刷新！")
+                                    if (fetched.isNotEmpty()) {
+                                        modelsList = fetched
+                                        if (selectedModel.isBlank()) {
+                                            selectedModel = fetched.first()
+                                        }
+                                        onShowMessage("已从服务端获取 ${fetched.size} 个模型")
+                                    } else {
+                                        modelsList = providerDefinition.defaultModels
+                                        onShowMessage("在线模型列表为空，已显示内置推荐模型")
+                                    }
                                 }.onFailure {
                                     onShowMessage("模型刷新失败：${it.message}")
                                 }

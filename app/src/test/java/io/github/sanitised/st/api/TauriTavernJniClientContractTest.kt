@@ -159,4 +159,94 @@ class TauriTavernJniClientContractTest {
         assertTrue(thrown is IllegalStateException)
         assertTrue(thrown?.message.orEmpty().contains("[not_found] Character missing"))
     }
+
+    @Test
+    fun `fetchModels and testConnection send non-null string fields for chat_completion_status`() = runTest {
+        val capturedPayloads = mutableListOf<String>()
+        val client = TauriTavernJniClient { command, payload ->
+            assertEquals("chat_completion_status", command)
+            capturedPayloads += payload
+            """{"ok":true,"data":{"data":[{"id":"gemini-2.5-flash"},{"id":"gemini-2.5-pro"}]}}"""
+        }
+
+        val models = client.fetchModels(mode = "cc", sourceValue = "makersuite", apiServer = "")
+        assertEquals(listOf("gemini-2.5-flash", "gemini-2.5-pro"), models)
+
+        val testResult = client.testConnection(mode = "cc", sourceValue = "makersuite", apiServer = "")
+        assertTrue(testResult.success)
+        assertEquals(listOf("gemini-2.5-flash", "gemini-2.5-pro"), testResult.models)
+
+        capturedPayloads.forEach { rawJson ->
+            assertFalse("Payload should not contain null reverse_proxy: $rawJson", rawJson.contains("\"reverse_proxy\":null"))
+            assertFalse("Payload should not contain null custom_url: $rawJson", rawJson.contains("\"custom_url\":null"))
+            assertTrue("Payload should contain empty reverse_proxy string: $rawJson", rawJson.contains("\"reverse_proxy\":\"\""))
+        }
+    }
+
+    @Test
+    fun `testConnection routes custom provider endpoint to custom_url instead of reverse_proxy`() = runTest {
+        var capturedPayload = ""
+        val client = TauriTavernJniClient { command, payload ->
+            assertEquals("chat_completion_status", command)
+            capturedPayload = payload
+            """{"ok":true,"data":{"data":[{"id":"deepseek-v3"}]}}"""
+        }
+
+        val result = client.testConnection(
+            mode = "cc",
+            sourceValue = "custom",
+            apiServer = "https://my-oneapi.example.com/v1"
+        )
+        assertTrue(result.success)
+        assertEquals(listOf("deepseek-v3"), result.models)
+        assertTrue(capturedPayload.contains("\"custom_url\":\"https://my-oneapi.example.com/v1\""))
+        assertTrue(capturedPayload.contains("\"reverse_proxy\":\"\""))
+    }
+
+    @Test
+    fun `real JNI bridge seeds default Seraphina character and presets from tauritavern_default assets`() = runTest {
+        val tempRoot = java.nio.file.Files.createTempDirectory("tt-jni-default-seed-test").toFile()
+        try {
+            val candidates = listOf(
+                java.io.File("src/main/assets/tauritavern_default/content"),
+                java.io.File("app/src/main/assets/tauritavern_default/content"),
+                java.io.File("../TauriTavern/default/content"),
+                java.io.File("TauriTavern/default/content")
+            )
+            val defaultContentDir = candidates.firstOrNull { it.isDirectory }
+                ?: error("Could not locate tauritavern default/content directory from ${java.io.File(".").absolutePath}")
+
+            TauriTavernJniBridge.initialize(
+                dataRoot = tempRoot.absolutePath,
+                defaultContentRoot = defaultContentDir.absolutePath
+            )
+
+            val client = TauriTavernJniClient.instance
+            val characters = client.listCharacters()
+            assertTrue(
+                "Expected default character Seraphina to be seeded and returned by listCharacters(), got: $characters",
+                characters.any { it.id == "default_Seraphina.png" && it.name == "Seraphina" }
+            )
+
+            val seraphina = client.getCharacter("default_Seraphina.png")
+            assertEquals("Seraphina", seraphina.name)
+            assertTrue(seraphina.description.isNotBlank())
+            assertTrue(seraphina.firstMessage.isNotBlank())
+
+            val worlds = client.listWorldInfos()
+            assertTrue(
+                "Expected default world Eldoria to be seeded, got: $worlds",
+                worlds.any { it.name == "Eldoria" }
+            )
+
+            val presetLibrary = client.getPresetLibrary()
+            val openaiCategory = presetLibrary.categories.firstOrNull { it.apiId == "openai" }
+            assertTrue(
+                "Expected Default OpenAI preset to be seeded in PresetLibrary, got: ${presetLibrary.categories}",
+                openaiCategory?.presets?.any { it.name == "Default" } == true
+            )
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
 }
