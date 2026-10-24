@@ -6,20 +6,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-ST-android 是一个第三方 SillyTavern Android 客户端。它在设备上通过 foreground service 运行嵌入式 Node.js + SillyTavern 服务端（core），并用 Jetpack Compose 构建原生 UI。聊天界面已完成从 WebView 到原生 Compose 的迁移并**退出了 WebView 运行时**（2026-06-24，详见 `docs/native-chat-runtime-exit-status.md`）：提示词组装、世界书扫描、instruct 模板、流式生成等聊天语义全部由原生 Kotlin 实现，直接调用本地 ST 服务端 HTTP API。剩余能力缺口：logprobs（上游阻塞）、TTS/翻译/生图（后续专项）、slash command 与第三方前端扩展（原生架构下不支持）。
+ST-android 是一个基于上游 `TauriTavern` Rust 后端、并用 Jetpack Compose 构建原生 UI 的 Android 客户端。后端遵循**“以 TauriTavern 上游后端为唯一真相源，前端仅做薄界面承接”**的架构原则，通过 `rust/tt-android-jni` 将上游 `tt-application` / `tt-domain` / `tt-adapter-*` 服务以 1:1 命令直通的方式暴露给 Kotlin 层（旧 Node.js HTTP 传输层与隐藏 WebView runtime 均已退役）。
 
 ## Build & Test
 
 ```bash
-# 构建 debug APK（需要 Android SDK + JDK 17+）
+# 编译宿主机 / Android Rust JNI 动态库
+bash ci/scripts/build_rust_jni.sh host
+
+# 运行 Rust JNI 桥接层单元测试
+cargo test --manifest-path rust/tt-android-jni/Cargo.toml
+
+# 构建 debug APK（需要 Android SDK + JDK 21）
 ./gradlew assembleDebug
 # 输出: app/build/outputs/apk/debug/app-debug.apk
 
 # 运行全部单元测试（含 MockK 单测、契约测试与 Robolectric Compose 行为测试）
-./gradlew test
+./gradlew testDebugUnitTest
 
 # 运行单个测试类
-./gradlew testDebugUnitTest --tests "io.github.sanitised.st.api.TavernCoreClientTest"
+./gradlew testDebugUnitTest --tests "io.github.sanitised.st.ui.ArchitectureBoundaryContractTest"
 
 # 更新 / 校验 Compose Preview 截图测试（参考图位于 app/src/screenshotTestDebug/reference/）
 ./gradlew updateDebugScreenshotTest
@@ -27,10 +33,6 @@ ST-android 是一个第三方 SillyTavern Android 客户端。它在设备上通
 
 # 生成 JaCoCo 覆盖率报告
 ./gradlew jacocoTestReport
-
-# Docker 构建（仅 Linux，从源码编译 Node.js，首次约 2-3 小时）
-git submodule update --init --recursive
-./ci/scripts/build_apk_docker.sh
 ```
 
 完整测试栈与规范（Hilt 测试基建、MockK、Robolectric Compose 测试、Compose Preview 截图测试、Dropshots 设备截图测试、JaCoCo）见 `docs/testing.md`。依赖与插件版本统一由 `gradle/libs.versions.toml` 管理。
@@ -79,24 +81,22 @@ git submodule update --init --recursive
 - **群聊 UI**：`GroupChatScreen`、`GroupMembersScreen`、`GroupSettingsScreen`、`NewGroupScreen`。
 - **架构守卫**：`NativeRuntimeExitArchitectureTest` 禁止 WebView 运行时代码回流，改聊天架构前先看它。
 
-### 数据访问 — 双路径与领域 Repository
+### 数据访问 — TauriTavern JNI 直通与领域 Repository
 
-- **API 路径（按领域拆分）**：
-  - `api/TavernCoreApi.kt`：`TavernCoreApi` 接口定义与 `TavernCoreClient` 门面。
-  - `api/TavernHttpTransport.kt`：OkHttp 传输、CSRF token 自动获取、CookieJar 与 JSON 辅助。
-  - `api/TavernCharacterEndpoints.kt`：角色 CRUD、头像上传、聊天记录 JSONL 接口实现。
-  - `api/TavernWorldPersonaEndpoints.kt`：世界书 (WorldInfo) 与人设 (Persona) 接口实现。
-  - `api/TavernPresetSecretEndpoints.kt`：预设、密钥、系统设置、连接配置、快照备份、背景图与群聊接口实现。
+- **JNI 桥接与 API 客户端**：
+  - `api/TauriTavernJniBridge.kt`：唯一 JNI 桥接入口，直接调用 `rust/tt-android-jni`（`libtt_android_jni`）。
+  - `api/TavernCoreModels.kt`：`TavernCoreApi` 接口与领域数据模型定义。
+  - `api/TauriTavernJniClient.kt` + `api/TauriTavernJni*Ops.kt`：1:1 对接上游 `TauriTavern` 命令（`get_sillytavern_settings`、`save_settings`、`read_secret_state`、`list_llm_connections`、`load_llm_connection`、`save_llm_connection`、`delete_llm_connection`、`get_chat_completions_status`、`generate_chat_completion`、`openrouter_model_providers` 等），严禁在客户端伪造探测请求、硬编码模型列表或手搓 `connection_profiles`。
   - JSON 编解码用 `api/StJson.kt`（基于 kotlinx.serialization，不用 Gson/Moshi）。
 - **本地文件路径**：`data/LocalTavernLibraryReader` 直接读取 `data/<user>/` 下的角色 PNG 和聊天 JSONL，作为服务未运行时的 fallback。
 - **领域 Repository 与偏好仓库**：
   - `data/preferences/UserPreferencesRepository.kt`：统一管理全部 14 项用户与界面偏好（暴露 `StateFlow<UserPreferences>`）。
   - `data/CharacterRepository.kt`：角色列表、详情、编辑、创建、导入及角色历史聊天管理。
   - `data/repository/WorldInfoRepository.kt`：世界书 CRUD 与全局世界书设置。
-  - `data/repository/ConnectionRepository.kt`：API 连接配置、密钥管理、模型拉取、连通性测试与设置快照。
-  - `data/repository/PersonaPresetRepository.kt`：人设、预设库、标签、背景图与通用文件上传。
+  - `data/repository/ConnectionRepository.kt`：API 连接配置（委托 `LlmConnectionService`）、密钥管理、模型拉取、连通性测试（委托 `get_chat_completions_status`）、供应商元数据（`ProviderMetadataService`）与设置快照。
+  - `data/repository/PersonaPresetRepository.kt`：人设、预设库（委托上游 `PresetService`）、标签、背景图与通用文件上传。
   - `data/repository/GroupChatRepository.kt`：群聊列表、创建、编辑、删除与群聊 JSONL 读写。
-- **架构边界守卫**：`ui/ArchitectureBoundaryContractTest.kt` 严禁 `ui/` 与 `chat/` 层直接实例化 `TavernCoreClient(`，并守护 `MainActivity.kt`、`TavernCoreApi.kt` 行数上限及防止巨型屏幕文件回流。
+- **架构边界守卫**：`ui/ArchitectureBoundaryContractTest.kt` 严禁 `ui/` 与 `chat/` 层直接实例化客户端、禁止已退役的 Node HTTP 传输文件回流、守护唯一真相源铁律（禁止客户端硬编码模型列表或伪造状态探测）并守护 `MainActivity.kt`、`TauriTavernJniClient.kt` 行数上限。
 
 ### 主题
 

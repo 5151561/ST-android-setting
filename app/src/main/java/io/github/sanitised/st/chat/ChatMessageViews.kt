@@ -152,7 +152,6 @@ import io.github.sanitised.st.chat.ui.ChatBubbleSurface
 import io.github.sanitised.st.chat.ui.ChatDateChip
 import io.github.sanitised.st.chat.ui.ChatRichText
 import io.github.sanitised.st.api.GroupSummary
-import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.screens.STAssistPill

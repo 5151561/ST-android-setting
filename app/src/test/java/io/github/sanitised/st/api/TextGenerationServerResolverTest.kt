@@ -1,5 +1,6 @@
 package io.github.sanitised.st.api
 
+import io.github.sanitised.st.chat.prompt.resolveTextGenServer
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -358,12 +358,12 @@ fun STApiConnectionScreen(
                                 connectionRepository.saveSettings(updated)
                                 settings = updated
                                 onSettingsChanged()
-                                onShowMessage("已切换 API 提供商为 ${provider.label}")
                             }.onFailure {
                                 onShowMessage("切换失败：${it.message}")
                             }
                         }
                     }
+                    onOpenProviderDetail(provider.id)
                 }
             )
 
@@ -611,6 +611,7 @@ private fun STActiveConnectionCard(
     }
     
     PremiumCard(
+        onClick = onConfigure,
         borderColor = if (connectionStatusOk) Color(0x407FCE8E) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
     ) {
         Row(
@@ -649,7 +650,25 @@ private fun STActiveConnectionCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            STIconButton(Icons.Filled.Settings, "配置详细后端", onConfigure)
+            Surface(
+                onClick = onConfigure,
+                shape = RoundedCornerShape(10.dp),
+                color = STThemePrimary.copy(alpha = 0.12f),
+                contentColor = STThemePrimary
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Filled.Settings, contentDescription = "配置详细后端", modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "配置",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
         Spacer(modifier = Modifier.height(10.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))

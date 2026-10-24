@@ -1,8 +1,8 @@
 package io.github.sanitised.st.chat.prompt
 
 import io.github.sanitised.st.api.CharacterDetail
-import io.github.sanitised.st.api.resolveTextGenServer
 import io.github.sanitised.st.chat.ChatMessage
+import java.net.URI
 
 sealed class TextPromptBuildResult {
     data class Ready(
@@ -415,4 +415,34 @@ object TextPromptBuilder {
 
     private fun Map<String, Any?>.stringListValue(key: String): List<String>? =
         (this[key] as? List<*>)?.map { it.toString() }?.takeIf { it.isNotEmpty() }
+}
+
+fun resolveTextGenServer(settings: Map<String, Any?>, apiType: String): String {
+    val serverUrls = ((settings["textgenerationwebui_settings"] as? Map<*, *>)
+        ?.get("server_urls") as? Map<*, *>)
+        ?.entries
+        ?.associate { (k, v) -> k.toString() to (v as? String).orEmpty() }
+        .orEmpty()
+    val server = when (apiType) {
+        "featherless" -> "https://api.featherless.ai/v1"
+        "mancer" -> "https://neuro.mancer.tech"
+        "togetherai" -> "https://api.together.xyz"
+        "infermaticai" -> "https://api.totalgpt.ai"
+        "dreamgen" -> "https://dreamgen.com"
+        "openrouter" -> "https://openrouter.ai/api"
+        else -> serverUrls[apiType].orEmpty()
+    }
+    return normalizeLocalhostServer(server)
+}
+
+private fun normalizeLocalhostServer(server: String): String {
+    val uri = runCatching { URI(server) }.getOrNull() ?: return server
+    if (!uri.host.equals("localhost", ignoreCase = true)) return server
+    val authority = uri.rawAuthority ?: return server
+    val hostStart = authority.lastIndexOf('@').let { if (it >= 0) it + 1 else 0 }
+    val hostEnd = hostStart + uri.host.length
+    val normalizedAuthority = authority.replaceRange(hostStart, hostEnd, "127.0.0.1")
+    val authorityStart = server.indexOf(authority)
+    if (authorityStart < 0) return server
+    return server.replaceRange(authorityStart, authorityStart + authority.length, normalizedAuthority)
 }

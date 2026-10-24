@@ -1,23 +1,35 @@
 package io.github.sanitised.st.api
 
 import androidx.compose.runtime.Immutable
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import io.github.sanitised.st.chat.prompt.GenerationDeltaParser
-import okhttp3.Cookie
-import okhttp3.CookieJar
-import okhttp3.HttpUrl
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.util.concurrent.TimeUnit
+
+internal val secretProviderLabels = linkedMapOf(
+    "api_key_openai" to "OpenAI",
+    "api_key_claude" to "Claude",
+    "api_key_openrouter" to "OpenRouter",
+    "api_key_makersuite" to "Google AI Studio",
+    "api_key_vertexai" to "Google Vertex AI",
+    "api_key_ai21" to "AI21",
+    "api_key_mistralai" to "MistralAI",
+    "api_key_custom" to "Custom (OpenAI-compatible)",
+    "api_key_cohere" to "Cohere",
+    "api_key_perplexity" to "Perplexity",
+    "api_key_groq" to "Groq",
+    "api_key_siliconflow" to "SiliconFlow",
+    "api_key_chutes" to "Chutes",
+    "api_key_electronhub" to "Electron Hub",
+    "api_key_nanogpt" to "NanoGPT",
+    "api_key_deepseek" to "DeepSeek",
+    "api_key_aimlapi" to "AI/ML API",
+    "api_key_xai" to "xAI (Grok)",
+    "api_key_pollinations" to "Pollinations",
+    "api_key_cometapi" to "CometAPI",
+    "api_key_moonshot" to "Moonshot",
+    "api_key_fireworks" to "Fireworks",
+    "api_key_azure_openai" to "Azure OpenAI",
+    "api_key_minimax" to "MiniMax",
+    "api_key_zai" to "Z.AI"
+)
 
 data class CoreHealth(
     val ok: Boolean,
@@ -384,6 +396,8 @@ interface TavernCoreApi {
     suspend fun restorePreset(apiId: String, name: String): String
     suspend fun listConnectionProfiles(): List<ConnectionProfile>
     suspend fun saveConnectionProfile(profile: ConnectionProfile)
+    suspend fun deleteConnectionProfile(name: String) {}
+    suspend fun applyConnectionProfile(name: String): Boolean = false
     suspend fun listChatBackups(): List<ChatBackupSummary>
     suspend fun downloadChatBackup(name: String): CharacterExportFile
     suspend fun deleteChatBackup(name: String)
@@ -511,3 +525,115 @@ interface TavernCoreApi {
     /** Streams a text-completion (SSE), emitting incremental text deltas. Forces `stream=true`. */
     fun generateTextCompletionStream(payload: Map<String, Any?>): Flow<String>
 }
+
+internal fun Map<*, *>?.stringValue(key: String): String =
+    (this?.get(key) as? String).orEmpty()
+
+internal fun Map<*, *>?.longValue(key: String): Long =
+    when (val value = this?.get(key)) {
+        is Number -> value.toLong()
+        is String -> value.toLongOrNull() ?: 0L
+        else -> 0L
+    }
+
+internal fun Map<*, *>?.doubleValue(key: String, default: Double): Double =
+    when (val value = this?.get(key)) {
+        is Number -> value.toDouble()
+        is String -> value.toDoubleOrNull() ?: default
+        else -> default
+    }
+
+internal fun Map<*, *>?.intValue(key: String, default: Int): Int =
+    when (val value = this?.get(key)) {
+        is Number -> value.toInt()
+        is String -> value.toIntOrNull() ?: default
+        else -> default
+    }
+
+internal fun Map<*, *>?.booleanValue(key: String): Boolean =
+    when (val value = this?.get(key)) {
+        is Boolean -> value
+        is String -> value.equals("true", ignoreCase = true)
+        else -> false
+    }
+
+internal fun Map<*, *>?.stringListValue(key: String): List<String> =
+    when (val value = this?.get(key)) {
+        is List<*> -> value.mapNotNull { it as? String }
+        is String -> value.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        else -> emptyList()
+    }
+
+internal fun Map<*, *>?.mapValue(key: String): Map<*, *> =
+    this?.get(key) as? Map<*, *> ?: emptyMap<Any, Any>()
+
+internal fun Map<String, Any?>.anyMapValue(key: String): Map<String, Any?> =
+    (this[key] as? Map<*, *>)?.toStringKeyMap() ?: emptyMap()
+
+internal fun Map<String, Any?>.listMapValue(key: String): List<Map<String, Any?>> =
+    (this[key] as? List<*>)
+        ?.mapNotNull { it as? Map<*, *> }
+        ?.map { it.toStringKeyMap() }
+        ?: emptyList()
+
+internal fun Map<*, *>.toStringKeyMap(): Map<String, Any?> =
+    entries.associate { (key, value) -> key.toString() to normalizeJsonValue(value) }
+
+internal fun normalizeJsonValue(value: Any?): Any? =
+    when (value) {
+        is Map<*, *> -> value.toStringKeyMap()
+        is List<*> -> value.map { normalizeJsonValue(it) }
+        else -> value
+    }
+
+internal fun Map<String, Any?>.toSTTag(): STTag =
+    STTag(
+        id = stringAnyValue("id"),
+        name = stringAnyValue("name"),
+        color = stringAnyValue("color"),
+        isFolder = stringAnyValue("folder_type").isNotBlank() || booleanAnyValue("is_folder"),
+        sortOrder = intAnyValue("sort_order", 0)
+    )
+
+internal fun Map<String, Any?>.stringAnyValue(key: String): String =
+    (get(key) as? String).orEmpty()
+
+internal fun Map<String, Any?>.booleanAnyValue(key: String): Boolean =
+    when (val value = get(key)) {
+        is Boolean -> value
+        is String -> value.equals("true", ignoreCase = true)
+        else -> false
+    }
+
+internal fun Map<String, Any?>.intAnyValue(key: String, default: Int): Int =
+    when (val value = get(key)) {
+        is Number -> value.toInt()
+        is String -> value.toIntOrNull() ?: default
+        else -> default
+    }
+
+internal fun Map<String, Any?>.longAnyValue(key: String): Long =
+    when (val value = get(key)) {
+        is Number -> value.toLong()
+        is String -> value.toLongOrNull() ?: 0L
+        else -> 0L
+    }
+
+internal fun Any?.toStringList(): List<String> =
+    when (this) {
+        is List<*> -> mapNotNull { it as? String }
+        is String -> split(',').map { it.trim() }.filter { it.isNotBlank() }
+        else -> emptyList()
+    }
+
+internal fun jsonObject(vararg pairs: Pair<String, Any?>): String =
+    StJson.encodeObject(*pairs)
+
+internal fun jsonArray(values: Iterable<Any?>): String =
+    StJson.encode(values.toList())
+
+internal fun jsonValue(value: Any?): String =
+    StJson.encode(value)
+
+internal fun quoteJson(value: String): String =
+    StJson.encode(value)

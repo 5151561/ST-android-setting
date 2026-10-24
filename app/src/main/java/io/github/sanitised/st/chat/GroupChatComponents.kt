@@ -54,7 +54,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sanitised.st.api.GroupSummary
-import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.chat.engine.GroupReply
 import io.github.sanitised.st.chat.engine.NativeGroupGenerator
 import io.github.sanitised.st.chat.engine.pickGroupSpeaker

@@ -114,7 +114,8 @@ class GroupChatMigrationContractTest {
     fun groupSettingsAndMembersScreensPersistRealDataViaEditGroup() {
         val settings = File("src/main/java/io/github/sanitised/st/chat/GroupSettingsScreen.kt").readText()
         val members = File("src/main/java/io/github/sanitised/st/chat/GroupMembersScreen.kt").readText()
-        val api = File("src/main/java/io/github/sanitised/st/api/TavernCoreApi.kt").readText()
+        val apiModels = File("src/main/java/io/github/sanitised/st/api/TavernCoreModels.kt").readText()
+        val jniCharacterOps = File("src/main/java/io/github/sanitised/st/api/TauriTavernJniCharacterOps.kt").readText()
 
         // Both screens take the group id + base url and persist via editGroup.
         assertTrue(settings.contains("groupId: String"))
@@ -128,11 +129,11 @@ class GroupChatMigrationContractTest {
         assertFalse(settings.contains("mutableStateOf(\"雨夜小聚\")"))
         assertFalse(members.contains("GroupMember(\"aria\""))
 
-        // The REST client exposes the edit/delete endpoints.
-        assertTrue(api.contains("suspend fun editGroup(group: GroupSummary)"))
-        assertTrue(api.contains("suspend fun deleteGroup(groupId: String)"))
-        assertTrue(api.contains("api/groups/edit"))
-        assertTrue(api.contains("api/groups/delete"))
+        // The JNI client exposes the edit/delete group operations.
+        assertTrue(apiModels.contains("suspend fun editGroup(group: GroupSummary)"))
+        assertTrue(apiModels.contains("suspend fun deleteGroup(groupId: String)"))
+        assertTrue(jniCharacterOps.contains("group_edit"))
+        assertTrue(jniCharacterOps.contains("group_delete"))
     }
 
     @Test

@@ -21,7 +21,6 @@ internal data class ApiConnectionProviderDefinition(
     val modelSettingsGroup: String? = null,
     val modelKey: String? = null,
     val requiresSecret: Boolean = true,
-    val defaultModels: List<String> = emptyList(),
     val endpointHint: String = "https://api.openai.com/v1",
     val supportsReverseProxy: Boolean = false,
     val endpointSettingKey: String? = null,
@@ -277,7 +276,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_openai"),
         modelSettingsGroup = "oai_settings",
         modelKey = "openai_model",
-        defaultModels = listOf("gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o3-mini"),
         endpointHint = "https://api.openai.com/v1",
         supportsReverseProxy = true
     ),
@@ -291,11 +289,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_claude"),
         modelSettingsGroup = "oai_settings",
         modelKey = "claude_model",
-        defaultModels = listOf(
-            "claude-3-7-sonnet-20250219",
-            "claude-3-5-sonnet-20241022",
-            "claude-3-5-haiku-20241022"
-        ),
         endpointHint = "https://api.anthropic.com/v1",
         supportsReverseProxy = true
     ),
@@ -309,13 +302,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_makersuite"),
         modelSettingsGroup = "oai_settings",
         modelKey = "google_model",
-        defaultModels = listOf(
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.0-flash",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash"
-        ),
         endpointHint = "https://generativelanguage.googleapis.com",
         supportsReverseProxy = true
     ),
@@ -329,14 +315,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_vertexai", "vertexai_service_account_json"),
         modelSettingsGroup = "oai_settings",
         modelKey = "vertexai_model",
-        defaultModels = listOf(
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.0-flash-001",
-            "claude-sonnet-4-5@20250929",
-            "claude-opus-4-5@20251101",
-            "claude-3-7-sonnet@20250219"
-        ),
         endpointHint = "https://aiplatform.googleapis.com",
         supportsReverseProxy = true
     ),
@@ -350,7 +328,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_deepseek"),
         modelSettingsGroup = "oai_settings",
         modelKey = "deepseek_model",
-        defaultModels = listOf("deepseek-chat", "deepseek-reasoner"),
         endpointHint = "https://api.deepseek.com/v1",
         supportsReverseProxy = true
     ),
@@ -364,12 +341,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_openrouter"),
         modelSettingsGroup = "oai_settings",
         modelKey = "openrouter_model",
-        defaultModels = listOf(
-            "openai/gpt-4o-mini",
-            "anthropic/claude-3.7-sonnet",
-            "google/gemini-2.5-pro-preview",
-            "deepseek/deepseek-chat-v3-0324"
-        ),
         endpointHint = "https://openrouter.ai/api/v1"
     ),
     ApiConnectionProviderDefinition(
@@ -382,7 +353,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_xai"),
         modelSettingsGroup = "oai_settings",
         modelKey = "xai_model",
-        defaultModels = listOf("grok-3-mini", "grok-3", "grok-2-1212"),
         endpointHint = "https://api.x.ai/v1",
         supportsReverseProxy = true
     ),
@@ -396,11 +366,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_groq"),
         modelSettingsGroup = "oai_settings",
         modelKey = "groq_model",
-        defaultModels = listOf(
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "deepseek-r1-distill-llama-70b"
-        ),
         endpointHint = "https://api.groq.com/openai/v1"
     ),
     ApiConnectionProviderDefinition(
@@ -413,7 +378,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_moonshot"),
         modelSettingsGroup = "oai_settings",
         modelKey = "moonshot_model",
-        defaultModels = listOf("kimi-k2-0711-preview", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"),
         endpointHint = "https://api.moonshot.ai/v1",
         supportsReverseProxy = true,
         endpointSettingKey = "moonshot_endpoint",
@@ -432,11 +396,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_siliconflow"),
         modelSettingsGroup = "oai_settings",
         modelKey = "siliconflow_model",
-        defaultModels = listOf(
-            "deepseek-ai/DeepSeek-V3",
-            "deepseek-ai/DeepSeek-R1",
-            "Qwen/Qwen2.5-72B-Instruct"
-        ),
         endpointHint = "https://api.siliconflow.cn/v1",
         endpointSettingKey = "siliconflow_endpoint",
         endpointOptions = listOf(
@@ -454,7 +413,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_zai"),
         modelSettingsGroup = "oai_settings",
         modelKey = "zai_model",
-        defaultModels = listOf("glm-4-plus", "glm-4-air", "glm-4-flash"),
         endpointHint = "https://api.z.ai/api/paas/v4",
         supportsReverseProxy = true,
         endpointSettingKey = "zai_endpoint",
@@ -473,7 +431,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_minimax"),
         modelSettingsGroup = "oai_settings",
         modelKey = "minimax_model",
-        defaultModels = listOf("MiniMax-M2.7", "MiniMax-Text-01", "abab6.5s-chat"),
         endpointHint = "https://api.minimax.io/v1",
         endpointSettingKey = "minimax_endpoint",
         endpointOptions = listOf(
@@ -491,7 +448,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_cohere"),
         modelSettingsGroup = "oai_settings",
         modelKey = "cohere_model",
-        defaultModels = listOf("command-a-03-2025", "command-r-plus-08-2024", "command-r-08-2024"),
         endpointHint = "https://api.cohere.ai/v2"
     ),
     ApiConnectionProviderDefinition(
@@ -504,11 +460,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_aws_bedrock"),
         modelSettingsGroup = "oai_settings",
         modelKey = "aws_bedrock_model",
-        defaultModels = listOf(
-            "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-            "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-            "amazon.nova-pro-v1:0"
-        ),
         endpointHint = "https://bedrock-runtime.us-east-1.amazonaws.com"
     ),
     ApiConnectionProviderDefinition(
@@ -521,10 +472,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_workers_ai"),
         modelSettingsGroup = "oai_settings",
         modelKey = "workers_ai_model",
-        defaultModels = listOf(
-            "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-            "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b"
-        ),
         endpointHint = "https://api.cloudflare.com/client/v4/accounts"
     ),
     ApiConnectionProviderDefinition(
@@ -537,7 +484,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_opencode"),
         modelSettingsGroup = "oai_settings",
         modelKey = "opencode_model",
-        defaultModels = listOf("gpt-4o", "claude-3-7-sonnet", "gemini-2.5-pro"),
         endpointHint = "https://opencode.ai/zen/v1"
     ),
     ApiConnectionProviderDefinition(
@@ -550,7 +496,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_nanogpt"),
         modelSettingsGroup = "oai_settings",
         modelKey = "nanogpt_model",
-        defaultModels = listOf("chatgpt-4o-latest", "claude-3-7-sonnet-20250219", "deepseek-chat"),
         endpointHint = "https://nano-gpt.com/api/v1"
     ),
     ApiConnectionProviderDefinition(
@@ -563,7 +508,6 @@ private val apiConnectionProviders = listOf(
         secretKeys = listOf("api_key_chutes"),
         modelSettingsGroup = "oai_settings",
         modelKey = "chutes_model",
-        defaultModels = listOf("deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1"),
         endpointHint = "https://llm.chutes.ai/v1"
     ),
     ApiConnectionProviderDefinition(
@@ -577,7 +521,6 @@ private val apiConnectionProviders = listOf(
         modelSettingsGroup = "oai_settings",
         modelKey = "pollinations_model",
         requiresSecret = false,
-        defaultModels = listOf("openai", "openai-large", "deepseek", "claude-hybridspace"),
         endpointHint = "https://gen.pollinations.ai/v1",
         endpointSettingKey = "pollinations_endpoint",
         endpointOptions = listOf(
@@ -596,7 +539,6 @@ private val apiConnectionProviders = listOf(
         modelSettingsGroup = "oai_settings",
         modelKey = "custom_model",
         requiresSecret = false,
-        defaultModels = listOf("gpt-4o-mini", "deepseek-chat", "claude-3-7-sonnet-20250219"),
         endpointHint = "https://your-oneapi.example.com/v1"
     ),
     ApiConnectionProviderDefinition(

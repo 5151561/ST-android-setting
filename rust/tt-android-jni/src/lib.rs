@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use base64::Engine as _;
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JString};
-use jni::sys::{jbyteArray, jlong, jstring};
+use jni::sys::{jbyteArray, jstring};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::runtime::Runtime;
@@ -13,7 +13,7 @@ use tt_adapter_http::HttpClientPool;
 use tt_adapter_media::{
     FileAvatarRepository, FileBackgroundRepository, FileImageMetadataRepository,
 };
-use tt_adapter_provider_http::HttpChatCompletionRepository;
+use tt_adapter_provider_http::{HttpChatCompletionRepository, HttpProviderMetadataRepository};
 use tt_adapter_storage_core::chat_directory_identity::new_shared_chat_alias_store_for_user_dir;
 use tt_adapter_storage_core::commit_stage::PageGeneration;
 use tt_adapter_storage_core::file_system::{delete_file, read_json_file, write_json_file};
@@ -21,7 +21,7 @@ use tt_adapter_storage_core::preset_file_naming::{PresetFilePaths, load_named_pr
 use tt_adapter_storage_core::{
     DataDirectory, FileChatRepository, FileGroupRepository, FileLlmConnectionRepository,
     FilePromptCacheRepository, FileQuickReplyRepository, FileSecretRepository,
-    FileSettingsRepository, FileThemeRepository,
+    FileSettingsRepository, FileThemeRepository, FileUserRepository,
 };
 use tt_adapter_storage_userdata::{
     FileAgentRepository, FileCharacterRepository, FileSpriteRepository, FileWorldInfoRepository,
@@ -40,7 +40,12 @@ use tt_application::dto::chat_dto::{
 };
 use tt_application::dto::chat_history_dto::{ChatHistoryLocator, CurrentCommitReason};
 use tt_application::dto::group_dto::{CreateGroupDto, DeleteGroupDto, UpdateGroupDto};
+use tt_application::dto::provider_metadata_dto::{
+    ProviderModelProvidersRequestDto, SiliconFlowEmbeddingModelsRequestDto,
+    WorkersAiModelsRequestDto,
+};
 use tt_application::dto::settings_dto::UpdateTauriTavernSettingsDto;
+use tt_application::dto::user_dto::{CreateUserDto, UpdateUserDto};
 use tt_application::errors::ApplicationError;
 use tt_application::services::agent_workspace_lifecycle_service::{
     AgentRunActivity, AgentWorkspaceLifecycleService,
@@ -56,11 +61,13 @@ use tt_application::services::group_chat_service::GroupChatService;
 use tt_application::services::group_service::GroupService;
 use tt_application::services::llm_connection_service::LlmConnectionService;
 use tt_application::services::preset_service::PresetService;
+use tt_application::services::provider_metadata_service::ProviderMetadataService;
 use tt_application::services::quick_reply_service::QuickReplyService;
 use tt_application::services::secret_service::SecretService;
 use tt_application::services::settings_service::{RequestProxyRuntime, SettingsService};
 use tt_application::services::sprite_service::SpriteService;
 use tt_application::services::theme_service::ThemeService;
+use tt_application::services::user_service::UserService;
 use tt_application::services::world_info_service::WorldInfoService;
 use tt_domain::errors::DomainError;
 use tt_domain::ios_policy::{
@@ -79,17 +86,22 @@ use tt_ports::repositories::chat_commit_repository::{ChatCommitOperation, ChatCo
 use tt_ports::repositories::chat_completion_repository::ChatCompletionRepository;
 use tt_ports::repositories::chat_repository::ChatRepository;
 use tt_ports::repositories::chat_types::ChatPayloadCursor;
+use tt_ports::repositories::content_repository::{
+    ContentItem, ContentRepository, ContentScope, ContentType,
+};
 use tt_ports::repositories::group_chat_repository::GroupChatRepository;
 use tt_ports::repositories::group_repository::GroupRepository;
 use tt_ports::repositories::image_metadata_repository::ImageMetadataRepository;
 use tt_ports::repositories::llm_connection_repository::LlmConnectionRepository;
 use tt_ports::repositories::preset_repository::PresetRepository;
 use tt_ports::repositories::prompt_cache_repository::PromptCacheRepository;
+use tt_ports::repositories::provider_metadata_repository::ProviderMetadataRepository;
 use tt_ports::repositories::quick_reply_repository::QuickReplyRepository;
 use tt_ports::repositories::secret_repository::SecretRepository;
 use tt_ports::repositories::settings_repository::SettingsRepository;
 use tt_ports::repositories::sprite_repository::SpriteRepository;
 use tt_ports::repositories::theme_repository::ThemeRepository;
+use tt_ports::repositories::user_repository::UserRepository;
 use tt_ports::repositories::world_info_repository::WorldInfoRepository;
 use tt_ports::settings::ChatBackupRuntime;
 
@@ -204,22 +216,323 @@ impl AgentRunActivity for NoopAgentRunActivity {
     }
 }
 
-/// File-based PresetRepository implementation for Android JNI runtime.
-pub struct AndroidPresetRepository {
-    user_data_dir: PathBuf,
-    default_assets_dir: PathBuf,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ContentIndexItem {
+    filename: String,
+    #[serde(rename = "type")]
+    content_type: String,
 }
 
-impl AndroidPresetRepository {
-    pub fn new(user_data_dir: PathBuf, default_assets_dir: PathBuf) -> Self {
+/// File Content Repository implementation aligned with upstream `tauritavern::FileContentRepository`.
+pub struct FileContentRepository {
+    default_content_dir: PathBuf,
+    data_root: PathBuf,
+    user_content_dir: PathBuf,
+}
+
+impl FileContentRepository {
+    pub fn new(default_content_dir: PathBuf, data_root: PathBuf, user_content_dir: PathBuf) -> Self {
         Self {
-            user_data_dir,
-            default_assets_dir,
+            default_content_dir,
+            data_root,
+            user_content_dir,
+        }
+    }
+
+    fn content_type_from_string(&self, content_type: &str) -> Result<ContentType, DomainError> {
+        match content_type {
+            "settings" => Ok(ContentType::Settings),
+            "character" => Ok(ContentType::Character),
+            "sprites" => Ok(ContentType::Sprites),
+            "background" => Ok(ContentType::Background),
+            "world" => Ok(ContentType::World),
+            "avatar" => Ok(ContentType::Avatar),
+            "theme" => Ok(ContentType::Theme),
+            "workflow" => Ok(ContentType::Workflow),
+            "kobold_preset" => Ok(ContentType::KoboldPreset),
+            "openai_preset" => Ok(ContentType::OpenAIPreset),
+            "novel_preset" => Ok(ContentType::NovelPreset),
+            "textgen_preset" => Ok(ContentType::TextGenPreset),
+            "instruct" => Ok(ContentType::Instruct),
+            "context" => Ok(ContentType::Context),
+            "moving_ui" => Ok(ContentType::MovingUI),
+            "quick_replies" => Ok(ContentType::QuickReplies),
+            "sysprompt" => Ok(ContentType::SysPrompt),
+            "reasoning" => Ok(ContentType::Reasoning),
+            "error_page" => Ok(ContentType::ErrorPage),
+            "stylesheet" => Ok(ContentType::Stylesheet),
+            _ => Err(DomainError::InvalidData(format!(
+                "Unknown default content type: {content_type}"
+            ))),
+        }
+    }
+
+    fn get_target_directory(&self, content_type: &ContentType, user_dir: &Path) -> PathBuf {
+        match content_type {
+            ContentType::Settings => user_dir.to_path_buf(),
+            ContentType::Character => user_dir.join("characters"),
+            ContentType::Sprites => user_dir.join("characters"),
+            ContentType::Background => user_dir.join("backgrounds"),
+            ContentType::World => user_dir.join("worlds"),
+            ContentType::Avatar => user_dir.join("User Avatars"),
+            ContentType::Theme => user_dir.join("themes"),
+            ContentType::Workflow => user_dir.join("user").join("workflows"),
+            ContentType::KoboldPreset => user_dir.join("KoboldAI Settings"),
+            ContentType::OpenAIPreset => user_dir.join("OpenAI Settings"),
+            ContentType::NovelPreset => user_dir.join("NovelAI Settings"),
+            ContentType::TextGenPreset => user_dir.join("TextGen Settings"),
+            ContentType::Instruct => user_dir.join("instruct"),
+            ContentType::Context => user_dir.join("context"),
+            ContentType::MovingUI => user_dir.join("movingUI"),
+            ContentType::QuickReplies => user_dir.join("QuickReplies"),
+            ContentType::SysPrompt => user_dir.join("sysprompt"),
+            ContentType::Reasoning => user_dir.join("reasoning"),
+            ContentType::ErrorPage => self.data_root.join("_errors"),
+            ContentType::Stylesheet => self.data_root.join("_css"),
+        }
+    }
+
+    fn is_directory_entry(path: &str) -> bool {
+        Path::new(path).extension().is_none()
+    }
+
+    fn collect_files_recursive(base: &Path, current: &Path, out: &mut Vec<String>) {
+        if let Ok(entries) = std::fs::read_dir(current) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    Self::collect_files_recursive(base, &path, out);
+                } else if path.is_file() {
+                    if let Ok(rel) = path.strip_prefix(base) {
+                        out.push(rel.to_string_lossy().replace('\\', "/"));
+                    }
+                }
+            }
+        }
+    }
+
+    fn expand_resource_entries(&self, filename: &str) -> Result<Vec<String>, DomainError> {
+        if !Self::is_directory_entry(filename) {
+            return Ok(vec![filename.to_string()]);
+        }
+        let dir_path = self.default_content_dir.join(filename);
+        let mut entries = Vec::new();
+        if dir_path.is_dir() {
+            Self::collect_files_recursive(&self.default_content_dir, &dir_path, &mut entries);
+            entries.sort();
+        }
+        Ok(entries)
+    }
+
+    fn build_destination_path(
+        &self,
+        item: &ContentItem,
+        resource_entry: &str,
+        target_dir: &Path,
+    ) -> Result<PathBuf, DomainError> {
+        if Self::is_directory_entry(&item.filename) {
+            let dir_name = Path::new(&item.filename).file_name().ok_or_else(|| {
+                DomainError::InvalidData(format!("Invalid directory entry: {}", item.filename))
+            })?;
+            let prefix = format!("{}/", item.filename.trim_matches('/').replace('\\', "/"));
+            let relative_entry = resource_entry
+                .strip_prefix(&prefix)
+                .unwrap_or(resource_entry);
+            return Ok(target_dir.join(dir_name).join(relative_entry));
+        }
+
+        let base_filename = Path::new(&item.filename).file_name().ok_or_else(|| {
+            DomainError::InvalidData(format!("Invalid filename: {}", item.filename))
+        })?;
+        Ok(target_dir.join(base_filename))
+    }
+
+    fn content_log_path(&self, scope: ContentScope, user_dir: &Path) -> PathBuf {
+        match scope {
+            ContentScope::User => user_dir.join("content.log"),
+            ContentScope::Global => self.data_root.join("content.log"),
+        }
+    }
+
+    async fn read_content_log(path: &Path) -> Result<Vec<String>, DomainError> {
+        match tokio::fs::read_to_string(path).await {
+            Ok(text) => Ok(text
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(DomainError::InternalError(format!(
+                "Failed to read content log: {error}"
+            ))),
+        }
+    }
+
+    async fn write_content_log(path: &Path, entries: &[String]) -> Result<(), DomainError> {
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent).await.map_err(|error| {
+                DomainError::InternalError(format!(
+                    "Failed to create content log directory: {error}"
+                ))
+            })?;
+        }
+        tokio::fs::write(path, entries.join("\n"))
+            .await
+            .map_err(|error| {
+                DomainError::InternalError(format!("Failed to write content log: {error}"))
+            })
+    }
+
+    async fn seed_content_scope(
+        &self,
+        scope: ContentScope,
+        content_items: &[ContentItem],
+        user_dir: &Path,
+    ) -> Result<(), DomainError> {
+        let scoped_items = content_items
+            .iter()
+            .filter(|item| item.content_type.scope() == scope)
+            .collect::<Vec<_>>();
+
+        if scoped_items.is_empty() {
+            return Ok(());
+        }
+
+        let log_path = self.content_log_path(scope, user_dir);
+        let mut content_log = Self::read_content_log(&log_path).await?;
+
+        for item in scoped_items {
+            if content_log.iter().any(|entry| entry == &item.filename) {
+                continue;
+            }
+
+            let target_dir = self.get_target_directory(&item.content_type, user_dir);
+            tokio::fs::create_dir_all(&target_dir)
+                .await
+                .map_err(|error| {
+                    DomainError::InternalError(format!("Failed to create target directory: {error}"))
+                })?;
+
+            let resource_entries = self.expand_resource_entries(&item.filename)?;
+
+            for resource_entry in resource_entries {
+                let src_path = self.default_content_dir.join(&resource_entry);
+                if !src_path.is_file() {
+                    continue;
+                }
+                let dest_path = self.build_destination_path(item, &resource_entry, &target_dir)?;
+                if dest_path.exists() {
+                    continue;
+                }
+                if let Some(parent) = dest_path.parent() {
+                    tokio::fs::create_dir_all(parent).await.map_err(|error| {
+                        DomainError::InternalError(format!(
+                            "Failed to create destination parent directory: {error}"
+                        ))
+                    })?;
+                }
+                tokio::fs::copy(&src_path, &dest_path)
+                    .await
+                    .map_err(|error| {
+                        DomainError::InternalError(format!(
+                            "Failed to copy default content file {}: {error}",
+                            resource_entry
+                        ))
+                    })?;
+            }
+
+            content_log.push(item.filename.clone());
+        }
+
+        Self::write_content_log(&log_path, &content_log).await
+    }
+
+    async fn content_log_contains_any(
+        &self,
+        scope: ContentScope,
+        content_items: &[ContentItem],
+        user_dir: &Path,
+    ) -> Result<bool, DomainError> {
+        let scoped_items = content_items
+            .iter()
+            .filter(|item| item.content_type.scope() == scope)
+            .collect::<Vec<_>>();
+
+        if scoped_items.is_empty() {
+            return Ok(false);
+        }
+
+        let content_log = Self::read_content_log(&self.content_log_path(scope, user_dir)).await?;
+        Ok(scoped_items
+            .iter()
+            .any(|item| content_log.iter().any(|entry| entry == &item.filename)))
+    }
+}
+
+#[async_trait]
+impl ContentRepository for FileContentRepository {
+    async fn copy_default_content_to_user(&self, _user_handle: &str) -> Result<(), DomainError> {
+        let content_items = self.get_content_index().await?;
+        let user_dir = self.user_content_dir.clone();
+
+        tokio::fs::create_dir_all(&user_dir)
+            .await
+            .map_err(|e| DomainError::InternalError(format!("Failed to create user directory: {e}")))?;
+
+        self.seed_content_scope(ContentScope::Global, &content_items, &user_dir)
+            .await?;
+        self.seed_content_scope(ContentScope::User, &content_items, &user_dir)
+            .await?;
+        Ok(())
+    }
+
+    async fn get_content_index(&self) -> Result<Vec<ContentItem>, DomainError> {
+        let index_path = self.default_content_dir.join("index.json");
+        if !index_path.is_file() {
+            return Ok(Vec::new());
+        }
+        let index_items: Vec<ContentIndexItem> = read_json_file(&index_path).await?;
+        let mut content_items = Vec::with_capacity(index_items.len());
+        for item in index_items {
+            content_items.push(ContentItem {
+                filename: item.filename,
+                content_type: self.content_type_from_string(&item.content_type)?,
+            });
+        }
+        Ok(content_items)
+    }
+
+    async fn is_default_content_initialized(&self, _user_handle: &str) -> Result<bool, DomainError> {
+        let user_dir = self.user_content_dir.clone();
+        let content_items = self.get_content_index().await?;
+        self.content_log_contains_any(ContentScope::User, &content_items, &user_dir)
+            .await
+    }
+}
+
+/// File-based implementation of PresetRepository aligned with upstream `tauritavern::FilePresetRepository`.
+pub struct FilePresetRepository {
+    default_content_dir: PathBuf,
+    user_dir: PathBuf,
+    content_repository: Arc<dyn ContentRepository>,
+}
+
+impl FilePresetRepository {
+    pub fn new(
+        default_content_dir: PathBuf,
+        user_dir: PathBuf,
+        content_repository: Arc<dyn ContentRepository>,
+    ) -> Self {
+        Self {
+            default_content_dir,
+            user_dir,
+            content_repository,
         }
     }
 
     fn get_preset_directory(&self, preset_type: &PresetType) -> PathBuf {
-        self.user_data_dir.join(preset_type.directory_name())
+        self.user_dir.join(preset_type.directory_name())
     }
 
     fn get_preset_paths(
@@ -244,40 +557,52 @@ impl AndroidPresetRepository {
         Ok(())
     }
 
-    fn default_preset_candidates(&self, name: &str, preset_type: &PresetType) -> Vec<PathBuf> {
-        let ext = preset_type.extension().trim_start_matches('.');
-        let filename = format!("{name}.{ext}");
-        let short_dir = match preset_type {
-            PresetType::OpenAI => "openai",
-            PresetType::TextGen => "textgen",
-            PresetType::Kobold => "kobold",
-            PresetType::Novel => "novel",
-            PresetType::Instruct => "instruct",
-            PresetType::Context => "context",
-            PresetType::SysPrompt => "sysprompt",
-            PresetType::Reasoning => "reasoning",
-        };
-        vec![
-            self.default_assets_dir
-                .join("presets")
-                .join(short_dir)
-                .join(&filename),
-            self.default_assets_dir
-                .join("presets")
-                .join(preset_type.directory_name())
-                .join(&filename),
-            self.default_assets_dir
-                .join("content")
-                .join("presets")
-                .join(short_dir)
-                .join(&filename),
-            self.default_assets_dir.join("content").join(&filename),
-        ]
+    async fn get_default_preset_from_content(
+        &self,
+        name: &str,
+        preset_type: &PresetType,
+    ) -> Result<Option<DefaultPreset>, DomainError> {
+        let content_items = self.content_repository.get_content_index().await?;
+        for item in content_items {
+            let item_preset_type = match item.content_type {
+                ContentType::KoboldPreset => Some(PresetType::Kobold),
+                ContentType::NovelPreset => Some(PresetType::Novel),
+                ContentType::OpenAIPreset => Some(PresetType::OpenAI),
+                ContentType::TextGenPreset => Some(PresetType::TextGen),
+                ContentType::Instruct => Some(PresetType::Instruct),
+                ContentType::Context => Some(PresetType::Context),
+                ContentType::SysPrompt => Some(PresetType::SysPrompt),
+                ContentType::Reasoning => Some(PresetType::Reasoning),
+                _ => None,
+            };
+
+            if let Some(item_type) = item_preset_type
+                && item_type == *preset_type
+            {
+                let item_name = Path::new(&item.filename)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&item.filename);
+
+                if item_name == name {
+                    let file_path = self.default_content_dir.join(&item.filename);
+                    let data: Value = read_json_file(&file_path).await?;
+                    return Ok(Some(DefaultPreset {
+                        filename: item.filename,
+                        name: name.to_string(),
+                        preset_type: preset_type.clone(),
+                        is_default: true,
+                        data,
+                    }));
+                }
+            }
+        }
+        Ok(None)
     }
 }
 
 #[async_trait]
-impl PresetRepository for AndroidPresetRepository {
+impl PresetRepository for FilePresetRepository {
     async fn save_preset(&self, preset: &Preset) -> Result<(), DomainError> {
         self.ensure_directory_exists(&preset.preset_type).await?;
         let file_path = self
@@ -342,24 +667,8 @@ impl PresetRepository for AndroidPresetRepository {
         name: &str,
         preset_type: &PresetType,
     ) -> Result<Option<DefaultPreset>, DomainError> {
-        for candidate in self.default_preset_candidates(name, preset_type) {
-            if candidate.exists() {
-                let data: Value = read_json_file(&candidate).await?;
-                let filename = candidate
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or(name)
-                    .to_string();
-                return Ok(Some(DefaultPreset {
-                    filename,
-                    name: name.to_string(),
-                    preset_type: preset_type.clone(),
-                    is_default: true,
-                    data,
-                }));
-            }
-        }
-        Ok(None)
+        self.get_default_preset_from_content(name, preset_type)
+            .await
     }
 }
 
@@ -367,6 +676,8 @@ impl PresetRepository for AndroidPresetRepository {
 pub struct JniAppState {
     pub data_root: PathBuf,
     pub default_assets_dir: PathBuf,
+    pub content_repository: Arc<dyn ContentRepository>,
+    pub user_service: Arc<UserService>,
     pub character_service: Arc<CharacterService>,
     pub chat_service: Arc<ChatService>,
     pub chat_commit_service: Arc<ChatCommitService>,
@@ -377,6 +688,7 @@ pub struct JniAppState {
     pub world_info_service: Arc<WorldInfoService>,
     pub world_info_repository: Arc<dyn WorldInfoRepository>,
     pub settings_service: Arc<SettingsService>,
+    pub settings_repository: Arc<dyn SettingsRepository>,
     pub llm_connection_service: Arc<LlmConnectionService>,
     pub secret_service: Arc<SecretService>,
     pub avatar_service: Arc<AvatarService>,
@@ -385,14 +697,13 @@ pub struct JniAppState {
     pub theme_service: Arc<ThemeService>,
     pub quick_reply_service: Arc<QuickReplyService>,
     pub chat_completion_service: Arc<ChatCompletionService>,
+    pub provider_metadata_service: Arc<ProviderMetadataService>,
     pub stream_cursors: std::sync::Mutex<std::collections::HashMap<String, u64>>,
 }
 
 impl JniAppState {
     fn resolve_default_content_dir(default_assets_dir: &Path) -> PathBuf {
-        if default_assets_dir.join("index.json").is_file()
-            || default_assets_dir.join("default_Seraphina.png").is_file()
-        {
+        if default_assets_dir.join("index.json").is_file() {
             return default_assets_dir.to_path_buf();
         }
         let nested_content = default_assets_dir.join("content");
@@ -402,7 +713,7 @@ impl JniAppState {
         default_assets_dir.to_path_buf()
     }
 
-    /// Initialize all repositories, seed default user files if needed, and wire services.
+    /// Initialize all repositories, seed default user files via `ContentRepository`, and wire services.
     pub async fn init(data_root: PathBuf, default_assets_dir: PathBuf) -> Result<Self, String> {
         let default_content_dir = Self::resolve_default_content_dir(&default_assets_dir);
         let data_directory = DataDirectory::new(data_root.clone());
@@ -411,9 +722,17 @@ impl JniAppState {
             .await
             .map_err(|e| format!("Failed to initialize DataDirectory: {e}"))?;
 
-        Self::seed_defaults_if_missing(&data_root, &default_content_dir)?;
-
         let default_user_dir = data_directory.default_user().to_path_buf();
+        let content_repository: Arc<dyn ContentRepository> = Arc::new(FileContentRepository::new(
+            default_content_dir.clone(),
+            data_root.clone(),
+            default_user_dir.clone(),
+        ));
+        content_repository
+            .copy_default_content_to_user("default-user")
+            .await
+            .map_err(|e| format!("Failed to initialize default content: {e}"))?;
+
         let page_generation = Arc::new(PageGeneration::default());
         let chat_aliases = new_shared_chat_alias_store_for_user_dir(data_directory.default_user());
         let tt_settings = TauriTavernSettings::default();
@@ -453,9 +772,10 @@ impl JniAppState {
         let chat_backup_runtime: Arc<dyn ChatBackupRuntime> = file_chat_repository.clone();
         let group_chat_repository: Arc<dyn GroupChatRepository> = file_chat_repository;
 
-        let preset_repository: Arc<dyn PresetRepository> = Arc::new(AndroidPresetRepository::new(
-            default_user_dir.clone(),
+        let preset_repository: Arc<dyn PresetRepository> = Arc::new(FilePresetRepository::new(
             default_content_dir.clone(),
+            default_user_dir.clone(),
+            content_repository.clone(),
         ));
 
         let world_info_repository: Arc<dyn WorldInfoRepository> =
@@ -607,6 +927,9 @@ impl JniAppState {
         let sprite_service = Arc::new(SpriteService::new(sprite_repository));
         let theme_service = Arc::new(ThemeService::new(theme_repository));
         let quick_reply_service = Arc::new(QuickReplyService::new(quick_reply_repository));
+        let user_repository: Arc<dyn UserRepository> =
+            Arc::new(FileUserRepository::new(data_directory.user_data().to_path_buf()));
+        let user_service = Arc::new(UserService::new(user_repository));
 
         let ios_policy = IosPolicyActivationReport {
             version: IOS_POLICY_VERSION,
@@ -616,12 +939,20 @@ impl JniAppState {
             overridden_capabilities: Vec::new(),
         };
 
+        let provider_metadata_repository: Arc<dyn ProviderMetadataRepository> =
+            Arc::new(HttpProviderMetadataRepository::new(http_client_pool.clone()));
+        let provider_metadata_service = Arc::new(ProviderMetadataService::new(
+            provider_metadata_repository,
+            secret_repository.clone(),
+            ios_policy.clone(),
+        ));
+
         let chat_completion_repository: Arc<dyn ChatCompletionRepository> =
             Arc::new(HttpChatCompletionRepository::new(http_client_pool));
         let chat_completion_service = Arc::new(ChatCompletionService::new(
             chat_completion_repository,
             secret_repository,
-            settings_repository,
+            settings_repository.clone(),
             prompt_cache_repository,
             None,
             ios_policy,
@@ -630,6 +961,8 @@ impl JniAppState {
         Ok(Self {
             data_root,
             default_assets_dir: default_content_dir,
+            content_repository,
+            user_service,
             character_service,
             chat_service,
             chat_commit_service,
@@ -640,6 +973,7 @@ impl JniAppState {
             world_info_service,
             world_info_repository,
             settings_service,
+            settings_repository,
             llm_connection_service,
             secret_service,
             avatar_service,
@@ -648,250 +982,9 @@ impl JniAppState {
             theme_service,
             quick_reply_service,
             chat_completion_service,
+            provider_metadata_service,
             stream_cursors: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
-    }
-
-    fn copy_dir_recursive_if_missing(src_dir: &Path, dst_dir: &Path) {
-        if !src_dir.is_dir() {
-            return;
-        }
-        let _ = std::fs::create_dir_all(dst_dir);
-        if let Ok(entries) = std::fs::read_dir(src_dir) {
-            for entry in entries.flatten() {
-                let src_path = entry.path();
-                let Some(file_name) = src_path.file_name() else {
-                    continue;
-                };
-                let dst_path = dst_dir.join(file_name);
-                if src_path.is_dir() {
-                    Self::copy_dir_recursive_if_missing(&src_path, &dst_path);
-                } else if src_path.is_file() && !dst_path.exists() {
-                    if let Some(parent) = dst_path.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    let _ = std::fs::copy(&src_path, &dst_path);
-                }
-            }
-        }
-    }
-
-    fn map_content_type_target(
-        content_type: &str,
-        data_root: &Path,
-        user_dir: &Path,
-    ) -> Option<(bool, PathBuf)> {
-        match content_type {
-            "settings" => Some(( false, user_dir.to_path_buf() )),
-            "character" | "sprites" => Some(( false, user_dir.join("characters") )),
-            "background" => Some(( false, user_dir.join("backgrounds") )),
-            "world" => Some(( false, user_dir.join("worlds") )),
-            "avatar" => Some(( false, user_dir.join("User Avatars") )),
-            "theme" => Some(( false, user_dir.join("themes") )),
-            "workflow" => Some(( false, user_dir.join("user").join("workflows") )),
-            "kobold_preset" => Some(( false, user_dir.join("KoboldAI Settings") )),
-            "openai_preset" => Some(( false, user_dir.join("OpenAI Settings") )),
-            "novel_preset" => Some(( false, user_dir.join("NovelAI Settings") )),
-            "textgen_preset" => Some(( false, user_dir.join("TextGen Settings") )),
-            "instruct" => Some(( false, user_dir.join("instruct") )),
-            "context" => Some(( false, user_dir.join("context") )),
-            "moving_ui" => Some(( false, user_dir.join("movingUI") )),
-            "quick_replies" => Some(( false, user_dir.join("QuickReplies") )),
-            "sysprompt" => Some(( false, user_dir.join("sysprompt") )),
-            "reasoning" => Some(( false, user_dir.join("reasoning") )),
-            "error_page" => Some(( true, data_root.join("_errors") )),
-            "stylesheet" => Some(( true, data_root.join("_css") )),
-            _ => None,
-        }
-    }
-
-    fn read_content_log_sync(path: &Path) -> Vec<String> {
-        std::fs::read_to_string(path)
-            .ok()
-            .map(|text| {
-                text.lines()
-                    .map(str::trim)
-                    .filter(|line| !line.is_empty())
-                    .map(ToOwned::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    fn write_content_log_sync(path: &Path, entries: &[String]) {
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::write(path, entries.join("\n"));
-    }
-
-    fn has_any_character_card(chars_dir: &Path) -> bool {
-        std::fs::read_dir(chars_dir)
-            .ok()
-            .map(|entries| {
-                entries.flatten().any(|entry| {
-                    let path = entry.path();
-                    path.is_file()
-                        && path
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .map(|ext| {
-                                ext.eq_ignore_ascii_case("png")
-                                    || ext.eq_ignore_ascii_case("json")
-                                    || ext.eq_ignore_ascii_case("webp")
-                            })
-                            .unwrap_or(false)
-                })
-            })
-            .unwrap_or(false)
-    }
-
-    fn seed_defaults_if_missing(data_root: &Path, default_assets_dir: &Path) -> Result<(), String> {
-        let content_dir = Self::resolve_default_content_dir(default_assets_dir);
-        if !content_dir.exists() {
-            return Ok(());
-        }
-        let user_dir = data_root.join("default-user");
-        let _ = std::fs::create_dir_all(&user_dir);
-
-        // 1. Seed from index.json when available (matches upstream FileContentRepository)
-        let index_path = content_dir.join("index.json");
-        if index_path.is_file() {
-            if let Ok(index_str) = std::fs::read_to_string(&index_path) {
-                if let Ok(items) = serde_json::from_str::<Vec<Value>>(&index_str) {
-                    let user_log_path = user_dir.join("content.log");
-                    let global_log_path = data_root.join("content.log");
-                    let mut user_log = Self::read_content_log_sync(&user_log_path);
-                    let mut global_log = Self::read_content_log_sync(&global_log_path);
-                    let mut user_log_dirty = false;
-                    let mut global_log_dirty = false;
-
-                    for item in items {
-                        let Some(filename) = item.get("filename").and_then(|v| v.as_str()) else {
-                            continue;
-                        };
-                        let Some(content_type) = item.get("type").and_then(|v| v.as_str()) else {
-                            continue;
-                        };
-                        let Some((is_global, target_dir)) =
-                            Self::map_content_type_target(content_type, data_root, &user_dir)
-                        else {
-                            continue;
-                        };
-
-                        let log = if is_global {
-                            &mut global_log
-                        } else {
-                            &mut user_log
-                        };
-                        if log.iter().any(|entry| entry == filename) {
-                            continue;
-                        }
-
-                        let src_path = content_dir.join(filename);
-                        if !src_path.exists() {
-                            continue;
-                        }
-                        let Some(base_name) = Path::new(filename).file_name() else {
-                            continue;
-                        };
-                        let _ = std::fs::create_dir_all(&target_dir);
-                        let dst_path = target_dir.join(base_name);
-
-                        if src_path.is_dir() {
-                            Self::copy_dir_recursive_if_missing(&src_path, &dst_path);
-                        } else if !dst_path.exists() {
-                            let _ = std::fs::copy(&src_path, &dst_path);
-                        }
-
-                        log.push(filename.to_string());
-                        if is_global {
-                            global_log_dirty = true;
-                        } else {
-                            user_log_dirty = true;
-                        }
-                    }
-
-                    if user_log_dirty {
-                        Self::write_content_log_sync(&user_log_path, &user_log);
-                    }
-                    if global_log_dirty {
-                        Self::write_content_log_sync(&global_log_path, &global_log);
-                    }
-                }
-            }
-        }
-
-        // 2. Fallback & self-healing for synthetic test directories or earlier incomplete runs
-        let src_settings = content_dir.join("settings.json");
-        let dst_settings = user_dir.join("settings.json");
-        if src_settings.is_file() && !dst_settings.exists() {
-            let _ = std::fs::copy(&src_settings, &dst_settings);
-        }
-
-        let presets_src = content_dir.join("presets");
-        if presets_src.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(&presets_src) {
-                for entry in entries.flatten() {
-                    let src_sub = entry.path();
-                    if src_sub.is_dir() {
-                        if let Some(dir_name) = src_sub.file_name().and_then(|s| s.to_str()) {
-                            let target_subdir = match dir_name {
-                                "openai" => "OpenAI Settings",
-                                "textgen" => "TextGen Settings",
-                                "kobold" => "KoboldAI Settings",
-                                "novel" => "NovelAI Settings",
-                                "moving-ui" => "movingUI",
-                                "quick-replies" => "QuickReplies",
-                                other => other,
-                            };
-                            let dst_sub = user_dir.join(target_subdir);
-                            Self::copy_dir_recursive_if_missing(&src_sub, &dst_sub);
-                        }
-                    }
-                }
-            }
-        }
-
-        let themes_src = content_dir.join("themes");
-        if themes_src.is_dir() {
-            Self::copy_dir_recursive_if_missing(&themes_src, &user_dir.join("themes"));
-        }
-
-        let backgrounds_src = content_dir.join("backgrounds");
-        if backgrounds_src.is_dir() {
-            Self::copy_dir_recursive_if_missing(&backgrounds_src, &user_dir.join("backgrounds"));
-        }
-
-        let eldoria_src = content_dir.join("Eldoria.json");
-        let eldoria_dst = user_dir.join("worlds").join("Eldoria.json");
-        if eldoria_src.is_file() && !eldoria_dst.exists() {
-            let _ = std::fs::create_dir_all(user_dir.join("worlds"));
-            let _ = std::fs::copy(&eldoria_src, &eldoria_dst);
-        }
-
-        let avatar_src = content_dir.join("user-default.png");
-        let avatar_dst = user_dir.join("User Avatars").join("user-default.png");
-        if avatar_src.is_file() && !avatar_dst.exists() {
-            let _ = std::fs::create_dir_all(user_dir.join("User Avatars"));
-            let _ = std::fs::copy(&avatar_src, &avatar_dst);
-        }
-
-        // Self-heal default character if characters directory has no png/json cards yet
-        let chars_dst = user_dir.join("characters");
-        let _ = std::fs::create_dir_all(&chars_dst);
-        if !Self::has_any_character_card(&chars_dst) {
-            let default_char = content_dir.join("default_Seraphina.png");
-            if default_char.is_file() {
-                let _ = std::fs::copy(&default_char, chars_dst.join("default_Seraphina.png"));
-            }
-            let default_sprites = content_dir.join("Seraphina");
-            if default_sprites.is_dir() {
-                Self::copy_dir_recursive_if_missing(&default_sprites, &chars_dst.join("Seraphina"));
-            }
-        }
-
-        Ok(())
     }
 
     fn require_str<'a>(payload: &'a Value, key: &str) -> Result<&'a str, InvokeEnvelope> {
@@ -2844,7 +2937,7 @@ impl JniAppState {
                 }
             }
 
-            "preset_restore_default" => {
+            "preset_restore_default" | "restore_default_preset" => {
                 let name = payload
                     .get("name")
                     .and_then(|v| v.as_str())
@@ -2859,11 +2952,7 @@ impl JniAppState {
                     Ok(t) => t,
                     Err(env) => return env,
                 };
-                let preset_repo = AndroidPresetRepository::new(
-                    self.data_root.join("default-user"),
-                    self.default_assets_dir.clone(),
-                );
-                match preset_repo.get_default_preset(name, &pt).await {
+                match self.preset_service.restore_default_preset(name, &pt).await {
                     Ok(Some(def)) => {
                         let preset = Preset::new(name.to_string(), pt, def.data.clone());
                         let _ = self.preset_service.save_preset(&preset).await;
@@ -3066,7 +3155,7 @@ impl JniAppState {
                 Err(e) => InvokeEnvelope::from_app_error(e),
             },
 
-            "get_llm_connection" => {
+            "get_llm_connection" | "load_llm_connection" => {
                 let id = match Self::require_str(&payload, "id") {
                     Ok(s) => s,
                     Err(env) => return env,
@@ -3390,6 +3479,78 @@ impl JniAppState {
             }
 
             // ---------------- Users, Media, Backups ----------------
+            "get_all_users" => match self.user_service.get_all_users().await {
+                Ok(users) => InvokeEnvelope::success(users),
+                Err(e) => InvokeEnvelope::from_app_error(e),
+            },
+
+            "get_user" => {
+                let id = match Self::require_str(&payload, "id") {
+                    Ok(s) => s,
+                    Err(env) => return env,
+                };
+                match self.user_service.get_user(id).await {
+                    Ok(user) => InvokeEnvelope::success(user),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
+            "get_user_by_username" => {
+                let username = match Self::require_str(&payload, "username") {
+                    Ok(s) => s,
+                    Err(env) => return env,
+                };
+                match self.user_service.get_user_by_username(username).await {
+                    Ok(user) => InvokeEnvelope::success(user),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
+            "create_user" => {
+                let dto: CreateUserDto = match serde_json::from_value(payload) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        return InvokeEnvelope::error(
+                            "VALIDATION_ERROR",
+                            format!("Invalid CreateUserDto: {e}"),
+                            None,
+                        );
+                    }
+                };
+                match self.user_service.create_user(dto).await {
+                    Ok(user) => InvokeEnvelope::success(user),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
+            "update_user" => {
+                let dto: UpdateUserDto = match serde_json::from_value(payload) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        return InvokeEnvelope::error(
+                            "VALIDATION_ERROR",
+                            format!("Invalid UpdateUserDto: {e}"),
+                            None,
+                        );
+                    }
+                };
+                match self.user_service.update_user(dto).await {
+                    Ok(user) => InvokeEnvelope::success(user),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
+            "delete_user" => {
+                let id = match Self::require_str(&payload, "id") {
+                    Ok(s) => s,
+                    Err(env) => return env,
+                };
+                match self.user_service.delete_user(id).await {
+                    Ok(()) => InvokeEnvelope::success(json!({ "deleted": true })),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
             "users_list" => InvokeEnvelope::success(json!([
                 {
                     "handle": "default-user",
@@ -3497,23 +3658,12 @@ impl JniAppState {
             }
 
             // ---------------- Themes, Quick Replies, Extensions ----------------
-            "get_themes" => {
-                let themes_dir = self.data_root.join("default-user").join("themes");
-                let mut themes = Vec::new();
-                if let Ok(entries) = std::fs::read_dir(&themes_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                            if let Ok(content) = std::fs::read_to_string(&path) {
-                                if let Ok(val) = serde_json::from_str::<Value>(&content) {
-                                    themes.push(val);
-                                }
-                            }
-                        }
-                    }
-                }
-                InvokeEnvelope::success(themes)
-            }
+            "get_themes" => match self.settings_repository.get_themes().await {
+                Ok(themes) => InvokeEnvelope::success(
+                    themes.into_iter().map(|t| t.data).collect::<Vec<Value>>(),
+                ),
+                Err(e) => InvokeEnvelope::from_domain_error(e),
+            },
 
             "save_theme" => {
                 let name = match Self::require_str(&payload, "name") {
@@ -3572,8 +3722,160 @@ impl JniAppState {
                 InvokeEnvelope::success(exts)
             }
 
+            // ---------------- Default Content & Provider Metadata ----------------
+            "initialize_default_content" => {
+                let user_handle = payload
+                    .get("user_handle")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("default-user");
+                match self
+                    .content_repository
+                    .copy_default_content_to_user(user_handle)
+                    .await
+                {
+                    Ok(()) => InvokeEnvelope::success(json!({ "initialized": true })),
+                    Err(e) => InvokeEnvelope::from_domain_error(e),
+                }
+            }
+
+            "is_default_content_initialized" => {
+                let user_handle = payload
+                    .get("user_handle")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("default-user");
+                match self
+                    .content_repository
+                    .is_default_content_initialized(user_handle)
+                    .await
+                {
+                    Ok(res) => InvokeEnvelope::success(res),
+                    Err(e) => InvokeEnvelope::from_domain_error(e),
+                }
+            }
+
+            "openrouter_model_providers" => {
+                let req_val = payload.get("request").cloned().unwrap_or(payload);
+                let dto: ProviderModelProvidersRequestDto = match serde_json::from_value(req_val) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        return InvokeEnvelope::error(
+                            "VALIDATION_ERROR",
+                            format!("Invalid ProviderModelProvidersRequestDto: {e}"),
+                            None,
+                        );
+                    }
+                };
+                match self
+                    .provider_metadata_service
+                    .openrouter_model_providers(dto)
+                    .await
+                {
+                    Ok(res) => InvokeEnvelope::success(res),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
+            "openrouter_credits" => match self.provider_metadata_service.openrouter_credits().await {
+                Ok(res) => InvokeEnvelope::success(res),
+                Err(e) => InvokeEnvelope::from_app_error(e),
+            },
+
+            "nanogpt_model_providers" => {
+                let req_val = payload.get("request").cloned().unwrap_or(payload);
+                let dto: ProviderModelProvidersRequestDto = match serde_json::from_value(req_val) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        return InvokeEnvelope::error(
+                            "VALIDATION_ERROR",
+                            format!("Invalid ProviderModelProvidersRequestDto: {e}"),
+                            None,
+                        );
+                    }
+                };
+                match self
+                    .provider_metadata_service
+                    .nanogpt_model_providers(dto)
+                    .await
+                {
+                    Ok(res) => InvokeEnvelope::success(res),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
+            "nanogpt_credits" => match self.provider_metadata_service.nanogpt_credits().await {
+                Ok(res) => InvokeEnvelope::success(res),
+                Err(e) => InvokeEnvelope::from_app_error(e),
+            },
+
+            "siliconflow_embedding_models" => {
+                let req_val = payload.get("request").cloned().unwrap_or(payload);
+                let dto: SiliconFlowEmbeddingModelsRequestDto =
+                    match serde_json::from_value(req_val) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            return InvokeEnvelope::error(
+                                "VALIDATION_ERROR",
+                                format!("Invalid SiliconFlowEmbeddingModelsRequestDto: {e}"),
+                                None,
+                            );
+                        }
+                    };
+                match self
+                    .provider_metadata_service
+                    .siliconflow_embedding_models(dto)
+                    .await
+                {
+                    Ok(res) => InvokeEnvelope::success(res),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
+            "workers_ai_embedding_models" => {
+                let req_val = payload.get("request").cloned().unwrap_or(payload);
+                let dto: WorkersAiModelsRequestDto = match serde_json::from_value(req_val) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        return InvokeEnvelope::error(
+                            "VALIDATION_ERROR",
+                            format!("Invalid WorkersAiModelsRequestDto: {e}"),
+                            None,
+                        );
+                    }
+                };
+                match self
+                    .provider_metadata_service
+                    .workers_ai_embedding_models(dto)
+                    .await
+                {
+                    Ok(res) => InvokeEnvelope::success(res),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
+            "workers_ai_multimodal_models" => {
+                let req_val = payload.get("request").cloned().unwrap_or(payload);
+                let dto: WorkersAiModelsRequestDto = match serde_json::from_value(req_val) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        return InvokeEnvelope::error(
+                            "VALIDATION_ERROR",
+                            format!("Invalid WorkersAiModelsRequestDto: {e}"),
+                            None,
+                        );
+                    }
+                };
+                match self
+                    .provider_metadata_service
+                    .workers_ai_multimodal_models(dto)
+                    .await
+                {
+                    Ok(res) => InvokeEnvelope::success(res),
+                    Err(e) => InvokeEnvelope::from_app_error(e),
+                }
+            }
+
             // ---------------- Chat Completion (Non-streaming & Streaming) ----------------
-            "chat_completion_status" => {
+            "chat_completion_status" | "get_chat_completions_status" => {
                 let req_val = payload.get("request").cloned().unwrap_or(payload);
                 let dto: ChatCompletionStatusRequestDto = match serde_json::from_value(req_val) {
                     Ok(d) => d,
@@ -3591,7 +3893,7 @@ impl JniAppState {
                 }
             }
 
-            "chat_completion_generate" => {
+            "chat_completion_generate" | "generate_chat_completion" => {
                 let request_id = payload
                     .get("request_id")
                     .and_then(|v| v.as_str())
@@ -3618,7 +3920,9 @@ impl JniAppState {
                 }
             }
 
-            "chat_completion_start_stream" | "chat_completion_stream_start" => {
+            "chat_completion_start_stream"
+            | "chat_completion_stream_start"
+            | "start_chat_completion_stream" => {
                 let stream_id = payload
                     .get("stream_id")
                     .and_then(|v| v.as_str())
@@ -3650,7 +3954,9 @@ impl JniAppState {
                 }
             }
 
-            "chat_completion_read_stream" | "chat_completion_stream_read" => {
+            "chat_completion_read_stream"
+            | "chat_completion_stream_read"
+            | "read_chat_completion_stream" => {
                 let stream_id = match Self::require_str(&payload, "stream_id") {
                     Ok(s) => s,
                     Err(env) => return env,
@@ -3718,7 +4024,9 @@ impl JniAppState {
             "chat_completion_cancel_stream"
             | "chat_completion_close_stream"
             | "chat_completion_stream_cancel"
-            | "chat_completion_abort" => {
+            | "chat_completion_abort"
+            | "close_chat_completion_stream"
+            | "cancel_chat_completion_generation" => {
                 let stream_id = match payload
                     .get("stream_id")
                     .or_else(|| payload.get("request_id"))
@@ -4116,118 +4424,6 @@ pub extern "system" fn Java_io_github_sanitised_st_api_TauriTavernJniBridge_nati
         .new_string(json!({ "stream_id": stream_id_str }).to_string())
         .expect("Failed to allocate payload string");
     Java_io_github_sanitised_st_api_TauriTavernJniBridge_nativeInvokeJson(env, class, cmd, payload)
-}
-
-// ============================================================================
-// JNI Entrypoints for com.sillytavern.android.runtime.RustRuntimeBridge
-// ============================================================================
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_sillytavern_android_runtime_RustRuntimeBridge_nativeInit<'local>(
-    mut env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    data_root: JString<'local>,
-    default_assets_dir: JString<'local>,
-) -> jlong {
-    let data_root_str: String = match env.get_string(&data_root) {
-        Ok(s) => s.into(),
-        Err(_) => return 0,
-    };
-    let default_assets_str: String = match env.get_string(&default_assets_dir) {
-        Ok(s) => s.into(),
-        Err(_) => return 0,
-    };
-
-    let rt = get_runtime();
-    let res = rt.block_on(JniAppState::init(
-        PathBuf::from(data_root_str),
-        PathBuf::from(default_assets_str),
-    ));
-
-    match res {
-        Ok(state) => Box::into_raw(Box::new(state)) as jlong,
-        Err(err) => {
-            tracing::error!("RustRuntimeBridge.nativeInit failed: {}", err);
-            0
-        }
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_sillytavern_android_runtime_RustRuntimeBridge_nativeDestroy<
-    'local,
->(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    handle: jlong,
-) {
-    if handle != 0 {
-        unsafe {
-            let _ = Box::from_raw(handle as *mut JniAppState);
-        }
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_sillytavern_android_runtime_RustRuntimeBridge_nativeInvoke<
-    'local,
->(
-    mut env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    handle: jlong,
-    command: JString<'local>,
-    payload_json: JString<'local>,
-) -> jstring {
-    if handle == 0 {
-        let env_resp = InvokeEnvelope::error(
-            "UNINITIALIZED_HANDLE",
-            "JNI runtime handle is 0 (not initialized)",
-            None,
-        );
-        return env
-            .new_string(env_resp.to_json_string())
-            .expect("Failed to allocate JNI error string")
-            .into_raw();
-    }
-
-    let command_str: String = match env.get_string(&command) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            let env_resp = InvokeEnvelope::error(
-                "JNI_STRING_ERROR",
-                format!("Invalid command JString: {e}"),
-                None,
-            );
-            return env
-                .new_string(env_resp.to_json_string())
-                .expect("Failed to allocate JNI string")
-                .into_raw();
-        }
-    };
-
-    let payload_str: String = match env.get_string(&payload_json) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            let env_resp = InvokeEnvelope::error(
-                "JNI_STRING_ERROR",
-                format!("Invalid payloadJson JString: {e}"),
-                None,
-            );
-            return env
-                .new_string(env_resp.to_json_string())
-                .expect("Failed to allocate JNI string")
-                .into_raw();
-        }
-    };
-
-    let state = unsafe { &*(handle as *const JniAppState) };
-    let rt = get_runtime();
-    let envelope = rt.block_on(state.invoke(&command_str, &payload_str));
-    let json_out = envelope.to_json_string();
-
-    env.new_string(json_out)
-        .expect("Failed to allocate JNI response string")
-        .into_raw()
 }
 
 #[cfg(test)]

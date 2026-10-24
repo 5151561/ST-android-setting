@@ -5,10 +5,6 @@ import io.github.sanitised.st.api.ConnectionTestResult
 import io.github.sanitised.st.api.SecretProviderState
 import io.github.sanitised.st.api.SettingsSnapshot
 import io.github.sanitised.st.api.TavernCoreApi
-import io.github.sanitised.st.api.applyConnectionProfileToSettings
-import io.github.sanitised.st.api.deleteConnectionProfileFromSettings
-import io.github.sanitised.st.api.listConnectionProfilesFromSettings
-import io.github.sanitised.st.api.saveConnectionProfileToSettings
 
 interface ConnectionRepository {
     suspend fun getSettings(): Map<String, Any?>
@@ -73,27 +69,19 @@ class DefaultConnectionRepository(
     override suspend fun testConnection(mode: String, sourceValue: String, apiServer: String): ConnectionTestResult =
         clientProvider().testConnection(mode, sourceValue, apiServer)
 
-    override suspend fun listConnectionProfiles(): List<ConnectionProfile> {
-        val fromClient = runCatching { clientProvider().listConnectionProfiles() }.getOrDefault(emptyList())
-        if (fromClient.isNotEmpty()) return fromClient
-        return listConnectionProfilesFromSettings(getSettings())
-    }
+    override suspend fun listConnectionProfiles(): List<ConnectionProfile> =
+        clientProvider().listConnectionProfiles()
 
     override suspend fun saveConnectionProfile(profile: ConnectionProfile) {
-        val updated = saveConnectionProfileToSettings(getSettings(), profile)
-        saveSettings(updated)
+        clientProvider().saveConnectionProfile(profile)
     }
 
     override suspend fun deleteConnectionProfile(name: String) {
-        val updated = deleteConnectionProfileFromSettings(getSettings(), name)
-        saveSettings(updated)
+        clientProvider().deleteConnectionProfile(name)
     }
 
-    override suspend fun applyConnectionProfile(name: String): Boolean {
-        val updated = applyConnectionProfileToSettings(getSettings(), name) ?: return false
-        saveSettings(updated)
-        return true
-    }
+    override suspend fun applyConnectionProfile(name: String): Boolean =
+        clientProvider().applyConnectionProfile(name)
 
     override suspend fun listSettingsSnapshots(): List<SettingsSnapshot> =
         clientProvider().listSettingsSnapshots()

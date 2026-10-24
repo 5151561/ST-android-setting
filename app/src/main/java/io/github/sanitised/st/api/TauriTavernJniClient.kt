@@ -320,6 +320,10 @@ class TauriTavernJniClient(
         doListConnectionProfiles()
     override suspend fun saveConnectionProfile(profile: ConnectionProfile) =
         doSaveConnectionProfile(profile)
+    override suspend fun deleteConnectionProfile(name: String) =
+        doDeleteConnectionProfile(name)
+    override suspend fun applyConnectionProfile(name: String): Boolean =
+        doApplyConnectionProfile(name)
     override suspend fun listChatBackups(): List<ChatBackupSummary> = doListChatBackups()
     override suspend fun downloadChatBackup(name: String): CharacterExportFile =
         doDownloadChatBackup(name)

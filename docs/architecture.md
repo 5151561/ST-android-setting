@@ -1,14 +1,16 @@
 # ST-android 架构文档
 
-> 2026-06-24 当前口径：App 内聊天已退出隐藏 WebView runtime，聊天唯一入口为 `NativeChatScreen` + `NativeChatEngine`。旧 `ChatWebViewScreen` / `ChatRuntimeBridge` / `chat_runtime_adapter.js` 已删除。详见 `docs/native-chat-runtime-exit-status.md`。
+> 当前口径：
+> 1. **后端唯一真相源**：以 `TauriTavern` 上游 Rust Crates（`tt-application` / `tt-domain` / `tt-adapter-*`）为唯一真相源，`rust/tt-android-jni` 仅做纯序列化与 1:1 命令路由。旧 Node.js HTTP 客户端文件（`TavernHttpTransport.kt` 等）已退役删除。
+> 2. **原生 Compose 界面**：App 内聊天已退出隐藏 WebView runtime，聊天唯一入口为 `NativeChatScreen` + `NativeChatEngine`。详见 `docs/native-chat-runtime-exit-status.md`。
 
 ## 项目概览
 
-ST-android 是一个第三方 SillyTavern Android 客户端。它在设备本地通过 foreground service 运行嵌入式 Node.js + SillyTavern 服务端，并用 Jetpack Compose 构建原生 UI。
+ST-android 是基于 `TauriTavern` Rust 后端与 Jetpack Compose 原生 UI 的 SillyTavern Android 客户端。
 
 **包名**：`io.github.sanitised.st`  
-**最低 SDK**：26 (Android 8.0) · **目标 SDK**：36 · **编译 SDK**：36  
-**架构**：单模块 Gradle 项目（`app/`）
+**最低 SDK**：26 (Android 8.0) · **目标 SDK**：36 · **编译 SDK**：37  
+**架构**：单模块 Gradle 项目（`app/`）+ Rust JNI 桥接层（`rust/tt-android-jni/`）
 
 ---
 
@@ -20,7 +22,7 @@ ST-android 是一个第三方 SillyTavern Android 客户端。它在设备本地
 │                                                            │
 │  ┌──────────────┐  ┌────────────────┐  ┌──────────────┐  │
 │  │  Compose UI  │  │ ChatViewModel  │  │ MainViewModel│  │
-│  │  (原生界面)   │  │ + Chat Runtime │  │  (应用状态)   │  │
+│  │  (薄界面承接) │  │ + Chat Runtime │  │  (应用状态)   │  │
 │  └──────┬───────┘  └───────┬────────┘  └──────┬───────┘  │
 │         │                  │                  │          │
 │         │   ┌──────────────┴──────────────┐   │          │
@@ -30,86 +32,50 @@ ST-android 是一个第三方 SillyTavern Android 客户端。它在设备本地
 │         │   └──────────────┬──────────────┘   │          │
 │         │                  │                  │          │
 │  ┌──────┴──────────────────┴──────────────────┴──────┐   │
-│  │              数据访问层                               │   │
-│  │  CharacterRepository / TavernCoreClient             │   │
-│  │  LocalTavernLibraryReader (本地文件 fallback)         │   │
+│  │              数据访问层 (Repositories)              │   │
+│  │  Connection / Character / WorldInfo / PersonaPreset │   │
+│  │  TauriTavernJniClient (1:1 对齐上游 Command/DTO)   │   │
 │  └─────────────────────┬───────────────────────────────┘   │
-│                        │                                    │
+│                        │ JNI (TauriTavernNativeBridge)     │
 │  ┌─────────────────────┴───────────────────────────────┐   │
-│  │           NodeService (Foreground Service)           │   │
-│  │           Node.js 进程 + SillyTavern 服务端           │   │
+│  │        rust/tt-android-jni (零业务发明路由层)        │   │
+│  │        TauriTavern 上游 Crates (tt-application)      │   │
 │  └─────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 一、核心运行时层
+## 一、核心运行时与 Rust JNI 桥接层
 
-### NodeService
+### TauriTavernJniBridge & `rust/tt-android-jni`
 
-**文件**：`NodeService.kt`
+**文件**：`app/src/main/java/io/github/sanitised/st/api/TauriTavernJniBridge.kt`、`rust/tt-android-jni/src/lib.rs`
 
-Foreground service，负责启动和管理 Node.js 进程，在其中运行 SillyTavern 服务端。
-
-| 职责 | 说明 |
-|------|------|
-| 进程管理 | 启动/停止 Node.js 进程 |
-| 状态通知 | 通过 `NodeStatusListener` 回调向上层报告状态 |
-| 前台通知 | 维持 foreground notification 防止系统杀死进程 |
-| 日志收集 | 捕获 Node.js stdout/stderr 输出 |
-
-**生命周期**：
-
-```
-ACTION_START → 解压 payload → 启动 Node.js → SillyTavern 监听端口
-ACTION_STOP  → 终止 Node.js 进程 → 停止 service
-```
-
-### NodePayload
-
-**文件**：`NodePayload.kt`
-
-管理 Node.js 运行环境的部署：
-
-- 首次运行时从 APK assets (`node_payload/`) 解压 Node 二进制和 SillyTavern 源码
-- 支持自定义 ST 安装（GitHub 仓库/分支/ZIP 包）
-
-### AppPaths
-
-**文件**：`AppPaths.kt`
-
-所有文件路径的单一来源（single source of truth）：
-
-| 路径 | 用途 |
-|------|------|
-| `stDir` (`files/st`) | SillyTavern 安装目录 |
-| `dataDir` (`files/data`) | 用户数据目录 |
-| `configDir` (`files/config`) | 配置文件目录 |
-| `logsDir` (`files/logs`) | 日志目录 |
-| `tmpDir` (`files/tmp`) | 临时文件目录 |
-| `nodeBin(abi)` | Node.js 二进制路径（按 CPU 架构区分） |
+100% 复用上游 `tt_application` 服务：
+- `ContentService::initialize_default_content()` + `UserService::initialize_user_directories()` 负责默认资源与用户目录初始化
+- `PresetService` + `FilePresetRepository` 负责预设读写、还原与导入
+- `LlmConnectionService` 负责 `_tauritavern/llm-connections` 连接配置管理
+- `ChatCompletionService` 负责所有供应商模型拉取、状态探测 (`get_chat_completions_status`) 与对话生成
+- `ProviderMetadataService` 负责 OpenRouter / NanoGPT 模型供应商与余额、SiliconFlow / Workers AI 模型列表查询
+- `ThemeService` / `BackgroundService` / `SecretService` / `SettingsService` / `CharacterService` / `ChatService` / `GroupService` / `WorldInfoService`
 
 ---
 
 ## 二、数据访问层
 
-ST-android 采用**双路径**数据访问策略：
+应用级依赖由 `STApplication` 中的 `AppContainer` 与 Hilt (`di/AppModule.kt`) 统一持有。UI 层与 ViewModel 通过各领域 Repository 访问数据，严禁直接实例化 `TauriTavernJniClient`。
 
-应用级依赖由 `STApplication` 中的 `AppContainer` 统一持有。角色功能通过
-`CharacterRepository` 访问数据，页面和 ViewModel 不直接创建 HTTP 客户端；
-`LocalTavernClientProvider` 根据当前端口提供本地 API，并保留本地文件 fallback。
+### 路径 1：TauriTavern JNI 客户端 — `TavernCoreApi` / `TauriTavernJniClient`
 
-### 路径 1：HTTP API — `TavernCoreApi` / `TavernCoreClient`
+**文件**：`api/TavernCoreModels.kt`、`api/TauriTavernJniClient.kt`、`api/TauriTavernJni*Ops.kt`
 
-**文件**：`api/TavernCoreApi.kt`
+通过 `TauriTavernNativeBridge` 1:1 调用 `rust/tt-android-jni` 暴露的上游 TauriTavern 命令。
 
-通过 OkHttp 调用本地 SillyTavern HTTP API（默认 `http://127.0.0.1:8000`）。这是**主数据通道**，涵盖所有角色、聊天、设置的 CRUD 操作。
-
-**技术特点**：
-- JSON 解析使用 SnakeYAML（不使用 Gson/Moshi）
-- JSON 序列化使用手写工具函数（`jsonObject()`、`jsonValue()`、`quoteJson()`）
-- CSRF token 自动获取和管理
+**三条架构铁律**：
+1. **后端唯一真相源**：所有业务校验、默认资源初始化、LLM 连接配置（`LlmConnectionService`）、模型状态探测（`ChatCompletionService::get_status`）、供应商元数据（`ProviderMetadataService`）、预设与密钥管理全部由上游 `TauriTavern` crates 执行。
+2. **JNI 零业务逻辑**：`rust/tt-android-jni` 只负责将上游命令名与 DTO 原样暴露给 JNI，严禁在 JNI 层手写山寨 Repository 或篡改返回结构。
+3. **前端零协议拼装**：Kotlin 侧不伪造 `"Hi"` 探测请求、不硬编码模型列表 (`defaultModels` / `fallbackModelsForSource`)、不手搓 `extension_settings.connection_profiles`。
 
 #### API 接口一览
 

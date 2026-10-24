@@ -148,7 +148,6 @@ import io.github.sanitised.st.NodeState
 import io.github.sanitised.st.NodeStatus
 import io.github.sanitised.st.chat.engine.ChatEngine
 import io.github.sanitised.st.api.GroupSummary
-import io.github.sanitised.st.api.TavernCoreClient
 import io.github.sanitised.st.api.WorldInfoBook
 import io.github.sanitised.st.api.WorldInfoSummary
 import io.github.sanitised.st.ui.screens.STAssistPill

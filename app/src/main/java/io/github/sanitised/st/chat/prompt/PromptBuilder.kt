@@ -47,7 +47,6 @@ object PromptBuilder {
         val source = (oai["chat_completion_source"] as? String)?.takeIf { it.isNotBlank() } ?: "openai"
         val activeProvider = activeApiConnectionProvider(settings)
         val model = modelForProvider(settings, activeProvider)
-            .ifBlank { activeProvider.defaultModels.firstOrNull().orEmpty() }
 
         val charName = character.name
         fun sub(text: String): String = text

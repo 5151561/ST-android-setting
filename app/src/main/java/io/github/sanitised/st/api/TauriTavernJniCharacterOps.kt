@@ -877,3 +877,133 @@ internal suspend fun TauriTavernJniClient.doSaveGroupChatJsonl(chatId: String, c
         )
     )
 }
+
+internal fun Map<*, *>.toCharacterSummary(): CharacterSummary {
+    val data = mapValue("data")
+    val extensions = data.mapValue("extensions")
+    val avatar = stringValue("avatar").ifBlank { stringValue("id") }
+    val name = stringValue("name")
+        .ifBlank { data.stringValue("name") }
+        .ifBlank { avatar.removeSuffix(".png") }
+    val tags = data.stringListValue("tags").ifEmpty { stringListValue("tags") }
+    return CharacterSummary(
+        id = avatar,
+        name = name,
+        avatarUrl = avatar.ifBlank { null },
+        tags = tags,
+        creatorNotes = data.stringValue("creator_notes"),
+        isFavorite = extensions.booleanValue("fav") || booleanValue("fav"),
+        lastChatAt = longValue("date_last_chat"),
+        createDate = stringValue("create_date"),
+        chatSize = longValue("chat_size"),
+        dataSize = longValue("data_size"),
+        characterVersion = data.stringValue("character_version")
+    )
+}
+
+internal fun Map<*, *>.toCharacterDetail(fallbackAvatar: String): CharacterDetail {
+    val data = mapValue("data")
+    val extensions = data.mapValue("extensions")
+    val depthPrompt = extensions.mapValue("depth_prompt")
+    val avatar = stringValue("avatar").ifBlank { fallbackAvatar }
+    val name = stringValue("name")
+        .ifBlank { data.stringValue("name") }
+        .ifBlank { avatar.removeSuffix(".png") }
+    return CharacterDetail(
+        id = avatar,
+        name = name,
+        avatarUrl = avatar.ifBlank { null },
+        description = stringValue("description").ifBlank { data.stringValue("description") },
+        personality = stringValue("personality").ifBlank { data.stringValue("personality") },
+        scenario = stringValue("scenario").ifBlank { data.stringValue("scenario") },
+        firstMessage = stringValue("first_mes").ifBlank { data.stringValue("first_mes") },
+        messageExample = stringValue("mes_example").ifBlank { data.stringValue("mes_example") },
+        creatorNotes = data.stringValue("creator_notes").ifBlank { stringValue("creatorcomment") },
+        systemPrompt = data.stringValue("system_prompt"),
+        postHistoryInstructions = data.stringValue("post_history_instructions"),
+        tags = data.stringListValue("tags").ifEmpty { stringListValue("tags") },
+        creator = data.stringValue("creator"),
+        characterVersion = data.stringValue("character_version"),
+        world = extensions.stringValue("world"),
+        talkativeness = extensions.doubleValue("talkativeness", doubleValue("talkativeness", 0.5)),
+        isFavorite = extensions.booleanValue("fav") || booleanValue("fav"),
+        alternateGreetings = data.stringListValue("alternate_greetings"),
+        depthPrompt = depthPrompt.stringValue("prompt"),
+        depthPromptDepth = depthPrompt.intValue("depth", 4),
+        depthPromptRole = depthPrompt.stringValue("role").ifBlank { "system" },
+        chat = stringValue("chat"),
+        createDate = stringValue("create_date"),
+        rawJsonData = stringValue("json_data"),
+        sourceUrl = extensions.characterSourceUrl()
+    )
+}
+
+internal fun Map<*, *>.characterSourceUrl(): String {
+    val chubPath = when (val value = get("chub")) {
+        is Map<*, *> -> value.stringValue("full_path")
+        is String -> value
+        else -> ""
+    }
+    if (chubPath.isNotBlank()) return "https://chub.ai/characters/$chubPath"
+
+    val pygmalionId = stringValue("pygmalion_id")
+    if (pygmalionId.isNotBlank()) return "https://pygmalion.chat/$pygmalionId"
+
+    val githubRepo = stringValue("github_repo")
+    if (githubRepo.isNotBlank()) return "https://github.com/$githubRepo"
+
+    val sourceUrl = stringValue("source_url")
+    if (sourceUrl.isNotBlank()) return sourceUrl
+
+    val risuSource = (get("risuai") as? Map<*, *>)
+        ?.let { risu -> risu["source"] as? List<*> }
+        ?.firstOrNull() as? String
+    if (risuSource?.startsWith("risurealm:") == true) {
+        return "https://realm.risuai.net/character/${risuSource.substringAfter(':')}"
+    }
+
+    val perchanceSlug = (get("perchance_data") as? Map<*, *>)?.stringValue("slug")
+    if (!perchanceSlug.isNullOrBlank()) {
+        return "https://perchance.org/ai-character-chat?data=$perchanceSlug"
+    }
+
+    return ""
+}
+
+internal fun Map<*, *>.toCharacterChatSummary(): CharacterChatSummary {
+    return CharacterChatSummary(
+        id = stringValue("file_id").ifBlank { stringValue("file_name").removeSuffix(".jsonl") },
+        fileName = stringValue("file_name"),
+        fileSize = stringValue("file_size"),
+        messageCount = intValue("chat_items", 0),
+        lastMessage = stringValue("mes"),
+        lastMessageAt = when (val value = get("last_mes")) {
+            is String -> value
+            is Number -> value.toLong().toString()
+            else -> ""
+        }
+    )
+}
+
+internal fun Map<*, *>.toGroupSummary(): GroupSummary {
+    val id = stringValue("id")
+    val chatId = stringValue("chat_id")
+    return GroupSummary(
+        id = id,
+        name = stringValue("name").ifBlank { id.ifBlank { "未命名群聊" } },
+        members = stringListValue("members"),
+        chatId = chatId,
+        chats = stringListValue("chats"),
+        lastUpdated = longValue("date_last_chat"),
+        chatSize = longValue("chat_size"),
+        avatarUrl = stringValue("avatar_url"),
+        allowSelfResponses = booleanValue("allow_self_responses"),
+        activationStrategy = intValue("activation_strategy", 0),
+        generationMode = intValue("generation_mode", 0),
+        isFavorite = booleanValue("fav"),
+        disabledMembers = stringListValue("disabled_members"),
+        autoModeDelay = intValue("auto_mode_delay", 5),
+        generationModeJoinPrefix = stringValue("generation_mode_join_prefix"),
+        generationModeJoinSuffix = stringValue("generation_mode_join_suffix")
+    )
+}
