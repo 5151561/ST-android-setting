@@ -89,6 +89,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import io.github.sanitised.st.api.PersonaSaveRequest
@@ -166,8 +167,8 @@ fun STApiConnectionScreen(
     var settings by remember { mutableStateOf<Map<String, Any?>>(emptyMap()) }
     val running = status.state == NodeState.RUNNING
 
-    var activeMode by remember { mutableStateOf("cc") }
-    var activeProviderId by remember { mutableStateOf<String?>(null) }
+    var activeMode by rememberSaveable { mutableStateOf("cc") }
+    var activeProviderId by rememberSaveable { mutableStateOf<String?>(null) }
     var refreshTrigger by remember { mutableStateOf(0) }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current

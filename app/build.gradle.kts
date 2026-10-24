@@ -1,9 +1,12 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jetbrains.kotlin.plugin.serialization")
-    id("com.google.devtools.ksp")
-    id("com.google.dagger.hilt.android")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.plugin.compose)
+    alias(libs.plugins.kotlin.plugin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.screenshot)
+    alias(libs.plugins.dropshots)
+    id("jacoco")
 }
 
 java {
@@ -37,6 +40,7 @@ android {
         applicationId = "io.github.sanitised.st"
         minSdk = 26
         targetSdk = 36
+        testInstrumentationRunner = "io.github.sanitised.st.STTestRunner"
 
         val githubTag = run {
             val refType = System.getenv("GITHUB_REF_TYPE")
@@ -117,17 +121,65 @@ android {
         }
     }
 
+    experimentalProperties["android.experimental.enableScreenshotTest"] = true
+
     testOptions {
-        unitTests.all {
-            val hostReleaseDir = rootProject.file("rust/tt-android-jni/target/release").absolutePath
-            val hostDebugDir = rootProject.file("rust/tt-android-jni/target/debug").absolutePath
-            val existingLibPath = System.getProperty("java.library.path").orEmpty()
-            val combinedPath = listOf(hostReleaseDir, hostDebugDir, existingLibPath)
-                .filter { it.isNotBlank() }
-                .joinToString(File.pathSeparator)
-            it.systemProperty("java.library.path", combinedPath)
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                val hostReleaseDir = rootProject.file("rust/tt-android-jni/target/release").absolutePath
+                val hostDebugDir = rootProject.file("rust/tt-android-jni/target/debug").absolutePath
+                val existingLibPath = System.getProperty("java.library.path").orEmpty()
+                val combinedPath = listOf(hostReleaseDir, hostDebugDir, existingLibPath)
+                    .filter { it.isNotBlank() }
+                    .joinToString(File.pathSeparator)
+                it.systemProperty("java.library.path", combinedPath)
+            }
         }
     }
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    dependsOn("testDebugUnitTest")
+    description = "Generates JaCoCo HTML and XML coverage reports for debug unit tests."
+    group = "verification"
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+
+    val fileFilter = listOf(
+        "**/R.class",
+        "**/R$*.class",
+        "**/BuildConfig.*",
+        "**/Manifest*.*",
+        "**/*Test*.*",
+        "android/**/*.*",
+        "**/*_HiltModules*.*",
+        "**/*_Factory*.*",
+        "**/*_MembersInjector*.*",
+        "**/Hilt_*.*",
+        "**/dagger/**"
+    )
+
+    val debugTree = fileTree("${layout.buildDirectory.get().asFile}/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes") {
+        exclude(fileFilter)
+    }
+    val javacTree = fileTree("${layout.buildDirectory.get().asFile}/intermediates/javac/debug/compileDebugJavaWithJavac/classes") {
+        exclude(fileFilter)
+    }
+
+    sourceDirectories.setFrom(files("$projectDir/src/main/java"))
+    classDirectories.setFrom(files(debugTree, javacTree))
+    executionData.setFrom(
+        fileTree(layout.buildDirectory) {
+            include(
+                "jacoco/testDebugUnitTest.exec",
+                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"
+            )
+        }
+    )
 }
 
 val buildRustJniHost by tasks.registering(Exec::class) {
@@ -153,43 +205,68 @@ tasks.matching { it.name == "preBuild" }.configureEach {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
-    implementation("androidx.core:core-ktx:1.19.0")
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("com.google.android.material:material:1.14.0")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material:material-icons-core")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
-    implementation("org.apache.commons:commons-compress:1.28.0")
-    implementation("org.yaml:snakeyaml:2.6")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-    implementation("io.coil-kt.coil3:coil-compose:3.5.0")
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.google.material)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.commons.compress)
+    implementation(libs.snakeyaml)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.coil.compose)
     // Coil 3 默认不带网络层,加载 http(s) 图片必须显式引入 OkHttp 网络组件。
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
+    implementation(libs.coil.network.okhttp)
 
     // Navigation Compose & Navigation 3
-    implementation("androidx.navigation:navigation-compose:2.9.8")
-    implementation("androidx.navigation3:navigation3-runtime:1.2.0")
-    implementation("androidx.navigation3:navigation3-ui:1.2.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-navigation3:2.11.0")
-    implementation("androidx.navigationevent:navigationevent-compose:1.1.1")
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+    implementation(libs.androidx.navigationevent.compose)
 
     // Hilt Dependency Injection
-    implementation("com.google.dagger:hilt-android:2.60.1")
-    ksp("com.google.dagger:hilt-compiler:2.60.1")
-    implementation("androidx.hilt:hilt-navigation-compose:1.3.0")
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.androidx.hilt.navigation.compose)
 
     // OkHttp for TavernApiAdapter
-    implementation("com.squareup.okhttp3:okhttp:5.4.0")
+    implementation(libs.okhttp)
 
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
-    testImplementation("org.json:json:20240303")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    // Local Unit & Robolectric UI Testing
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.org.json)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.mockk)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.hilt.android.testing)
+    kspTest(libs.hilt.android.compiler)
 
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    // Instrumented & Device Screenshot Testing
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.mockk.android)
+    androidTestImplementation(libs.dropshots)
+    androidTestImplementation(libs.hilt.android.testing)
+    kspAndroidTest(libs.hilt.android.compiler)
+
+    // Compose Preview Screenshot Testing
+    screenshotTestImplementation(libs.screenshot.validation.api)
+    screenshotTestImplementation(libs.androidx.compose.ui.tooling)
+
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

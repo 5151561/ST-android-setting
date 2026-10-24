@@ -15,18 +15,25 @@ ST-android 是一个第三方 SillyTavern Android 客户端。它在设备上通
 ./gradlew assembleDebug
 # 输出: app/build/outputs/apk/debug/app-debug.apk
 
-# 运行全部单元测试
+# 运行全部单元测试（含 MockK 单测、契约测试与 Robolectric Compose 行为测试）
 ./gradlew test
 
 # 运行单个测试类
 ./gradlew testDebugUnitTest --tests "io.github.sanitised.st.api.TavernCoreClientTest"
+
+# 更新 / 校验 Compose Preview 截图测试（参考图位于 app/src/screenshotTestDebug/reference/）
+./gradlew updateDebugScreenshotTest
+./gradlew validateDebugScreenshotTest
+
+# 生成 JaCoCo 覆盖率报告
+./gradlew jacocoTestReport
 
 # Docker 构建（仅 Linux，从源码编译 Node.js，首次约 2-3 小时）
 git submodule update --init --recursive
 ./ci/scripts/build_apk_docker.sh
 ```
 
-仅有本地 JVM 单元测试（`app/src/test/`），无 instrumented test。无自定义 lint 配置。
+完整测试栈与规范（Hilt 测试基建、MockK、Robolectric Compose 测试、Compose Preview 截图测试、Dropshots 设备截图测试、JaCoCo）见 `docs/testing.md`。依赖与插件版本统一由 `gradle/libs.versions.toml` 管理。
 
 项目通过 `app/build.gradle.kts` 中的 `java.toolchain` 绑定 JDK 21，无需在 `gradle.properties` 中硬编码本地绝对路径；`GradleJavaHomeTest` 会校验运行时 JVM 主版本。
 

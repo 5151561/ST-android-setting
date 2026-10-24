@@ -46,3 +46,7 @@ google-services.json
 /app/src/main/assets/tt-default/
 /app/src/main/assets/node_payload/
 /app/src/main/assets/legal/sillytavern_package-lock.json
+
+# Generated screenshot test reference images
+/app/src/screenshotTest*/reference/
+/app/src/androidTest/screenshots/

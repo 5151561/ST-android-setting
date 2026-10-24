@@ -140,4 +140,53 @@ class STNavigatorTest {
             routeToNavKey("characters/detail/alice.png")
         )
     }
+
+    @Test
+    fun navigateWithSingleTopFalseAllowsDuplicateAdjacentKeys() {
+        val navigator = createNavigator()
+
+        navigator.navigate(STKey.CharacterDetail("alice.png"), singleTop = false)
+        navigator.navigate(STKey.CharacterDetail("alice.png"), singleTop = false)
+
+        assertEquals(
+            listOf(
+                STKey.Home,
+                STKey.CharacterDetail("alice.png"),
+                STKey.CharacterDetail("alice.png"),
+            ),
+            navigator.backStack.toList()
+        )
+    }
+
+    @Test
+    fun openChatPreservesPrecedingNonChatBackStackEntries() {
+        val navigator = createNavigator()
+
+        navigator.switchRootTab(STKey.Characters)
+        navigator.navigate(STKey.CharacterDetail("alice.png"))
+        navigator.openChat(avatar = "alice.png", chatFile = "chat-1.jsonl")
+        navigator.navigate(STKey.PastChats("alice.png"))
+        navigator.openChat(avatar = "alice.png", chatFile = "chat-2.jsonl")
+
+        assertEquals(
+            listOf(
+                STKey.Home,
+                STKey.Characters,
+                STKey.CharacterDetail("alice.png"),
+                STKey.Chat(avatar = "alice.png", chatFile = "chat-2.jsonl", useCurrentStore = false),
+            ),
+            navigator.backStack.toList()
+        )
+    }
+
+    @Test
+    fun switchRootTabToSameRootTabWithoutSubPagesIsNoOp() {
+        val navigator = createNavigator()
+
+        navigator.switchRootTab(STKey.Characters)
+        assertEquals(listOf(STKey.Home, STKey.Characters), navigator.backStack.toList())
+
+        navigator.switchRootTab(STKey.Characters)
+        assertEquals(listOf(STKey.Home, STKey.Characters), navigator.backStack.toList())
+    }
 }
