@@ -202,11 +202,12 @@ fun STMeScreen(
     }
 }
 
+private val MiniSwatchColors = listOf(0xFFFFB871, 0xFFC6CB95, 0xFFE5C0A2, 0xFF251F17)
+
 @Composable
 private fun STMiniSwatch() {
-    val colors = listOf(0xFFFFB871, 0xFFC6CB95, 0xFFE5C0A2, 0xFF251F17)
     Row {
-        colors.forEachIndexed { index, colorLong ->
+        MiniSwatchColors.forEachIndexed { index, colorLong ->
             Box(
                 modifier = Modifier
                     .size(18.dp)

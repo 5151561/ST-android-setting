@@ -145,8 +145,9 @@ fun STWorldInfoScreen(
 @Composable
 private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, selective: Boolean, order: Int = 0) {
     // 直接点击整条即展开/收起,不再单独放按钮(展开后无需再找按钮,误触也能就地收起)。
-    var expanded by remember { mutableStateOf(false) }
-    var overflowing by remember { mutableStateOf(false) }
+    var expanded by remember(content) { mutableStateOf(false) }
+    var overflowing by remember(content) { mutableStateOf(false) }
+    val keyList = remember(keys) { keys.split(", ").filter { it.isNotEmpty() } }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -183,7 +184,7 @@ private fun LoreEntryPreview(keys: String, content: String, constant: Boolean, s
             }
             Text("关键词", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                keys.split(", ").forEach { keyword ->
+                keyList.forEach { keyword ->
                     STBadge(
                         keyword,
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,

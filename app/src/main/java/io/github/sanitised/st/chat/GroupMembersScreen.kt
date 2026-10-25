@@ -147,7 +147,7 @@ fun GroupMembersScreen(
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
             // 说明文本
-            item {
+            item(key = "intro", contentType = "intro") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -162,7 +162,7 @@ fun GroupMembersScreen(
                 }
             }
             requestedSpeakerName?.let { speaker ->
-                item {
+                item(key = "speaker_banner", contentType = "speaker_banner") {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -192,7 +192,7 @@ fun GroupMembersScreen(
             }
 
             // 当前群成员 Section
-            item {
+            item(key = "active_header", contentType = "section_header") {
                 SectionHeader(
                     title = "当前成员",
                     trailing = {
@@ -205,7 +205,11 @@ fun GroupMembersScreen(
                 )
             }
 
-            itemsIndexed(activeMembers) { index, m ->
+            itemsIndexed(
+                items = activeMembers,
+                key = { _, m -> m.id },
+                contentType = { _, _ -> "active_member" }
+            ) { index, m ->
                 MemberManageRow(
                     member = m,
                     order = index + 1,
@@ -242,12 +246,12 @@ fun GroupMembersScreen(
             }
 
             // 添加成员 Section
-            item {
+            item(key = "candidate_header", contentType = "section_header") {
                 SectionHeader(title = "添加成员")
             }
 
             if (candidates.isEmpty()) {
-                item {
+                item(key = "empty_candidates", contentType = "empty_candidates") {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -262,7 +266,11 @@ fun GroupMembersScreen(
                     }
                 }
             } else {
-                itemsIndexed(candidates) { index, c ->
+                itemsIndexed(
+                    items = candidates,
+                    key = { _, c -> c.id },
+                    contentType = { _, _ -> "candidate_member" }
+                ) { index, c ->
                     ListItem(
                         leadingContent = {
                             Box(

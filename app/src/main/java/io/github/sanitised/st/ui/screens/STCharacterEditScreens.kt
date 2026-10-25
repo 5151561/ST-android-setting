@@ -286,7 +286,7 @@ fun STAltGreetingsScreen(
         if (loading) { CharLoading(); return@P0Scaffold }
         P0InfoBanner("备选开场白会成为新聊天第一条消息的滑动项。左右滑动开场消息即可切换。")
         GreetingEditor("主开场（滑动 1）", mainGreeting, onChange = { mainGreeting = it }, onDelete = null, main = true)
-        greetings.forEachIndexed { index, g ->
+        greetings.toList().forEachIndexed { index, g ->
             GreetingEditor(
                 label = "备选 ${index + 1}（滑动 ${index + 2}）",
                 text = g,

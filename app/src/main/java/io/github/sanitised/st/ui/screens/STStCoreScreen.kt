@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -98,26 +99,7 @@ fun STStCoreScreen(
     val defaultContentPath = remember(context) { AppPaths.defaultContentDir(context).absolutePath }
     val running = status.state == NodeState.RUNNING
     val starting = status.state == NodeState.STARTING
-
-    var uptimeSec by remember(running) { mutableStateOf(0) }
-    LaunchedEffect(running) {
-        if (running) {
-            uptimeSec = 0
-            while (true) {
-                delay(1000)
-                uptimeSec++
-            }
-        } else {
-            uptimeSec = 0
-        }
-    }
-    val uptimeText = if (running) {
-        val min = uptimeSec / 60
-        val sec = uptimeSec % 60
-        if (min > 0) "${min} 分 ${sec} 秒" else "${sec} 秒"
-    } else {
-        "—"
-    }
+    val recentSnapshots = remember(settingsSnapshots) { settingsSnapshots.take(5) }
 
     STBackRoot(title = "TauriTavern 核心", onBack = onBack, modifier = modifier, actions = {
         STIconButton(Icons.Filled.MoreVert, "更多", { onShowMessage("TauriTavern Rust 核心由进程内 JNI 直接驱动") })
@@ -170,7 +152,7 @@ fun STStCoreScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("运行时长", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(uptimeText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    STUptimeValueText(running = running)
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -283,17 +265,41 @@ fun STStCoreScreen(
                 divider = settingsSnapshots.isNotEmpty(),
                 onClick = onCreateSettingsSnapshot
             )
-            settingsSnapshots.take(5).forEachIndexed { index, snap ->
+            recentSnapshots.forEachIndexed { index, snap ->
                 STListItem(
                     headline = snap.name,
                     supporting = "${snap.size} bytes",
                     leading = { STTileIcon(Icons.Filled.CheckCircle) },
-                    divider = index != settingsSnapshots.take(5).lastIndex,
+                    divider = index != recentSnapshots.lastIndex,
                     onClick = { onRestoreSettingsSnapshot(snap.name) }
                 )
             }
         }
     }
+}
+
+@Composable
+private fun STUptimeValueText(running: Boolean) {
+    var uptimeSec by remember(running) { mutableIntStateOf(0) }
+    LaunchedEffect(running) {
+        if (running) {
+            uptimeSec = 0
+            while (true) {
+                delay(1000)
+                uptimeSec++
+            }
+        } else {
+            uptimeSec = 0
+        }
+    }
+    val uptimeText = if (running) {
+        val min = uptimeSec / 60
+        val sec = uptimeSec % 60
+        if (min > 0) "${min} 分 ${sec} 秒" else "${sec} 秒"
+    } else {
+        "—"
+    }
+    Text(uptimeText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
 }
 
 @Composable

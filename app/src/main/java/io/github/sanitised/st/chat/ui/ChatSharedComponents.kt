@@ -4,6 +4,7 @@ package io.github.sanitised.st.chat.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -230,10 +231,20 @@ fun ChatRichText(
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(modifier = modifier) {
-        text.split('\n').forEachIndexed { index, line ->
-            if (index > 0) Spacer(modifier = Modifier.height(8.dp))
-            ChatRichTextLine(line = line, color = color, primary = primary, muted = muted)
+    val fontScale = LocalChatFontScale.current
+    val lines = remember(text) { text.split('\n') }
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        lines.forEach { line ->
+            ChatRichTextLine(
+                line = line,
+                color = color,
+                primary = primary,
+                muted = muted,
+                fontScale = fontScale
+            )
         }
     }
 }
@@ -247,15 +258,15 @@ private fun ChatRichTextLine(
     color: Color,
     primary: Color,
     muted: Color,
+    fontScale: Float = LocalChatFontScale.current,
 ) {
     // 字号缩放系数由 LocalChatFontScale 提供(基准 14sp),用户在设置屏调整字号时生效;
     // 缩放只作用于 style 的 fontSize/lineHeight,不进 AnnotatedString,故不影响上面的 remember 缓存。
-    val scale = LocalChatFontScale.current
     Text(
         text = remember(line, primary, muted) { chatRichLine(line, primary, muted) },
         style = MaterialTheme.typography.bodyMedium.copy(
-            fontSize = 14.sp * scale,
-            lineHeight = 22.sp * scale
+            fontSize = 14.sp * fontScale,
+            lineHeight = 22.sp * fontScale
         ),
         color = color,
     )

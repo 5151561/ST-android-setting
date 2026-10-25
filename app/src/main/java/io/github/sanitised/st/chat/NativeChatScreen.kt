@@ -119,6 +119,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -126,7 +128,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -246,8 +247,9 @@ fun NativeChatScreen(
         uri?.let { uploadAttachment(it, true) }
     }
 
-    LaunchedEffect(status.state) {
-        if (status.state != NodeState.RUNNING) {
+    val statusState = status.state
+    SideEffect {
+        if (statusState != NodeState.RUNNING) {
             store.markRuntimeUnavailable("服务未运行")
         } else if (store.runtimeState == RuntimeState.NOT_READY) {
             // 服务就绪后清掉滞留的"服务未运行",否则该错误会永远占据副标题和加载页。
@@ -421,16 +423,13 @@ fun NativeChatScreen(
                 )
             }
 
-            Box(modifier = Modifier.weight(1f)) {
-                // 「继续/重写」快捷条悬浮在消息列表底部(透明,不做背景遮罩)。测得其高度后
-                // 作为列表底部留白,最后一条消息就能完整滚到它上方,内容不再被这排盖住。
-                var quickStripHeightPx by remember { mutableStateOf(0) }
-                val quickStripHeight = with(LocalDensity.current) { quickStripHeightPx.toDp() }
+            Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                // 消息列表与底部透明「继续/重写」快捷条置于单次布局 Column 中,避免 onSizeChanged 二次帧布局抖动。
                 if (!targetMatched || (store.runtimeState == RuntimeState.NOT_READY && store.messages.isEmpty())) {
                     ChatLoadingView(
                         targetLabel = target.displayLabel(),
                         runtimeError = store.runtimeError,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.weight(1f).fillMaxWidth()
                     )
                 } else {
                     MessageList(
@@ -487,17 +486,14 @@ fun NativeChatScreen(
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxSize(),
-                        bottomContentPadding = quickStripHeight + 8.dp
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        bottomContentPadding = 8.dp
                     )
                 }
 
                 if (editingMessageId < 0) {
                     Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth()
-                            .onSizeChanged { quickStripHeightPx = it.height }
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         ChatQuickStrip(
                             runtimeReady = readyForTarget,

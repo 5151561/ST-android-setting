@@ -40,11 +40,13 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,7 +65,9 @@ import io.github.sanitised.st.data.repository.DefaultPersonaPresetRepository
 import io.github.sanitised.st.data.repository.PersonaPresetRepository
 import io.github.sanitised.st.data.tavernApi
 import io.github.sanitised.st.ui.LocalTavernImageInterceptor
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.net.URLEncoder
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,7 +126,7 @@ fun STBackgroundsScreen(
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(true) }
     var backgrounds by remember { mutableStateOf<List<String>>(emptyList()) }
-    var reloadKey by remember { mutableStateOf(0) }
+    var reloadKey by remember { mutableIntStateOf(0) }
     var actionsFor by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -130,12 +134,14 @@ fun STBackgroundsScreen(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            val stored = copyBackgroundToLocal(context, uri)
-            if (stored != null) {
-                onChatBackgroundChanged(stored)
-                onShowMessage("已设置聊天背景")
-            } else {
-                onShowMessage("图片读取失败")
+            scope.launch {
+                val stored = withContext(Dispatchers.IO) { copyBackgroundToLocal(context, uri) }
+                if (stored != null) {
+                    onChatBackgroundChanged(stored)
+                    onShowMessage("已设置聊天背景")
+                } else {
+                    onShowMessage("图片读取失败")
+                }
             }
         }
     }
@@ -219,8 +225,9 @@ fun STBackgroundsScreen(
                 if (backgrounds.isEmpty()) {
                     Text("暂无背景图。点击右上「从相册选择」添加本地壁纸。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
                 }
+                val chunkedBackgrounds = remember(backgrounds) { backgrounds.chunked(2) }
                 Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    backgrounds.chunked(2).forEach { pair ->
+                    chunkedBackgrounds.forEach { pair ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             pair.forEach { bg ->
                                 BackgroundTile(
@@ -288,9 +295,10 @@ private fun BackgroundTile(bg: String, baseUrl: String, modifier: Modifier = Mod
             ?.takeIf { it.exists() }
             ?: thumbUrl
     }
+    val fallbackBrush = remember(bg) { Brush.linearGradient(gradientFor(bg.hashCode())) }
     Box(
         modifier = modifier.aspectRatio(16f / 10f).clip(RoundedCornerShape(14.dp))
-            .background(Brush.linearGradient(gradientFor(bg.hashCode())))
+            .background(fallbackBrush)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
@@ -328,8 +336,13 @@ fun STChatBehaviorScreen(
         loading = true
         runCatching {
             val s = personaPresetRepository.getSettings()
-            rawSettings = s; pu.clear(); pu.putAll(pmap(s["power_user"]))
-            autoCont.clear(); autoCont.putAll(pmap(pu["auto_continue"]))
+            Snapshot.withMutableSnapshot {
+                rawSettings = s
+                pu.clear()
+                pu.putAll(pmap(s["power_user"]))
+                autoCont.clear()
+                autoCont.putAll(pmap(pu["auto_continue"]))
+            }
         }.onFailure { onShowMessage(it.message ?: "设置加载失败") }
         loading = false
     }

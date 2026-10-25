@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sanitised.st.api.GroupSummary
@@ -88,7 +89,8 @@ fun GroupMesAssistant(
     onRegenerate: () -> Unit,
     onContinue: () -> Unit,
     onMore: () -> Unit,
-    onLongPress: (() -> Unit)? = null
+    onLongPress: (() -> Unit)? = null,
+    bubbleMaxWidth: Dp = (LocalConfiguration.current.screenWidthDp * 0.92f).dp
 ) {
     Row(
         modifier = Modifier
@@ -125,7 +127,7 @@ fun GroupMesAssistant(
             // 文本气泡:共享外壳 + 群聊特有的成员 accent 竖条(对齐设计稿 border-left)
             ChatBubbleSurface(
                 isUser = false,
-                maxWidth = (LocalConfiguration.current.screenWidthDp * 0.92f).dp,
+                maxWidth = bubbleMaxWidth,
                 accent = member.accent,
                 onLongPress = onLongPress
             ) {
@@ -157,7 +159,11 @@ fun GroupMesAssistant(
 // GroupMesUser — 消息气泡 (用户版)
 // ─────────────────────────────────────────────────────────────
 @Composable
-fun GroupMesUser(msg: ChatMessage, onLongPress: (() -> Unit)? = null) {
+fun GroupMesUser(
+    msg: ChatMessage,
+    onLongPress: (() -> Unit)? = null,
+    bubbleMaxWidth: Dp = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -166,7 +172,7 @@ fun GroupMesUser(msg: ChatMessage, onLongPress: (() -> Unit)? = null) {
         horizontalArrangement = Arrangement.End
     ) {
         Column(
-            modifier = Modifier.widthIn(max = (LocalConfiguration.current.screenWidthDp * 0.82f).dp),
+            modifier = Modifier.widthIn(max = bubbleMaxWidth),
             horizontalAlignment = Alignment.End
         ) {
             Text(
@@ -234,7 +240,7 @@ fun TypingRow(member: GroupMember, baseUrl: String) {
                 val infiniteTransition = rememberInfiniteTransition()
                 
                 listOf(0, 1, 2).forEach { index ->
-                    val dy by infiniteTransition.animateFloat(
+                    val dyState = infiniteTransition.animateFloat(
                         initialValue = 0f,
                         targetValue = -6f,
                         animationSpec = infiniteRepeatable(
@@ -252,7 +258,7 @@ fun TypingRow(member: GroupMember, baseUrl: String) {
                     
                     Box(
                         modifier = Modifier
-                            .offset(y = dy.dp)
+                            .offset { IntOffset(0, dyState.value.dp.roundToPx()) }
                             .size(6.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.onSurfaceVariant)

@@ -449,6 +449,10 @@ fun GroupChatScreen(
             }
 
             // 3. 消息滚动区 (Scroll Area)
+            val screenWidthDp = LocalConfiguration.current.screenWidthDp
+            val assistantBubbleMaxWidth = (screenWidthDp * 0.92f).dp
+            val userBubbleMaxWidth = (screenWidthDp * 0.82f).dp
+            val membersSnapshot = membersList.toList()
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 LazyColumn(
                     state = lazyListState,
@@ -456,7 +460,7 @@ fun GroupChatScreen(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    item {
+                    item(key = "date_header", contentType = "date_header") {
                         // 首条消息的发送时间作为会话日期头;原先是写死的 Demo 文案。
                         // 本 item 会随消息列表每次变化重组,formatChatDateLabel 每次调用
                         // 都要新建多个 SimpleDateFormat,必须用 remember 挡住。
@@ -466,16 +470,24 @@ fun GroupChatScreen(
                             ChatDateChip(text = label, verticalPadding = 12.dp, bold = true)
                         }
                     }
-                    itemsIndexed(threadMessages) { idx, msg ->
+                    itemsIndexed(
+                        items = threadMessages,
+                        key = { _, msg -> msg.id },
+                        contentType = { _, msg -> if (msg.isUser) "user" else "assistant" }
+                    ) { idx, msg ->
                         val isLast = idx == threadMessages.lastIndex
                         val onBubbleLongPress = {
                             if (isGenerating) onShowMessage("正在生成回复，请稍候")
                             else actionMessage = msg
                         }
                         if (msg.isUser) {
-                            GroupMesUser(msg = msg, onLongPress = onBubbleLongPress)
+                            GroupMesUser(
+                                msg = msg,
+                                onLongPress = onBubbleLongPress,
+                                bubbleMaxWidth = userBubbleMaxWidth
+                            )
                         } else {
-                            val member = findGroupSpeaker(msg, membersList)
+                            val member = findGroupSpeaker(msg, membersSnapshot)
                             if (member != null) {
                                 GroupMesAssistant(
                                     msg = msg,
@@ -495,14 +507,15 @@ fun GroupChatScreen(
                                     onRegenerate = { requestGroupReply(member.id) },
                                     onContinue = { requestGroupReply(member.id) },
                                     onMore = { showSpeakerSheet = true },
-                                    onLongPress = onBubbleLongPress
+                                    onLongPress = onBubbleLongPress,
+                                    bubbleMaxWidth = assistantBubbleMaxWidth
                                 )
                             }
                         }
                     }
                     if (typingSpeakerId != null) {
-                        item {
-                            val member = membersList.find { it.id == typingSpeakerId }
+                        item(key = "typing_row", contentType = "typing_row") {
+                            val member = membersSnapshot.find { it.id == typingSpeakerId }
                             if (member != null) {
                                 TypingRow(member = member, baseUrl = baseUrl)
                             }

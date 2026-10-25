@@ -80,8 +80,10 @@ import io.github.sanitised.st.ui.screens.chatSeenKey
 import io.github.sanitised.st.ui.screens.groupSeenKey
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Navigation 3 NavDisplay 与全部路由目的地。从 setContent 根作用域抽出成独立组件:
@@ -835,9 +837,16 @@ private fun EntryProviderScope<STNavKey>.settingsAndSystemEntries(
         LaunchedEffect(Unit) {
             val logsDir = appPaths.logsDir
             while (true) {
-                stdoutLog = readLogTail(File(logsDir, "node_stdout.log"), 16 * 1024)
-                stderrLog = readLogTail(File(logsDir, "node_stderr.log"), 16 * 1024)
-                serviceLog = readLogTail(File(logsDir, "service.log"), 16 * 1024)
+                val (out, err, svc) = withContext(Dispatchers.IO) {
+                    Triple(
+                        readLogTail(File(logsDir, "node_stdout.log"), 16 * 1024),
+                        readLogTail(File(logsDir, "node_stderr.log"), 16 * 1024),
+                        readLogTail(File(logsDir, "service.log"), 16 * 1024)
+                    )
+                }
+                stdoutLog = out
+                stderrLog = err
+                serviceLog = svc
                 delay(1000)
             }
         }

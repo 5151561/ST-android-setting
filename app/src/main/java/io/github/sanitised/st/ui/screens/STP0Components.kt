@@ -45,6 +45,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -525,7 +526,7 @@ fun P0Slider(
     steps: Int = 0,
     valueText: ((Float) -> String)? = null,
 ) {
-    var v by remember { mutableStateOf(initial) }
+    var v by remember { mutableFloatStateOf(initial) }
     P0Slider(label = label, value = v, onValueChange = { v = it }, modifier = modifier, valueRange = valueRange, steps = steps, valueText = valueText)
 }
 

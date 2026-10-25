@@ -87,6 +87,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -169,7 +170,7 @@ fun STApiConnectionScreen(
 
     var activeMode by rememberSaveable { mutableStateOf("cc") }
     var activeProviderId by rememberSaveable { mutableStateOf<String?>(null) }
-    var refreshTrigger by remember { mutableStateOf(0) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
@@ -518,17 +519,18 @@ private fun STConnectionProfileCard(
     }
 }
 
+private val ConnectionModes = listOf(
+    "cc" to "聊天补全",
+    "tc" to "文本补全",
+    "kobold" to "Kobold",
+    "novel" to "NovelAI"
+)
+
 @Composable
 private fun STModeControl(
     activeMode: String,
     onModeChange: (String) -> Unit
 ) {
-    val modes = listOf(
-        "cc" to "聊天补全",
-        "tc" to "文本补全",
-        "kobold" to "Kobold",
-        "novel" to "NovelAI"
-    )
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Text(
             text = "API 运行模式 (Mode)",
@@ -544,7 +546,7 @@ private fun STModeControl(
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            modes.forEach { (modeId, label) ->
+            ConnectionModes.forEach { (modeId, label) ->
                 val sel = modeId == activeMode
                 Box(
                     modifier = Modifier
@@ -729,12 +731,13 @@ private fun ProviderGrid(
     activeProviderId: String,
     onProviderChange: (ApiConnectionProviderState) -> Unit
 ) {
+    val chunkedProviders = remember(providers) { providers.chunked(3) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
-        providers.chunked(3).forEach { row ->
+        chunkedProviders.forEach { row ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(bottom = 8.dp)

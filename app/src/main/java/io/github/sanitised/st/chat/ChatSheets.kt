@@ -780,7 +780,7 @@ internal fun ItemizedPromptSheet(
                         modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
-                        item(key = "total") {
+                        item(key = "total", contentType = "total") {
                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                                 Row(verticalAlignment = Alignment.Bottom) {
                                     Text(
@@ -817,7 +817,11 @@ internal fun ItemizedPromptSheet(
                                 }
                             }
                         }
-                        itemsIndexed(prompt.components, key = { _, comp -> comp.name }) { index, comp ->
+                        itemsIndexed(
+                            items = prompt.components,
+                            key = { _, comp -> comp.name },
+                            contentType = { _, _ -> "component" }
+                        ) { index, comp ->
                             ItemizedComponentRow(
                                 name = comp.name,
                                 tokens = comp.tokens,
@@ -825,7 +829,7 @@ internal fun ItemizedPromptSheet(
                                 color = componentColor(index, comp.name)
                             )
                         }
-                        item(key = "meta") {
+                        item(key = "meta", contentType = "meta") {
                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
                                 HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp))
                                 if (prompt.presetName.isNotBlank() || prompt.modelUsed.isNotBlank()) {
@@ -1010,7 +1014,7 @@ internal fun DataBankSheet(
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    items(current, key = { it.url }) { file ->
+                    items(current, key = { it.url }, contentType = { "data_bank_file" }) { file ->
                         DataBankFileRow(
                             file = file,
                             onClick = {
@@ -1027,6 +1031,8 @@ internal fun DataBankSheet(
         }
     }
 }
+
+private val DATA_BANK_DATE_FORMATTER = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
 @Composable
 internal fun DataBankFileRow(
@@ -1067,9 +1073,13 @@ internal fun DataBankFileRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 if (file.created > 0) {
+                    val createdDateText = remember(file.created) {
+                        java.time.Instant.ofEpochMilli(file.created)
+                            .atZone(java.time.ZoneId.systemDefault())
+                            .format(DATA_BANK_DATE_FORMATTER)
+                    }
                     Text(
-                        text = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-                            .format(java.util.Date(file.created)),
+                        text = createdDateText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp)

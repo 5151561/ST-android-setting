@@ -588,7 +588,7 @@ fun STAccountScreen(
     val handle = user?.handle ?: P0_SAMPLE_ACCOUNTS.first().handle
     val name = user?.name ?: P0_SAMPLE_ACCOUNTS.first().name
     val admin = user?.admin ?: true
-    val created = user?.let { formatCreated(it.created) } ?: "—"
+    val created = remember(user?.created) { user?.let { formatCreated(it.created) } ?: "—" }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(

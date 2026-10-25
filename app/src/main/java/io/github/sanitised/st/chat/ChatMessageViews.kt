@@ -133,6 +133,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -375,6 +376,8 @@ internal fun MessageList(
     val listState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val density = LocalDensity.current
+    val context = LocalContext.current
+    val bubbleStyle = LocalChatBubbleStyle.current
     val imeInsets = WindowInsets.ime
     val visibleMessages = visibleChatMessages(messages)
     // 日期头只由首条消息的 send_date 决定;conversationDateLabel 每次调用都要
@@ -443,7 +446,7 @@ internal fun MessageList(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         if (hasMoreHistory) {
-            item(key = "load_more_history") {
+            item(key = "load_more_history", contentType = "load_more") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -477,13 +480,20 @@ internal fun MessageList(
             }
         }
         if (dateLabel != null) {
-            item(key = "date-chip") {
+            item(key = "date-chip", contentType = "date_chip") {
                 ChatDateChip(text = dateLabel)
             }
         }
         items(
             items = visibleMessages,
-            key = { msg -> chatMessageItemKey(msg) }
+            key = { msg -> chatMessageItemKey(msg) },
+            contentType = { msg ->
+                when {
+                    msg.id == editingMessageId -> "message_edit"
+                    msg.isUser -> "message_user"
+                    else -> "message_assistant"
+                }
+            }
         ) { message ->
             if (message.id == editingMessageId) {
                 MessageEditBubble(
@@ -511,7 +521,9 @@ internal fun MessageList(
                     onSwipeNext = onSwipeNext,
                     onRegenerate = onRegenerate,
                     onContinue = onContinue,
-                    onLongPress = { onLongPress(message) }
+                    onLongPress = { onLongPress(message) },
+                    bubbleStyle = bubbleStyle,
+                    context = context
                 )
             }
         }
@@ -533,19 +545,28 @@ internal fun MessageBubble(
     onRegenerate: () -> Unit,
     onContinue: () -> Unit,
     onLongPress: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bubbleStyle: Boolean = LocalChatBubbleStyle.current,
+    context: Context = LocalContext.current
 ) {
     val isUser = message.isUser
     val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
     val textColor = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-    val isToolMessage = message.toolInvocations.isNotEmpty()
+    val toolInvocations = remember(message.id, message.swipeId, message.extra) { message.toolInvocations }
+    val mediaAttachments = remember(message.id, message.swipeId, message.extra) { message.mediaAttachments }
+    val fileAttachments = remember(message.id, message.swipeId, message.extra) { message.fileAttachments }
+    val reasoning = remember(message.id, message.swipeId, message.extra) { message.reasoning }
+    val bookmarkLink = remember(message.id, message.swipeId, message.extra) { message.bookmarkLink }
+    val branches = remember(message.id, message.swipeId, message.extra) { message.branches }
+    val forceAvatar = remember(message.id, message.swipeId, message.extra) { message.extra.optString("force_avatar") }
+    val isToolMessage = toolInvocations.isNotEmpty()
     val showHiddenStyle = message.isSystem && !isToolMessage
-    val hiddenAlpha = if (showHiddenStyle) 0.5f else 1f
     // 关闭"消息冒泡风格"时走全宽文档布局:说话人用头像/名字区分,不再左右分栏与限宽。
-    val documentStyle = !LocalChatBubbleStyle.current
+    val documentStyle = !bubbleStyle
+    val alphaModifier = if (showHiddenStyle) Modifier.graphicsLayer { alpha = 0.5f } else Modifier
 
     Box(
-        modifier = modifier.fillMaxWidth().alpha(hiddenAlpha),
+        modifier = modifier.fillMaxWidth().then(alphaModifier),
         contentAlignment = if (documentStyle) Alignment.CenterStart else alignment
     ) {
         if (documentStyle) {
@@ -560,6 +581,14 @@ internal fun MessageBubble(
                 showHiddenStyle = showHiddenStyle,
                 isToolMessage = isToolMessage,
                 lastAssistant = lastAssistant,
+                toolInvocations = toolInvocations,
+                mediaAttachments = mediaAttachments,
+                fileAttachments = fileAttachments,
+                reasoning = reasoning,
+                bookmarkLink = bookmarkLink,
+                branches = branches,
+                forceAvatar = forceAvatar,
+                context = context,
                 onSwipePrevious = onSwipePrevious,
                 onSwipeNext = onSwipeNext,
                 onRegenerate = onRegenerate,
@@ -577,15 +606,16 @@ internal fun MessageBubble(
                 }
                 ChatRichText(text = message.mes, color = textColor)
                 MessageAttachments(
-                    media = message.mediaAttachments,
-                    files = message.fileAttachments,
+                    media = mediaAttachments,
+                    files = fileAttachments,
                     port = port,
+                    context = context,
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
         } else {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                val messageAvatarUrl = message.extra.optString("force_avatar").ifBlank { assistantAvatarUrl }
+                val messageAvatarUrl = forceAvatar.ifBlank { assistantAvatarUrl }
                 STAvatar(
                     label = message.name.ifBlank { characterName },
                     imageUrl = messageAvatarUrl,
@@ -616,25 +646,26 @@ internal fun MessageBubble(
                         onLongPress = onLongPress
                     ) {
                         if (isToolMessage) {
-                            ToolCallGroup(tools = message.toolInvocations)
+                            ToolCallGroup(tools = toolInvocations)
                         } else {
-                            message.reasoning?.let { reasoning ->
+                            reasoning?.let { reasoningText ->
                                 ReasoningSection(
-                                    reasoning = reasoning,
+                                    reasoning = reasoningText,
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
                             }
                             ChatRichText(text = message.mes, color = textColor)
                         }
                         MessageAttachments(
-                            media = message.mediaAttachments,
-                            files = message.fileAttachments,
+                            media = mediaAttachments,
+                            files = fileAttachments,
                             port = port,
+                            context = context,
                             modifier = Modifier.padding(top = 8.dp)
                         )
                         BubbleMeta(
-                            hasBookmark = message.bookmarkLink != null,
-                            branchCount = message.branches.size,
+                            hasBookmark = bookmarkLink != null,
+                            branchCount = branches.size,
                             modifier = Modifier
                                 .align(Alignment.End)
                                 .padding(top = 4.dp)
@@ -672,6 +703,14 @@ private fun DocumentMessageRow(
     showHiddenStyle: Boolean,
     isToolMessage: Boolean,
     lastAssistant: Boolean,
+    toolInvocations: List<ToolInvocation>,
+    mediaAttachments: List<MediaAttachment>,
+    fileAttachments: List<FileAttachment>,
+    reasoning: String?,
+    bookmarkLink: String?,
+    branches: List<String>,
+    forceAvatar: String,
+    context: Context,
     onSwipePrevious: (Int) -> Unit,
     onSwipeNext: (Int) -> Unit,
     onRegenerate: () -> Unit,
@@ -679,7 +718,7 @@ private fun DocumentMessageRow(
     onLongPress: () -> Unit
 ) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        val avatarUrl = if (isUser) "" else message.extra.optString("force_avatar").ifBlank { assistantAvatarUrl }
+        val avatarUrl = if (isUser) "" else forceAvatar.ifBlank { assistantAvatarUrl }
         val displayName = message.name.ifBlank { if (isUser) "你" else characterName }
         STAvatar(
             label = displayName,
@@ -707,12 +746,12 @@ private fun DocumentMessageRow(
             }
             ChatBubbleSurface(isUser = isUser, onLongPress = onLongPress) {
                 if (isToolMessage) {
-                    ToolCallGroup(tools = message.toolInvocations)
+                    ToolCallGroup(tools = toolInvocations)
                 } else {
                     if (!isUser) {
-                        message.reasoning?.let { reasoning ->
+                        reasoning?.let { reasoningText ->
                             ReasoningSection(
-                                reasoning = reasoning,
+                                reasoning = reasoningText,
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
                         }
@@ -720,15 +759,16 @@ private fun DocumentMessageRow(
                     ChatRichText(text = message.mes, color = textColor)
                 }
                 MessageAttachments(
-                    media = message.mediaAttachments,
-                    files = message.fileAttachments,
+                    media = mediaAttachments,
+                    files = fileAttachments,
                     port = port,
+                    context = context,
                     modifier = Modifier.padding(top = 8.dp)
                 )
                 if (!isUser) {
                     BubbleMeta(
-                        hasBookmark = message.bookmarkLink != null,
-                        branchCount = message.branches.size,
+                        hasBookmark = bookmarkLink != null,
+                        branchCount = branches.size,
                         modifier = Modifier
                             .align(Alignment.End)
                             .padding(top = 4.dp)
@@ -756,7 +796,8 @@ internal fun MessageAttachments(
     media: List<MediaAttachment>,
     files: List<FileAttachment>,
     port: Int,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    context: Context = LocalContext.current
 ) {
     if (media.isEmpty() && files.isEmpty()) return
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -775,7 +816,8 @@ internal fun MessageAttachments(
         files.forEach { item ->
             MessageFileCard(
                 file = item,
-                displayUrl = attachmentDisplayUrl(port, item.url)
+                displayUrl = attachmentDisplayUrl(port, item.url),
+                context = context
             )
         }
     }
@@ -785,9 +827,9 @@ internal fun MessageAttachments(
 internal fun MessageFileCard(
     file: FileAttachment,
     displayUrl: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    context: Context = LocalContext.current
 ) {
-    val context = LocalContext.current
     Surface(
         onClick = {
             runCatching {
@@ -833,7 +875,7 @@ internal fun ReasoningSection(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Column(modifier = modifier.fillMaxWidth().animateContentSize()) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

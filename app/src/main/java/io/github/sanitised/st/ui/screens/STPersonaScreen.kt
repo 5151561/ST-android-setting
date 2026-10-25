@@ -77,8 +77,9 @@ fun STPersonaScreen(
         loadPersonas()
     }
 
-    val activePersonas = personas.filter { it.isDefault }
-    val otherPersonas = personas.filter { !it.isDefault }
+    val (activePersonas, otherPersonas) = remember(personas) {
+        personas.partition { it.isDefault }
+    }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Box(modifier = Modifier.fillMaxSize()) {

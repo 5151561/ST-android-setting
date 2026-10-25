@@ -76,8 +76,13 @@ fun NewGroupScreen(
     val selectedIds = remember { mutableStateListOf<String>() }
 
     // The available carousel is everything not yet selected, in library order.
-    val selectedMembers = selectedIds.mapNotNull { id -> characters.firstOrNull { it.id == id } }
-    val availableCandidates = characters.filter { it.id !in selectedIds }
+    val selectedIdsSnapshot = selectedIds.toList()
+    val selectedMembers = remember(characters, selectedIdsSnapshot) {
+        selectedIdsSnapshot.mapNotNull { id -> characters.firstOrNull { it.id == id } }
+    }
+    val availableCandidates = remember(characters, selectedIdsSnapshot) {
+        characters.filter { it.id !in selectedIdsSnapshot }
+    }
 
     val canCreate = groupName.isNotBlank() && selectedMembers.isNotEmpty()
 
@@ -132,7 +137,7 @@ fun NewGroupScreen(
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
             // 1. 群聊名称与大头像
-            item {
+            item(key = "header_input", contentType = "header_input") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -164,7 +169,7 @@ fun NewGroupScreen(
 
             // 加载 / 空角色库提示
             if (loading) {
-                item {
+                item(key = "loading_hint", contentType = "status_hint") {
                     Text(
                         text = "正在读取角色…",
                         style = MaterialTheme.typography.bodyMedium,
@@ -173,7 +178,7 @@ fun NewGroupScreen(
                     )
                 }
             } else if (characters.isEmpty()) {
-                item {
+                item(key = "empty_characters_hint", contentType = "status_hint") {
                     Text(
                         text = "还没有可用角色，请先在「角色」页导入或创建角色。",
                         style = MaterialTheme.typography.bodyMedium,
@@ -184,7 +189,7 @@ fun NewGroupScreen(
             }
 
             // 2. 已选成员顺序调整
-            item {
+            item(key = "selected_header", contentType = "section_header") {
                 SectionHeader(
                     title = "参与者 · 发言顺序",
                     trailing = {
@@ -198,7 +203,7 @@ fun NewGroupScreen(
             }
 
             if (selectedMembers.isEmpty()) {
-                item {
+                item(key = "empty_selected_hint", contentType = "empty_selected_hint") {
                     Text(
                         text = "从下面的角色库中选择至少一位参与者。",
                         style = MaterialTheme.typography.bodySmall,
@@ -208,7 +213,11 @@ fun NewGroupScreen(
                 }
             }
 
-            itemsIndexed(selectedMembers, key = { _, m -> m.id }) { index, m ->
+            itemsIndexed(
+                items = selectedMembers,
+                key = { _, m -> m.id },
+                contentType = { _, _ -> "selected_member" }
+            ) { index, m ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -288,10 +297,10 @@ fun NewGroupScreen(
             }
 
             // 3. 待选角色库
-            item {
+            item(key = "candidates_header", contentType = "section_header") {
                 SectionHeader(title = "添加更多角色")
             }
-            item {
+            item(key = "candidates_carousel", contentType = "candidates_carousel") {
                 if (availableCandidates.isEmpty()) {
                     Text(
                         text = if (characters.isEmpty()) "暂无角色" else "已添加全部角色",
@@ -356,10 +365,10 @@ fun NewGroupScreen(
             }
 
             // 4. 回复策略
-            item {
+            item(key = "strategy_header", contentType = "section_header") {
                 SectionHeader(title = "回复策略")
             }
-            item {
+            item(key = "strategy_chips", contentType = "strategy_chips") {
                 FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -403,7 +412,7 @@ fun NewGroupScreen(
                 }
             }
 
-            item {
+            item(key = "footer_hint", contentType = "footer_hint") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

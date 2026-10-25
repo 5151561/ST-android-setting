@@ -67,6 +67,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -255,7 +256,11 @@ fun STCharacterLibraryScreen(
                             bottom = 104.dp
                         )
                     ) {
-                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        item(
+                            key = "character_header",
+                            contentType = "character_header",
+                            span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }
+                        ) {
                             STSectionHeader(
                                 title = when {
                                     selectedFilter == 1 -> "收藏"
@@ -273,7 +278,11 @@ fun STCharacterLibraryScreen(
                                 }
                             )
                         }
-                        items(cards, key = { it.id }) { card ->
+                        items(
+                            cards,
+                            key = { it.id },
+                            contentType = { "character_card" }
+                        ) { card ->
                             STCharacterCardView(
                                 card = card,
                                 baseUrl = baseUrl,
@@ -348,7 +357,7 @@ fun STCharacterProfileScreen(
             gradient = stGradientFor(avatar.hashCode())
         )
     }
-    val card = uiState.detail?.toSTCharacterCard(0) ?: fallback
+    val card = remember(uiState.detail, fallback) { uiState.detail?.toSTCharacterCard(0) ?: fallback }
     val favorite = uiState.detail?.isFavorite ?: false
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -597,38 +606,51 @@ private fun STCharacterCardView(
         color = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Column {
+            val bgColors = remember(card.gradient) { card.gradient.map { Color(it) } }
+            var avatarLoadFailed by remember(card.avatarUrl, baseUrl) { mutableStateOf(false) }
+            val avatarModel = remember(card.avatarUrl, baseUrl) {
+                stAvatarImageUrl(baseUrl, card.avatarUrl)
+            }
+            val hasAvatarImage = avatarModel != null && !avatarLoadFailed
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(170.dp)
-                    .background(Brush.linearGradient(card.gradient.map { Color(it) }))
+                    .drawWithCache {
+                        val bgBrush = Brush.linearGradient(bgColors)
+                        val radialBrush = Brush.radialGradient(
+                            colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                            radius = size.height * 1.5f
+                        )
+                        onDrawBehind {
+                            drawRect(bgBrush)
+                            if (!hasAvatarImage) {
+                                drawRect(radialBrush)
+                            }
+                        }
+                    }
             ) {
-                var avatarLoadFailed by remember(card.avatarUrl, baseUrl) { mutableStateOf(false) }
-                val avatarModel = remember(card.avatarUrl, baseUrl) {
-                    stAvatarImageUrl(baseUrl, card.avatarUrl)
-                }
-                if (avatarModel != null && !avatarLoadFailed) {
+                if (hasAvatarImage) {
                     AsyncImage(
                         model = avatarModel,
                         contentDescription = card.name,
                         contentScale = ContentScale.Crop,
                         onError = { avatarLoadFailed = true },
-                        modifier = Modifier.matchParentSize()
+                        modifier = Modifier
+                            .matchParentSize()
+                            .drawWithCache {
+                                val radialBrush = Brush.radialGradient(
+                                    colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                                    radius = size.height * 1.5f
+                                )
+                                onDrawWithContent {
+                                    drawContent()
+                                    drawRect(radialBrush)
+                                }
+                            }
                     )
                 }
-                val density = LocalDensity.current
-                val heightPx = remember { with(density) { 170.dp.toPx() } }
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
-                                radius = heightPx * 1.5f
-                            )
-                        )
-                )
-                if (avatarModel == null || avatarLoadFailed) {
+                if (!hasAvatarImage) {
                     Text(
                         text = card.initial,
                         style = androidx.compose.ui.text.TextStyle(
@@ -713,12 +735,12 @@ private fun STCharacterCardView(
 
 @Composable
 private fun CharacterHero(card: STCharacterCard, baseUrl: String) {
-    val gradientColors = remember(card.gradient) { card.gradient.map { Color(it) } }
+    val bgBrush = remember(card.gradient) { Brush.linearGradient(card.gradient.map { Color(it) }) }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(220.dp)
-            .background(Brush.linearGradient(gradientColors))
+            .background(bgBrush)
     ) {
         var avatarLoadFailed by remember(card.avatarUrl, baseUrl) { mutableStateOf(false) }
         val avatarModel = remember(card.avatarUrl, baseUrl) {
@@ -734,16 +756,17 @@ private fun CharacterHero(card: STCharacterCard, baseUrl: String) {
             )
         }
         val density = LocalDensity.current
-        val heightPx = remember { with(density) { 220.dp.toPx() } }
+        val heightPx = remember(density) { with(density) { 220.dp.toPx() } }
+        val radialBrush = remember(heightPx) {
+            Brush.radialGradient(
+                colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                radius = heightPx * 1.5f
+            )
+        }
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
-                        radius = heightPx * 1.5f
-                    )
-                )
+                .background(radialBrush)
         )
         if (avatarModel == null || avatarLoadFailed) {
             Text(
@@ -757,15 +780,16 @@ private fun CharacterHero(card: STCharacterCard, baseUrl: String) {
             )
         }
         val surfaceColor = MaterialTheme.colorScheme.surface
+        val verticalBrush = remember(surfaceColor, heightPx) {
+            Brush.verticalGradient(
+                colors = listOf(Color.Transparent, surfaceColor.copy(alpha = 0.85f), surfaceColor),
+                startY = heightPx * 0.4f
+            )
+        }
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, surfaceColor.copy(alpha = 0.85f), surfaceColor),
-                        startY = heightPx * 0.4f
-                    )
-                )
+                .background(verticalBrush)
         )
         Column(
             modifier = Modifier
@@ -823,8 +847,14 @@ private fun CharacterDetailSections(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
-        STFieldRow("个性", detail?.personality?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: "未填写")
-        STFieldRow("场景", detail?.scenario?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: "未填写")
+        val pSummary = remember(detail) {
+            detail?.personality?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: "未填写"
+        }
+        val sSummary = remember(detail) {
+            detail?.scenario?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: "未填写"
+        }
+        STFieldRow("个性", pSummary)
+        STFieldRow("场景", sSummary)
     }
     STEditSection(title = "开场白", icon = Icons.Filled.EmojiPeople, open = true, count = detail?.firstMessage?.length) {
         Text(
@@ -833,15 +863,17 @@ private fun CharacterDetailSections(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
-        val greetings = detail?.alternateGreetings.orEmpty().filter { it.isNotBlank() }
-        if (greetings.isNotEmpty()) {
+        val altGreetings = remember(detail) {
+            detail?.alternateGreetings.orEmpty().filter { it.isNotBlank() }
+        }
+        if (altGreetings.isNotEmpty()) {
             Row(
                 modifier = Modifier
                     .padding(start = 16.dp, bottom = 12.dp)
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                greetings.forEachIndexed { index, _ -> STBadge("备选 ${index + 1}") }
+                altGreetings.forEachIndexed { index, _ -> STBadge("备选 ${index + 1}") }
             }
         }
     }

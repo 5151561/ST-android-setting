@@ -83,10 +83,8 @@ fun STSecretsScreen(
     
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    LaunchedEffect(providerOptions) {
-        if (providerOptions.isNotEmpty() && customKeyProvider !in providerOptionKeys) {
-            customKeyProvider = providerOptions.first().key
-        }
+    if (providerOptions.isNotEmpty() && customKeyProvider !in providerOptionKeys) {
+        customKeyProvider = providerOptions.first().key
     }
 
     Surface(modifier = modifier.fillMaxSize(), color = STThemeBg) {

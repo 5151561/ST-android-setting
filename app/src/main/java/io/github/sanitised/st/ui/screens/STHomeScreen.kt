@@ -107,7 +107,7 @@ fun STChatListScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 104.dp)
             ) {
-                item {
+                item(key = "home_header", contentType = "home_header") {
                     Column(modifier = Modifier.statusBarsPadding()) {
                         STTopHeader(
                             title = "对话",
@@ -142,7 +142,7 @@ fun STChatListScreen(
                 }
 
                 if (status.state != NodeState.RUNNING) {
-                    item {
+                    item(key = "service_inline_card", contentType = "service_inline_card") {
                         STServiceInlineCard(
                             status = status,
                             stLabel = stLabel,
@@ -155,7 +155,11 @@ fun STChatListScreen(
                     }
                 }
 
-                items(filteredChats, key = { it.id }) { chat ->
+                items(
+                    filteredChats,
+                    key = { it.id },
+                    contentType = { it.kind }
+                ) { chat ->
                     STChatListItem(
                         item = chat,
                         baseUrl = baseUrl,
@@ -239,10 +243,13 @@ private fun STChatListItem(
                         gradient = stGradientFor(item.id.hashCode())
                     )
                 } else {
-                    STGroupAvatar(
-                        initials = item.memberAvatars
+                    val initials = remember(item.memberAvatars, item.initial) {
+                        item.memberAvatars
                             .map { it.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?" }
-                            .ifEmpty { listOf(item.initial) },
+                            .ifEmpty { listOf(item.initial) }
+                    }
+                    STGroupAvatar(
+                        initials = initials,
                         imageUrls = item.memberAvatars,
                         baseUrl = baseUrl,
                         size = 52.dp

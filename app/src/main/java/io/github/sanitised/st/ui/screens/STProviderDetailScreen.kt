@@ -110,7 +110,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Check
@@ -146,6 +146,14 @@ import io.github.sanitised.st.data.repository.ConnectionRepository
 import io.github.sanitised.st.data.repository.DefaultConnectionRepository
 import io.github.sanitised.st.data.tavernApi
 import io.github.sanitised.st.ui.navigation.LocalSTOpenDrawer
+
+private val RegionQuickOptions = listOf(
+    "global" to "global",
+    "us-central1" to "us-central1",
+    "us-east5" to "us-east5",
+    "europe-west1" to "europe-west1",
+    "asia-northeast1" to "asia-northeast1"
+)
 
 @Composable
 fun STProviderDetailScreen(
@@ -587,14 +595,6 @@ fun STProviderDetailScreen(
             }
 
             // 2. Primary endpoint / auth mode before API Key
-            val regionQuickOptions = listOf(
-                "global" to "global",
-                "us-central1" to "us-central1",
-                "us-east5" to "us-east5",
-                "europe-west1" to "europe-west1",
-                "asia-northeast1" to "asia-northeast1"
-            )
-
             if (pid == "vertexai") {
                 ProviderOptionChipSelector(
                     title = "认证模式 (vertexai_auth_mode)",
@@ -656,7 +656,7 @@ fun STProviderDetailScreen(
                     )
                     ProviderOptionChipSelector(
                         title = "常用区域快捷选择",
-                        options = regionQuickOptions,
+                        options = RegionQuickOptions,
                         selectedValue = vertexRegion,
                         onSelect = { vertexRegion = it }
                     )
@@ -983,7 +983,7 @@ fun STProviderDetailScreen(
                         imageVector = Icons.Filled.Refresh,
                         contentDescription = "拉取模型列表",
                         tint = STThemePrimary,
-                        modifier = Modifier.rotate(angle.value)
+                        modifier = Modifier.graphicsLayer { rotationZ = angle.value }
                     )
                 }
             }
@@ -1001,6 +1001,7 @@ fun STProviderDetailScreen(
                 val q = modelSearchQuery.trim()
                 if (q.isEmpty()) modelsList else modelsList.filter { it.contains(q, ignoreCase = true) }
             }
+            val displayedModels = remember(filteredModels) { filteredModels.take(60) }
             
             if (filteredModels.isEmpty()) {
                 Text(
@@ -1013,7 +1014,7 @@ fun STProviderDetailScreen(
                 STListSurface(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 ) {
-                    filteredModels.forEachIndexed { index, model ->
+                    displayedModels.forEachIndexed { index, model ->
                         val isSelected = model == selectedModel
                         STListItem(
                             headline = model,
@@ -1029,7 +1030,7 @@ fun STProviderDetailScreen(
                                     Spacer(modifier = Modifier.size(24.dp))
                                 }
                             },
-                            divider = index != filteredModels.lastIndex,
+                            divider = index != displayedModels.lastIndex || filteredModels.size > displayedModels.size,
                             onClick = {
                                 selectedModel = model
                                 if (running) {
@@ -1041,6 +1042,12 @@ fun STProviderDetailScreen(
                                     }
                                 }
                             }
+                        )
+                    }
+                    if (filteredModels.size > displayedModels.size) {
+                        STListItem(
+                            headline = "仅展示前 ${displayedModels.size} 个模型（共 ${filteredModels.size} 个），请通过上方搜索框筛选",
+                            divider = false
                         )
                     }
                 }
@@ -1128,7 +1135,7 @@ fun STProviderDetailScreen(
                             )
                             ProviderOptionChipSelector(
                                 title = "常用区域快捷选择",
-                                options = regionQuickOptions,
+                                options = RegionQuickOptions,
                                 selectedValue = vertexRegion,
                                 onSelect = { vertexRegion = it }
                             )

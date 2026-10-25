@@ -298,10 +298,14 @@ fun ConversationSwitcherSheet(
     val checkpoints = emptyList<GroupConversation>()
 
     var query by remember { mutableStateOf("") }
-    fun matches(c: GroupConversation) =
-        query.isBlank() || c.title.contains(query, true) || c.preview.contains(query, true)
-    val filteredConvs = conversations.filter { matches(it) }
-    val filteredChecks = checkpoints.filter { matches(it) }
+    val filteredConvs = remember(conversations, query) {
+        if (query.isBlank()) conversations
+        else conversations.filter { it.title.contains(query, true) || it.preview.contains(query, true) }
+    }
+    val filteredChecks = remember(checkpoints, query) {
+        if (query.isBlank()) checkpoints
+        else checkpoints.filter { it.title.contains(query, true) || it.preview.contains(query, true) }
+    }
 
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
     val scrimSource = remember { MutableInteractionSource() }

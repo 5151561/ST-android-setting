@@ -200,11 +200,18 @@ fun STAvatar(
             LocalTavernImageInterceptor.resolveLocalFile(context, url)?.takeIf { it.exists() } ?: url
         }
     }
+    val bgBrush = remember(gradient) { Brush.linearGradient(gradient.map { Color(it) }) }
+    val highlightBrush = remember(sizePx) {
+        Brush.radialGradient(
+            colors = listOf(Color.White.copy(alpha = 0.24f), Color.Transparent),
+            radius = sizePx * 1.8f
+        )
+    }
     Box(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(Brush.linearGradient(gradient.map { Color(it) }))
+            .background(bgBrush)
             .then(if (ringColor != null) Modifier.border(2.dp, ringColor, shape) else Modifier),
         contentAlignment = Alignment.Center
     ) {
@@ -220,12 +227,7 @@ fun STAvatar(
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.24f), Color.Transparent),
-                        radius = sizePx * 1.8f
-                    )
-                )
+                .background(highlightBrush)
         )
         if (imageModel == null || imageLoadFailed) {
             Text(
@@ -263,7 +265,7 @@ fun STGroupAvatar(
                 else -> (index * (size.value * 0.22f)).dp
             }
             val yOffsetDp = if (count > 2 && index == 1) (size.value * 0.12f).dp else 0.dp
-            val gradient = stGradientFor(label.hashCode())
+            val gradient = remember(label) { stGradientFor(label.hashCode()) }
             
             STAvatar(
                 label = label,

@@ -114,11 +114,13 @@ internal fun GroupSummary.toGroupInfo(): GroupInfo = GroupInfo(
     chats = chats
 )
 
+private val GROUP_TIME_REGEX = Regex("(\\d{1,2}:\\d{2})")
+
 /** ST 的 send_date 多为 "May 26, 2026 12:00pm" 风格；尽力提取 HH:mm，否则原样回退。 */
 internal fun formatGroupTime(sendDate: String?): String {
     val raw = sendDate?.trim().orEmpty()
     if (raw.isEmpty()) return ""
-    val match = Regex("(\\d{1,2}:\\d{2})").find(raw)
+    val match = GROUP_TIME_REGEX.find(raw)
     return match?.groupValues?.get(1) ?: raw.take(16)
 }
 

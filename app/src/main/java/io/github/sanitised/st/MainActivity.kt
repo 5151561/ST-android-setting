@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity() {
                 )
             }
             val statusState = remember { mutableStateOf(TauriTavernRuntime.status.value) }
+            val currentStatus = statusState.value
             val pendingDialogState = rememberSaveable(stateSaver = pendingDialogStateSaver()) {
                 mutableStateOf<PendingDialog?>(null)
             }
@@ -130,10 +131,11 @@ class MainActivity : ComponentActivity() {
 
             var connectedCount by remember { mutableStateOf(0) }
             var drawerAccount by remember { mutableStateOf<STDrawerAccount?>(null) }
-            val running = statusState.value.state == NodeState.RUNNING
+            val running = currentStatus.state == NodeState.RUNNING
 
             LaunchedEffect(Unit) {
-                TauriTavernRuntime.ensureInitialized(this@MainActivity)
+                launch { TauriTavernRuntime.ensureInitialized(this@MainActivity) }
+                launch { viewModel.maybeAutoCheckForUpdates() }
             }
 
             LaunchedEffect(running) {
@@ -165,9 +167,9 @@ class MainActivity : ComponentActivity() {
 
             val librarySnapshot by rememberLocalTavernLibrarySnapshot(
                 dataRoot = appPaths.dataDir,
-                serverRunning = statusState.value.state == NodeState.RUNNING,
-                baseUrl = SillyTavernUrl.localWebUrl(statusState.value.port),
-                refreshKey = statusState.value.state to isOnHome
+                serverRunning = running,
+                baseUrl = SillyTavernUrl.localWebUrl(currentStatus.port),
+                refreshKey = currentStatus.state to isOnHome
             )
 
             DisposableEffect(Unit) {
@@ -185,7 +187,6 @@ class MainActivity : ComponentActivity() {
                 onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
 
-            LaunchedEffect(Unit) { viewModel.maybeAutoCheckForUpdates() }
             LaunchedEffect(userMessage?.id) {
                 userMessage?.let { message ->
                     snackbarHostState.showSnackbar(message.text)
@@ -251,7 +252,7 @@ class MainActivity : ComponentActivity() {
                     appVersion = versionLabel,
                     stLabel = currentStLabel,
                     nodeLabel = nodeLabel,
-                    status = statusState.value
+                    status = currentStatus
                 )
             }
             val customZipLauncher = rememberLauncherForActivityResult(
@@ -264,12 +265,8 @@ class MainActivity : ComponentActivity() {
             val triggerImport: () -> Unit = {
                 importLauncher.launch(
                     arrayOf(
-                        "application/zip",
-                        "application/x-zip-compressed",
-                        "application/gzip",
-                        "application/x-gzip",
-                        "application/octet-stream",
-                        "application/x-tar"
+                        "application/zip", "application/x-zip-compressed", "application/gzip",
+                        "application/x-gzip", "application/octet-stream", "application/x-tar"
                     )
                 )
             }
@@ -298,7 +295,7 @@ class MainActivity : ComponentActivity() {
             val navigateMainTab: (String) -> Unit = { route ->
                 if (route == STRoutes.LOGIN) {
                     scope.launch {
-                        if (statusState.value.state == NodeState.RUNNING) {
+                        if (currentStatus.state == NodeState.RUNNING) {
                             runCatching {
                                 appContainer.tavernClientProvider.get().logoutUser()
                             }
@@ -337,14 +334,14 @@ class MainActivity : ComponentActivity() {
                 // Legacy route contract: navController.navigate(STRoutes.groupChatDetail(groupId, chatId))
                 navigator.navigate(STKey.GroupChat(groupId = groupId, chatId = chatId.orEmpty()))
             }
-            val dynamicDrawerItems = remember(drawerNavItems, connectedCount, librarySnapshot, homeChatItems, statusState.value.state) {
+            val dynamicDrawerItems = remember(drawerNavItems, connectedCount, librarySnapshot, homeChatItems, currentStatus.state) {
                 drawerNavItems.map { item ->
                     when (item.route) {
                         STRoutes.HOME -> item.copy(badgeText = homeChatItems.size.takeIf { it > 0 }?.toString())
                         STRoutes.CHARACTERS -> item.copy(badgeText = librarySnapshot.characters.size.takeIf { it > 0 }?.toString())
                         STRoutes.CONNECTIONS -> item.copy(supportingText = "${connectedCount} 个已配置")
                         STRoutes.MANAGE_ST -> item.copy(
-                            supportingText = if (statusState.value.state == NodeState.RUNNING) "已就绪" else "未就绪"
+                            supportingText = if (currentStatus.state == NodeState.RUNNING) "已就绪" else "未就绪"
                         )
                         else -> item
                     }
@@ -367,7 +364,7 @@ class MainActivity : ComponentActivity() {
                         STAppDrawerHeader(
                             stLabel = currentStLabel,
                             nodeLabel = nodeLabel,
-                            status = statusState.value,
+                            status = currentStatus,
                             account = drawerAccount,
                             onOpenPersonas = { navigateFromDrawer(STRoutes.PERSONA) },
                             onOpenConnections = { navigateFromDrawer(STRoutes.CONNECTIONS) }
@@ -410,11 +407,7 @@ class MainActivity : ComponentActivity() {
                             triggerDiagnosticExport = triggerDiagnosticExport,
                             onLoadCustomZip = {
                                 customZipLauncher.launch(
-                                    arrayOf(
-                                        "application/zip",
-                                        "application/x-zip-compressed",
-                                        "application/octet-stream"
-                                    )
+                                    arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
                                 )
                             },
                             navigateMainTab = navigateMainTab,
@@ -435,9 +428,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startNode() {
-        lifecycleScope.launch {
-            TauriTavernRuntime.restart(this@MainActivity)
-        }
+        lifecycleScope.launch { TauriTavernRuntime.restart(this@MainActivity) }
     }
 
     private fun stopNode() {
@@ -468,17 +459,14 @@ class MainActivity : ComponentActivity() {
             .onFailure { runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) } }
     }
 
-    private fun openConfigDocs() {
+    private fun openConfigDocs() =
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://docs.sillytavern.app/administration/config-yaml/")))
-    }
 
-    private fun openUrl(url: String) {
+    private fun openUrl(url: String) =
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-    }
 
-    private fun openSillyTavernInBrowser(port: Int) {
+    private fun openSillyTavernInBrowser(port: Int) =
         openUrl(SillyTavernUrl.localWebUrl(port))
-    }
 
     private fun readConfiguredPort(): Int {
         val configFile = AppPaths(this).configFile
@@ -490,23 +478,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun isNotificationPermissionGranted(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
-        return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-    }
+    private fun isNotificationPermissionGranted(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     private fun maybeRequestNotificationPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         val permission = Manifest.permission.POST_NOTIFICATIONS
-        if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
-            notificationPermission.launch(permission)
-        }
+        if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) notificationPermission.launch(permission)
     }
 
-    private fun isBatteryUnrestricted(): Boolean {
-        val powerManager = getSystemService(PowerManager::class.java) ?: return false
-        return powerManager.isIgnoringBatteryOptimizations(packageName)
-    }
+    private fun isBatteryUnrestricted(): Boolean =
+        getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) == true
 }
 
 private fun ThemeMode.shouldUseDarkTheme(systemInDarkTheme: Boolean): Boolean = when (this) {

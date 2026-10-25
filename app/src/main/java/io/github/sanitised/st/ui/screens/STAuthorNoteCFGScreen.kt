@@ -30,7 +30,7 @@ fun STAuthorNoteCFGScreen(
     modifier: Modifier = Modifier
 ) {
     var tab by remember { mutableStateOf("note") }
-    var cfgValue by remember { mutableStateOf(1.3f) }
+    var cfgValue by remember { mutableFloatStateOf(1.3f) }
     
     var positivePrompt by remember { mutableStateOf("细腻的心理活动，带有一丝犹豫，多用潜台词描写。") }
     var negativePrompt by remember { mutableStateOf("不要写粗鲁的词，不要快速推平剧情，不要抢玩家台词。") }

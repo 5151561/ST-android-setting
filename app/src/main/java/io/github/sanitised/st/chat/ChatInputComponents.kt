@@ -123,6 +123,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -273,7 +274,9 @@ internal fun ChatInputBar(
     var showAttach by rememberSaveable { mutableStateOf(false) }
     val hasPendingAttachments = pendingAttachments.isNotEmpty()
 
-    LaunchedEffect(injectedTextToken) {
+    var lastHandledToken by remember { mutableIntStateOf(injectedTextToken) }
+    if (injectedTextToken != lastHandledToken) {
+        lastHandledToken = injectedTextToken
         if (injectedText.isNotBlank()) text = injectedText
     }
 
@@ -552,8 +555,10 @@ internal suspend fun uploadPickedAttachment(
     isMedia: Boolean
 ): Result<PendingAttachment> = runCatching {
     if (port <= 0) error("SillyTavern 服务尚未运行")
-    val file = withContext(Dispatchers.IO) { readPickedAttachmentFile(context, uri) }
-    val base64 = Base64.encodeToString(file.bytes, Base64.NO_WRAP)
+    val (file, base64) = withContext(Dispatchers.IO) {
+        val picked = readPickedAttachmentFile(context, uri)
+        picked to Base64.encodeToString(picked.bytes, Base64.NO_WRAP)
+    }
     val uploadedPath = tavernApiForPort(port)
         .uploadFile(name = file.name, base64Data = base64)
     PendingAttachment(

@@ -201,12 +201,14 @@ fun STWorldBookManageScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
         )
+        val bookNameMap = remember(books) { books.associate { it.id to it.name } }
+        val activeBookIds = remember(globalSelect) { globalSelect.toSet() }
         if (globalSelect.isEmpty()) {
             Text("（暂无全局激活的世界书）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         } else {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 globalSelect.forEach { id ->
-                    val display = books.firstOrNull { it.id == id }?.name ?: id
+                    val display = bookNameMap[id] ?: id
                     Row(
                         modifier = Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.secondaryContainer).clickable { toggleGlobal(id, false) }.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -226,7 +228,7 @@ fun STWorldBookManageScreen(
             Text("尚未创建任何世界书。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
         }
         books.forEachIndexed { i, b ->
-            val active = globalSelect.contains(b.id)
+            val active = b.id in activeBookIds
             STListItem(
                 headline = b.name,
                 supporting = if (active) "全局激活中" else "点击查看条目",
@@ -371,7 +373,7 @@ fun STLorebookDetailScreen(
                 return@P0Scaffold
             }
             val pageCount = (entries.size + pageSize - 1) / pageSize
-            val pageEntries = entries.drop(page * pageSize).take(pageSize)
+            val pageEntries = remember(entries, page) { entries.drop(page * pageSize).take(pageSize) }
             pageEntries.forEachIndexed { i, e ->
                 WiEntryRow(e, onClick = { onOpenEntry(e.uid) }, onToggle = { toggleEntry(e, it) })
                 if (i < pageEntries.lastIndex) {
@@ -416,23 +418,32 @@ private fun WiEntryRow(e: WorldInfoEntry, onClick: () -> Unit, onToggle: (Boolea
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
+            val title = remember(e) {
+                e.comment.ifBlank { e.keys.joinToString(", ").ifBlank { "未命名条目" } }
+            }
+            val keysPreview = remember(e) {
+                if (e.keys.isNotEmpty()) e.keys.joinToString(" · ") else null
+            }
+            val subtitle = remember(e) {
+                buildString {
+                    append(e.positionLabel()); append(" · 顺序 "); append(e.order)
+                    if (e.probability() < 100) { append(" · "); append(e.probability()); append("%") }
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    e.comment.ifBlank { e.keys.joinToString(", ").ifBlank { "未命名条目" } },
+                    title,
                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(mode.label, style = MaterialTheme.typography.labelSmall, color = tint)
             }
-            if (e.keys.isNotEmpty()) {
-                Text(e.keys.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
+            if (keysPreview != null) {
+                Text(keysPreview, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
             }
             Text(
-                buildString {
-                    append(e.positionLabel()); append(" · 顺序 "); append(e.order)
-                    if (e.probability() < 100) { append(" · "); append(e.probability()); append("%") }
-                },
+                subtitle,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 3.dp)
@@ -462,6 +473,8 @@ fun STWorldEntryEditScreen(
     // 编辑草稿：从 entry.raw 起步，键名对齐上游条目字段，保存时整体写回（保留未知字段）。
     val draft = remember { mutableStateMapOf<String, Any?>() }
     var draftUid by remember { mutableIntStateOf(entryUid) }
+    var primaryKeysText by remember { mutableStateOf("") }
+    var secondaryKeysText by remember { mutableStateOf("") }
 
     LaunchedEffect(running, baseUrl, bookName, entryUid, worldInfoRepository) {
         if (!running) { loading = false; return@LaunchedEffect }
@@ -478,6 +491,10 @@ fun STWorldEntryEditScreen(
                 draft["disable"] = entry.disabled
                 draft.remove("disabled")
                 draftUid = entry.uid
+                primaryKeysText = (entry.raw["key"] as? List<*>)?.joinToString(", ") { it.toString() }
+                    ?: entry.keys.joinToString(", ")
+                secondaryKeysText = (entry.raw["keysecondary"] as? List<*>)?.joinToString(", ") { it.toString() }
+                    ?: entry.secondaryKeys.joinToString(", ")
             } else {
                 // 新条目
                 draftUid = (b.entries.maxOfOrNull { it.uid } ?: -1) + 1
@@ -488,6 +505,8 @@ fun STWorldEntryEditScreen(
                 draft["order"] = 100
                 draft["position"] = 1
                 draft["constant"] = false
+                primaryKeysText = ""
+                secondaryKeysText = ""
             }
         }.onFailure { onShowMessage(it.message ?: "条目加载失败") }
         loading = false
@@ -496,8 +515,6 @@ fun STWorldEntryEditScreen(
     fun s(key: String): String = (draft[key])?.toString().orEmpty()
     fun i(key: String, def: Int): Int = (draft[key] as? Number)?.toInt() ?: def
     fun b(key: String): Boolean = (draft[key] as? Boolean) ?: false
-    fun keysText(): String = (draft["key"] as? List<*>)?.joinToString(", ") { it.toString() } ?: ""
-    fun keysSecondaryText(): String = (draft["keysecondary"] as? List<*>)?.joinToString(", ") { it.toString() } ?: ""
 
     fun modeIndex(): Int = when {
         b("constant") -> 0
@@ -511,8 +528,8 @@ fun STWorldEntryEditScreen(
             runCatching {
                 val entry = WorldInfoEntry(
                     uid = draftUid,
-                    keys = keysFrom(keysText()),
-                    secondaryKeys = keysFrom(keysSecondaryText()),
+                    keys = keysFrom(primaryKeysText),
+                    secondaryKeys = keysFrom(secondaryKeysText),
                     comment = s("comment"),
                     content = s("content"),
                     order = i("order", 100),
@@ -566,8 +583,8 @@ fun STWorldEntryEditScreen(
         Spacer(Modifier.height(8.dp))
         if (tab == 0) {
             P0Field(label = "标题 / 备注", value = s("comment"), onValueChange = { draft["comment"] = it }, hint = "仅用于整理，不进入提示词")
-            P0Field(label = "主关键字（逗号分隔）", value = keysText(), onValueChange = { draft["key"] = keysFrom(it) })
-            P0Field(label = "可选过滤（逗号分隔，任一命中）", value = keysSecondaryText(), onValueChange = { draft["keysecondary"] = keysFrom(it) }, placeholder = "无 — 仅主关键字")
+            P0Field(label = "主关键字（逗号分隔）", value = primaryKeysText, onValueChange = { primaryKeysText = it; draft["key"] = keysFrom(it) })
+            P0Field(label = "可选过滤（逗号分隔，任一命中）", value = secondaryKeysText, onValueChange = { secondaryKeysText = it; draft["keysecondary"] = keysFrom(it) }, placeholder = "无 — 仅主关键字")
             P0BoltBanner("常驻条目无视关键字，始终插入提示词；触发条目在扫描窗口里命中关键字才插入。")
             P0Field(
                 label = "内容", value = s("content"), onValueChange = { draft["content"] = it },

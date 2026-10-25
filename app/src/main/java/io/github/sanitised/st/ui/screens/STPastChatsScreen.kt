@@ -84,6 +84,9 @@ import io.github.sanitised.st.data.LocalTavernLibraryReader
 import io.github.sanitised.st.data.tavernApi
 import kotlinx.coroutines.launch
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -153,13 +156,15 @@ fun STPastChatsScreen(
         avatar.substringBeforeLast('.').replace('_', ' ').trim().ifBlank { "角色" }
     }
 
-    val filteredFiles = if (searchQuery.isBlank()) {
-        chatFiles
-    } else {
-        val q = searchQuery.lowercase()
-        chatFiles.filter { f ->
-            f.lastMessage.lowercase().contains(q) ||
-                f.fileName.lowercase().contains(q)
+    val filteredFiles = remember(chatFiles, searchQuery) {
+        if (searchQuery.isBlank()) {
+            chatFiles
+        } else {
+            val q = searchQuery.lowercase()
+            chatFiles.filter { f ->
+                f.lastMessage.lowercase().contains(q) ||
+                    f.fileName.lowercase().contains(q)
+            }
         }
     }
 
@@ -229,12 +234,13 @@ fun STPastChatsScreen(
                 LazyColumn(
                     contentPadding = PaddingValues(bottom = 96.dp)
                 ) {
-                    item(key = "section-header") {
+                    item(key = "section-header", contentType = "section-header") {
                         SectionHeaderRow(count = filteredFiles.size)
                     }
                     items(
                         items = filteredFiles,
-                        key = { it.id }
+                        key = { it.id },
+                        contentType = { "chat-file" }
                     ) { file ->
                         val isCurrent = isSameChatFile(file.fileName, currentChatFile)
                         ChatFileRow(
@@ -494,7 +500,8 @@ private fun ChatFileRow(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val displayTime = if (isCurrent) "当前对话" else formatChatTime(file.lastMessageAt)
+                        val formattedChatTime = remember(file.lastMessageAt) { formatChatTime(file.lastMessageAt) }
+                        val displayTime = if (isCurrent) "当前对话" else formattedChatTime
                         Text(
                             text = displayTime,
                             style = MaterialTheme.typography.titleMedium,
@@ -526,8 +533,9 @@ private fun ChatFileRow(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        val formattedTimestamp = remember(file.lastMessageAt) { formatChatTimestamp(file.lastMessageAt) }
                         Text(
-                            text = "${formatChatTimestamp(file.lastMessageAt)} · ${file.fileSize}",
+                            text = "$formattedTimestamp · ${file.fileSize}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -616,8 +624,9 @@ private fun ChatFileActionsSheet(
                     }
                 }
                 Column(modifier = Modifier.weight(1f)) {
+                    val formattedTime = remember(file.lastMessageAt) { formatChatTime(file.lastMessageAt) }
                     Text(
-                        formatChatTime(file.lastMessageAt),
+                        formattedTime,
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
@@ -631,10 +640,11 @@ private fun ChatFileActionsSheet(
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
+            val formattedTimestamp = remember(file.lastMessageAt) { formatChatTimestamp(file.lastMessageAt) }
             SheetActionItem(
                 icon = Icons.Filled.PlayArrow,
                 label = if (isCurrent) "返回这段对话" else "打开这段对话",
-                subtitle = "${file.messageCount} 条消息 · ${formatChatTimestamp(file.lastMessageAt)}",
+                subtitle = "${file.messageCount} 条消息 · $formattedTimestamp",
                 onClick = onOpen
             )
             SheetActionItem(
@@ -697,7 +707,7 @@ private fun RenameDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var name by remember { mutableStateOf(currentName) }
+    var name by remember(currentName) { mutableStateOf(currentName) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("重命名对话") },
@@ -776,12 +786,13 @@ private fun formatChatTime(timestamp: String): String {
     return timestamp
 }
 
+private val CHAT_DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-M-d")
+
 private fun formatChatTimestamp(timestamp: String): String {
     if (timestamp.isBlank()) return ""
     val ms = timestamp.toLongOrNull()
     if (ms != null && ms > 0) {
-        val date = java.text.SimpleDateFormat("yyyy-M-d", java.util.Locale.getDefault())
-        return date.format(java.util.Date(ms))
+        return CHAT_DATE_FORMATTER.format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()))
     }
     return timestamp
 }

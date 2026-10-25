@@ -2,7 +2,9 @@ package io.github.sanitised.st.ui.screens
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberUpdatedState
 import io.github.sanitised.st.api.CharacterSummary
 import io.github.sanitised.st.api.ChatSummary
 import io.github.sanitised.st.api.GroupSummary
@@ -31,6 +33,7 @@ fun rememberLocalTavernLibrarySnapshot(
     refreshKey: Any?,
     clientProvider: () -> TavernCoreApi = { tavernApi(baseUrl) }
 ): State<LocalTavernLibrarySnapshot> {
+    val currentClientProvider by rememberUpdatedState(clientProvider)
     return produceState(
         initialValue = LocalTavernLibrarySnapshot(),
         dataRoot,
@@ -42,7 +45,7 @@ fun rememberLocalTavernLibrarySnapshot(
             val reader = LocalTavernLibraryReader(dataRoot)
             if (serverRunning) {
                 runCatching {
-                    val client = clientProvider()
+                    val client = currentClientProvider()
                     val localCharacters = reader.listCharacters()
                     val characters = client.listCharacters()
                         .ifEmpty { localCharacters }

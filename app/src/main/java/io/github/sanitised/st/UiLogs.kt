@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.VerticalAlignBottom
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import android.content.ClipData
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,6 +59,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+
+private data class LogTab(
+    val id: String,
+    val title: String,
+    val content: String,
+    val sizeLabel: String
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -138,19 +147,21 @@ fun LogsScreen(
             )
 
             // Stream Tabs Row
+            val tabs = remember(stdoutLog, stderrLog, serviceLog) {
+                listOf(
+                    LogTab("stdout", "stdout", stdoutLog, formatLogSize(stdoutLog)),
+                    LogTab("stderr", "stderr", stderrLog, formatLogSize(stderrLog)),
+                    LogTab("service", "service", serviceLog, formatLogSize(serviceLog))
+                )
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf(
-                    Triple("stdout", "stdout", stdoutLog),
-                    Triple("stderr", "stderr", stderrLog),
-                    Triple("service", "service", serviceLog)
-                ).forEach { (id, label, content) ->
-                    val isSelected = id == selectedTab
-                    val size = formatLogSize(content)
+                tabs.forEach { tab ->
+                    val isSelected = tab.id == selectedTab
                     
                     Box(
                         modifier = Modifier
@@ -162,19 +173,19 @@ fun LogsScreen(
                                 color = if (isSelected) Color.Transparent else MaterialTheme.colorScheme.outlineVariant,
                                 shape = CircleShape
                             )
-                            .clickable { selectedTab = id }
+                            .clickable { selectedTab = tab.id }
                             .padding(vertical = 8.dp, horizontal = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = label,
+                                text = tab.title,
                                 style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace),
                                 color = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = size,
+                                text = tab.sizeLabel,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 modifier = Modifier.padding(top = 2.dp)
@@ -214,15 +225,29 @@ fun LogsScreen(
                         )
                     }
                 } else {
+                    val colorScheme = MaterialTheme.colorScheme
+                    val baseBodySmall = MaterialTheme.typography.bodySmall
+                    val monoBodySmall = remember(baseBodySmall) {
+                        baseBodySmall.copy(fontFamily = FontFamily.Monospace)
+                    }
+                    val monoBodySmallBold = remember(monoBodySmall) {
+                        monoBodySmall.copy(fontWeight = FontWeight.Bold)
+                    }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize()
                     ) {
                         itemsIndexed(
                             items = lines,
-                            key = { index, _ -> index }
+                            key = { index, _ -> index },
+                            contentType = { _, _ -> "log_line" }
                         ) { _, line ->
-                            ParsedLogLine(line = line)
+                            ParsedLogLine(
+                                line = line,
+                                colorScheme = colorScheme,
+                                monoStyle = monoBodySmall,
+                                monoBoldStyle = monoBodySmallBold
+                            )
                         }
                     }
                 }
@@ -308,8 +333,13 @@ fun LogsScreen(
 }
 
 @Composable
-private fun ParsedLogLine(line: String) {
-    val words = line.split(" ", limit = 3)
+private fun ParsedLogLine(
+    line: String,
+    colorScheme: ColorScheme,
+    monoStyle: TextStyle,
+    monoBoldStyle: TextStyle
+) {
+    val words = remember(line) { line.split(" ", limit = 3) }
     val time = words.getOrNull(0).orEmpty()
     val level = words.getOrNull(1).orEmpty()
     val message = words.getOrNull(2).orEmpty()
@@ -318,41 +348,41 @@ private fun ParsedLogLine(line: String) {
     val isLvl = level.startsWith("[") && level.endsWith("]")
 
     val levelColor = when {
-        level.contains("warn", ignoreCase = true) -> MaterialTheme.colorScheme.tertiary
-        level.contains("error", ignoreCase = true) -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.primary
+        level.contains("warn", ignoreCase = true) -> colorScheme.tertiary
+        level.contains("error", ignoreCase = true) -> colorScheme.error
+        else -> colorScheme.primary
     }
-    val messageColor = MaterialTheme.colorScheme.onSurface
+    val messageColor = colorScheme.onSurface
 
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
         if (isTime && isLvl) {
             Text(
                 text = time,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = colorScheme.onSurfaceVariant,
+                style = monoStyle,
                 modifier = Modifier.padding(end = 6.dp)
             )
             Text(
                 text = level,
                 color = levelColor,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                style = monoBoldStyle,
                 modifier = Modifier.padding(end = 6.dp)
             )
             Text(
                 text = message,
                 color = messageColor,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                style = monoStyle
             )
         } else {
             val color = when {
-                line.contains("error", ignoreCase = true) -> MaterialTheme.colorScheme.error
-                line.contains("warn", ignoreCase = true) -> MaterialTheme.colorScheme.tertiary
+                line.contains("error", ignoreCase = true) -> colorScheme.error
+                line.contains("warn", ignoreCase = true) -> colorScheme.tertiary
                 else -> messageColor
             }
             Text(
                 text = line,
                 color = color,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                style = monoStyle
             )
         }
     }

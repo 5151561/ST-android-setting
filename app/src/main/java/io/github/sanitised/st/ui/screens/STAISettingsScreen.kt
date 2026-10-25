@@ -345,12 +345,16 @@ fun STAISettingsScreen(
         STSectionHeader("提示模板", trailing = {
             Text("点击配置模板与内容", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         })
-        val instructName = presetLibrary?.categories?.firstOrNull { it.apiId == "instruct" }
-            ?.presets?.firstOrNull { it.selected }?.name ?: "—"
-        val contextName = presetLibrary?.categories?.firstOrNull { it.apiId == "context" }
-            ?.presets?.firstOrNull { it.selected }?.name ?: "—"
-        val syspromptName = presetLibrary?.categories?.firstOrNull { it.apiId == "sysprompt" }
-            ?.presets?.firstOrNull { it.selected }?.name ?: "—"
+        val (instructName, contextName, syspromptName) = remember(presetLibrary) {
+            Triple(
+                presetLibrary?.categories?.firstOrNull { it.apiId == "instruct" }
+                    ?.presets?.firstOrNull { it.selected }?.name ?: "—",
+                presetLibrary?.categories?.firstOrNull { it.apiId == "context" }
+                    ?.presets?.firstOrNull { it.selected }?.name ?: "—",
+                presetLibrary?.categories?.firstOrNull { it.apiId == "sysprompt" }
+                    ?.presets?.firstOrNull { it.selected }?.name ?: "—"
+            )
+        }
         val authorsNoteSummary = if (authorsNoteText.isBlank()) {
             "未设置 (深度 $authorsNoteDepth)"
         } else {
@@ -693,7 +697,6 @@ private fun STPresetCard(
                         Text(category.title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(selectedPreset?.name ?: "未选择", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
-                    Spacer(Modifier.weight(1f))
                     Icon(
                         imageVector = if (expanded) Icons.Filled.RestartAlt else Icons.Filled.ChevronRight,
                         contentDescription = null,

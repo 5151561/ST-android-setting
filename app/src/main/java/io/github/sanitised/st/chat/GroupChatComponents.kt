@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
@@ -198,8 +199,9 @@ internal fun GroupAvatarTile(
 ) {
     var imageLoadFailed by remember(member.avatarUrl, baseUrl) { mutableStateOf(false) }
     val imageModel = remember(member.avatarUrl, baseUrl) { stAvatarImageUrl(baseUrl, member.avatarUrl) }
+    val avatarBrush = remember(member.avatarGrad) { Brush.linearGradient(member.avatarGrad) }
     Box(
-        modifier = modifier.background(Brush.linearGradient(member.avatarGrad)),
+        modifier = modifier.background(avatarBrush),
         contentAlignment = Alignment.Center
     ) {
         if (imageModel != null && !imageLoadFailed) {
@@ -229,13 +231,14 @@ internal fun GroupMemberAvatar(
 ) {
     var imageLoadFailed by remember(member.avatarUrl, baseUrl) { mutableStateOf(false) }
     val imageModel = remember(member.avatarUrl, baseUrl) { stAvatarImageUrl(baseUrl, member.avatarUrl) }
+    val avatarBrush = remember(member.avatarGrad) { Brush.linearGradient(member.avatarGrad) }
     val shape = CircleShape
     Box(
         modifier = modifier
             .size(size)
             .clip(shape)
             .alpha(alpha)
-            .background(Brush.linearGradient(member.avatarGrad))
+            .background(avatarBrush)
             .border(ringWidth, ringColor ?: Color.Transparent, shape),
         contentAlignment = Alignment.Center
     ) {
@@ -448,15 +451,19 @@ fun MemberStrip(
                 .size(44.dp)
                 .clip(CircleShape)
                 .clickable { onAddMemberClick() }
-                .drawBehind {
-                    drawCircle(
-                        color = dashColor,
-                        radius = size.minDimension / 2f - 1.dp.toPx(),
-                        style = Stroke(
-                            width = 2.dp.toPx(),
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
-                        )
+                .drawWithCache {
+                    val stroke = Stroke(
+                        width = 2.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
                     )
+                    val radius = size.minDimension / 2f - 1.dp.toPx()
+                    onDrawBehind {
+                        drawCircle(
+                            color = dashColor,
+                            radius = radius,
+                            style = stroke
+                        )
+                    }
                 },
             contentAlignment = Alignment.Center
         ) {

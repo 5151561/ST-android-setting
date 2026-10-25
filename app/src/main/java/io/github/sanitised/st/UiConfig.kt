@@ -29,6 +29,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +79,9 @@ fun ConfigScreen(
     val formErrorState = remember { mutableStateOf<String?>(null) }
     val formValues = remember { mutableStateMapOf<String, String>() }
     val originalFormValuesState = remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val mode = modeState.value
+    val loaded = loadedState.value
+    val isSaving = isSavingState.value
 
     fun rebuildForm(content: String, resetValues: Boolean) {
         val result = runCatching { ConfigFormTools.parse(content) }
@@ -90,7 +95,7 @@ fun ConfigScreen(
     }
 
     val hasUnsavedText = textState.value.text != originalState.value
-    val hasUnsavedForm = formValues.toMap() != originalFormValuesState.value
+    val hasUnsavedForm by remember { derivedStateOf { formValues != originalFormValuesState.value } }
     val requestBack = {
         val canEditEffective = canEdit && !missingState.value
         if (canEditEffective && (hasUnsavedText || hasUnsavedForm)) {
@@ -113,7 +118,7 @@ fun ConfigScreen(
     BackHandler(onBack = requestBack)
 
     fun switchToYaml() {
-        if (modeState.value == "yaml") return
+        if (mode == "yaml") return
         val document = formDocumentState.value
         if (document != null && hasUnsavedForm) {
             val result = runCatching { ConfigFormTools.writeYaml(document, formValues.toMap()) }
@@ -132,7 +137,7 @@ fun ConfigScreen(
     }
 
     fun switchToForm() {
-        if (modeState.value == "form") return
+        if (mode == "form") return
         rebuildForm(textState.value.text, resetValues = true)
         modeState.value = "form"
     }
@@ -153,9 +158,9 @@ fun ConfigScreen(
                         Text(text = stringResource(R.string.docs))
                     }
                     ConfigModeAction(
-                        mode = modeState.value,
+                        mode = mode,
                         onToggle = {
-                            if (modeState.value == "form") {
+                            if (mode == "form") {
                                 switchToYaml()
                             } else {
                                 switchToForm()
@@ -192,14 +197,14 @@ fun ConfigScreen(
                         .fillMaxWidth()
                         .weight(1f, fill = true)
                 ) {
-                    if (!loadedState.value) {
+                    if (!loaded) {
                         Text(
                             text = stringResource(R.string.loading),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(4.dp)
                         )
-                    } else if (modeState.value == "form") {
+                    } else if (mode == "form") {
                         ConfigFormEditor(
                             document = formDocumentState.value,
                             error = formErrorState.value,
@@ -234,7 +239,7 @@ fun ConfigScreen(
                         isSavingState.value = true
                         scope.launch(Dispatchers.IO) {
                             val result = runCatching {
-                                val contentToSave = if (modeState.value == "form") {
+                                val contentToSave = if (mode == "form") {
                                     val document = formDocumentState.value
                                         ?: error(formErrorState.value ?: context.getString(R.string.unknown_error))
                                     ConfigFormTools.writeYaml(document, formValues.toMap())
@@ -266,10 +271,10 @@ fun ConfigScreen(
                             }
                         }
                     },
-                    enabled = canEditEffective && loadedState.value && !isSavingState.value,
+                    enabled = canEditEffective && loaded && !isSaving,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(text = if (isSavingState.value) stringResource(R.string.saving) else stringResource(R.string.save))
+                    Text(text = if (isSaving) stringResource(R.string.saving) else stringResource(R.string.save))
                 }
             }
         }

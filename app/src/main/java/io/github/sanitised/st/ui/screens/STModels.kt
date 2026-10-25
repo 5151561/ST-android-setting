@@ -15,7 +15,6 @@ enum class STChatKind {
     GROUP
 }
 
-@Immutable
 data class STChatItem(
     val id: String,
     val characterId: String,
@@ -34,7 +33,6 @@ data class STChatItem(
     val isCheckpoint: Boolean = false
 )
 
-@Immutable
 data class STCharacterCard(
     val id: String,
     val avatarUrl: String? = null,
@@ -301,16 +299,17 @@ fun CharacterDetail.toSTCharacterCard(index: Int): STCharacterCard {
 }
 
 fun stGradientFor(index: Int): List<Long> {
-    val gradients = listOf(
-        listOf(0xFFFFD7B0, 0xFFA55A2A),
-        listOf(0xFF8FB6C6, 0xFF2F5567),
-        listOf(0xFFD8C4A3, 0xFF6B4E2B),
-        listOf(0xFFC8E5B7, 0xFF3D6B3A),
-        listOf(0xFFF5B0C8, 0xFFA8366A),
-        listOf(0xFFB8B2A4, 0xFF46443B)
-    )
-    return gradients[index.floorMod(gradients.size)]
+    return ST_DEFAULT_GRADIENTS[index.floorMod(ST_DEFAULT_GRADIENTS.size)]
 }
+
+private val ST_DEFAULT_GRADIENTS = listOf(
+    listOf(0xFFFFD7B0, 0xFFA55A2A),
+    listOf(0xFF8FB6C6, 0xFF2F5567),
+    listOf(0xFFD8C4A3, 0xFF6B4E2B),
+    listOf(0xFFC8E5B7, 0xFF3D6B3A),
+    listOf(0xFFF5B0C8, 0xFFA8366A),
+    listOf(0xFFB8B2A4, 0xFF46443B)
+)
 
 private fun String.initial(): String =
     trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
@@ -344,12 +343,14 @@ internal fun stRelativeTimeLabel(
 private fun String.isVisibleSTTagFilter(): Boolean {
     val normalized = lowercase()
     if (normalized in hiddenSTTagFilters) return false
-    if (normalized.matches(Regex("v\\d+"))) return false
+    if (normalized.matches(VERSION_TAG_REGEX)) return false
     if (normalized.startsWith("内部:") || normalized.startsWith("internal:")) return false
     return true
 }
 
 private fun Int.floorMod(other: Int): Int = ((this % other) + other) % other
+
+private val VERSION_TAG_REGEX = Regex("v\\d+")
 
 private val hiddenSTTagFilters = setOf(
     "not_dead",

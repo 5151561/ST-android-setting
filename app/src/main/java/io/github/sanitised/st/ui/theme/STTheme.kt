@@ -15,6 +15,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -61,9 +62,13 @@ data class STTypography(
     val mono: TextStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp)
 )
 
-val LocalSTSpacing = staticCompositionLocalOf { STSpacing() }
-val LocalSTRadius = staticCompositionLocalOf { STRadius() }
-val LocalSTTypography = staticCompositionLocalOf { STTypography() }
+private val DefaultSTSpacing = STSpacing()
+private val DefaultSTRadius = STRadius()
+private val DefaultSTTypography = STTypography()
+
+val LocalSTSpacing = staticCompositionLocalOf { DefaultSTSpacing }
+val LocalSTRadius = staticCompositionLocalOf { DefaultSTRadius }
+val LocalSTTypography = staticCompositionLocalOf { DefaultSTTypography }
 
 // 聊天正文字号缩放系数(基准 14sp -> scale 1f)与消息冒泡风格开关,由 STAppTheme 提供、
 // 聊天渲染层(ChatRichTextLine / ChatBubbleSurface)消费。用 compositionLocalOf(非 static):
@@ -195,11 +200,13 @@ fun STAppTheme(
         else -> LightBrandColorScheme
     }
 
+    val legacyColors = remember(materialColorScheme) { materialColorScheme.asLegacySTColors() }
+
     CompositionLocalProvider(
-        LocalSTColors provides materialColorScheme.asLegacySTColors(),
-        LocalSTSpacing provides STSpacing(),
-        LocalSTRadius provides STRadius(),
-        LocalSTTypography provides STTypography(),
+        LocalSTColors provides legacyColors,
+        LocalSTSpacing provides DefaultSTSpacing,
+        LocalSTRadius provides DefaultSTRadius,
+        LocalSTTypography provides DefaultSTTypography,
         LocalChatFontScale provides (chatFontSize / 14f),
         LocalChatBubbleStyle provides chatBubbleStyle
     ) {
