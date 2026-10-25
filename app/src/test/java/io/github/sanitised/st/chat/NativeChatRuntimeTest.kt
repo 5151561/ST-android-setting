@@ -115,6 +115,91 @@ class NativeChatRuntimeTest {
         assertEquals(listOf("Welcome back.", "Alternate hello."), source.savedChat(newChat).message(0)["swipes"])
     }
 
+    @Test
+    fun `appendCharacterMessages normalizes missing header integrity identically for dataSource and cache`() = runBlocking {
+        val source = FakeNativeChatDataSource()
+        val repository = NativeChatRepository(dataSourceProvider = { source })
+
+        // Load empty chat so cachedSession is initialized with empty messages.
+        val (_, initialLoaded) = repository.load("Alice.png", "empty.jsonl")
+        assertTrue(initialLoaded.isEmpty())
+
+        val headerWithoutIntegrity = linkedMapOf<String, Any?>(
+            "user_name" to "Alex",
+            "character_name" to "Alice",
+            "chat_metadata" to linkedMapOf<String, Any?>("world_info" to "Lore")
+        )
+        val firstMessage = linkedMapOf<String, Any?>(
+            "name" to "Alex",
+            "is_user" to true,
+            "is_system" to false,
+            "send_date" to "June 3",
+            "mes" to "hello",
+            "extra" to linkedMapOf<String, Any?>()
+        )
+
+        repository.appendCharacterMessages(
+            avatar = "Alice.png",
+            chatFile = "empty.jsonl",
+            newMessages = listOf(firstMessage),
+            headerIfMissing = headerWithoutIntegrity,
+        )
+
+        val passedHeader = source.lastAppendHeaderIfMissing ?: error("Expected headerIfMissing to be passed")
+        @Suppress("UNCHECKED_CAST")
+        val passedIntegrity = (passedHeader["chat_metadata"] as? Map<String, Any?>)
+            ?.get("integrity")
+            ?.toString()
+            .orEmpty()
+        assertTrue(passedIntegrity.isNotBlank())
+
+        val diskIntegrity = source.savedChat("empty.jsonl").headerMetadata()["integrity"]?.toString()
+        val (_, cachedChat) = repository.load("Alice.png", "empty.jsonl")
+        val cachedIntegrity = cachedChat.headerMetadata()["integrity"]?.toString()
+
+        assertEquals(passedIntegrity, diskIntegrity)
+        assertEquals(passedIntegrity, cachedIntegrity)
+    }
+
+    @Test
+    fun `appendCharacterMessages uses expectedIntegrity recorded from tail load`() = runBlocking {
+        val source = FakeNativeChatDataSource()
+        val repository = NativeChatRepository(dataSourceProvider = { source })
+
+        val tailLoadedRawChat = listOf<Any?>(
+            mapOf(
+                "user_name" to "Alex",
+                "character_name" to "Alice",
+                "chat_metadata" to mapOf("integrity" to "abc", "world_info" to "Lore")
+            ),
+            mapOf(
+                "name" to "Alice",
+                "is_user" to false,
+                "is_system" to false,
+                "send_date" to "June 3",
+                "mes" to "first"
+            )
+        )
+        NativeChatRepository.recordKnownIntegrity("Alice.png", "main.jsonl", tailLoadedRawChat)
+
+        val newMessage = linkedMapOf<String, Any?>(
+            "name" to "Alex",
+            "is_user" to true,
+            "is_system" to false,
+            "send_date" to "June 3",
+            "mes" to "follow up",
+            "extra" to linkedMapOf<String, Any?>()
+        )
+        repository.appendCharacterMessages(
+            avatar = "Alice.png",
+            chatFile = "main.jsonl",
+            newMessages = listOf(newMessage),
+        )
+
+        assertEquals("abc", source.lastAppendExpectedIntegrity)
+        assertEquals(0, source.getChatJsonlCallCount)
+    }
+
     private fun snapshot(): ChatSnapshot =
         buildNativeCharacterChatSnapshot(
             avatar = "Alice.png",
@@ -129,6 +214,10 @@ class NativeChatRuntimeTest {
         private val chats = linkedMapOf("main" to initialChat())
         private val saved = linkedMapOf<String, MutableList<Any?>>()
         var getChatJsonlCallCount: Int = 0
+            private set
+        var lastAppendExpectedIntegrity: String? = null
+            private set
+        var lastAppendHeaderIfMissing: Map<String, Any?>? = null
             private set
 
         override suspend fun getCharacter(avatar: String): CharacterDetail =
@@ -150,6 +239,26 @@ class NativeChatRuntimeTest {
             val key = chatFile.removeSuffix(".jsonl")
             chats[key] = chat.deepCopyChat()
             saved[key] = chat.deepCopyChat()
+        }
+
+        override suspend fun appendChatJsonl(
+            avatar: String,
+            chatFile: String,
+            newMessages: List<Any?>,
+            headerIfMissing: Map<String, Any?>?,
+            expectedIntegrity: String?,
+        ): Boolean {
+            lastAppendExpectedIntegrity = expectedIntegrity
+            lastAppendHeaderIfMissing = headerIfMissing
+            val key = chatFile.removeSuffix(".jsonl")
+            val current = (chats[key] ?: mutableListOf()).deepCopyChat()
+            if (current.isEmpty()) {
+                headerIfMissing?.let { current.add(deepCopyValue(it)) }
+            }
+            newMessages.forEach { current.add(deepCopyValue(it)) }
+            chats[key] = current.deepCopyChat()
+            saved[key] = current.deepCopyChat()
+            return true
         }
 
         override suspend fun listCharacterChats(avatar: String): List<CharacterChatSummary> =

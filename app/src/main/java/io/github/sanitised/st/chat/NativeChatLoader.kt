@@ -14,6 +14,12 @@ class NativeChatLoader(
         avatar: String,
         chatFile: String? = null,
         maxLines: Int = 100,
+    ): Boolean = loadCharacterChat(avatar, chatFile, maxLines)
+
+    suspend fun loadCharacterChat(
+        avatar: String,
+        chatFile: String? = null,
+        maxLines: Int = 100,
     ): Boolean {
         val client = clientProvider()
         val character = client.getCharacter(avatar)
@@ -91,6 +97,7 @@ class NativeChatLoader(
             tail.header?.let(::add)
             addAll(tail.messages)
         }
+        NativeChatRepository.recordKnownIntegrity(avatar, chatFile, rawChat)
         store.applySnapshot(
             buildNativeCharacterChatSnapshot(
                 avatar = avatar,

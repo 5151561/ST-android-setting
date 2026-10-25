@@ -1,6 +1,30 @@
 package io.github.sanitised.st.api
 
 import java.util.Locale
+import java.util.WeakHashMap
+
+private val recentCharactersCacheLock = Any()
+private val recentCharactersCache = WeakHashMap<TauriTavernJniClient, List<CharacterSummary>>()
+
+private fun TauriTavernJniClient.cacheCharacters(characters: List<CharacterSummary>) {
+    synchronized(recentCharactersCacheLock) {
+        recentCharactersCache[this] = characters
+    }
+}
+
+internal fun TauriTavernJniClient.invalidateCachedCharacters() {
+    synchronized(recentCharactersCacheLock) {
+        recentCharactersCache.remove(this)
+    }
+}
+
+private suspend fun TauriTavernJniClient.getCachedOrLoadCharacters(): List<CharacterSummary> {
+    val cached = synchronized(recentCharactersCacheLock) {
+        recentCharactersCache[this]
+    }
+    if (cached != null) return cached
+    return doListCharacters()
+}
 
 internal suspend fun TauriTavernJniClient.doHealthCheck(): CoreHealth {
     return runCatching {
@@ -17,7 +41,7 @@ internal suspend fun TauriTavernJniClient.doHealthCheck(): CoreHealth {
 
 internal suspend fun TauriTavernJniClient.doListCharacters(): List<CharacterSummary> {
     val items = invokeAsListOfMaps("characters_list")
-    return items.map { it.toCharacterSummary() }
+    return items.map { it.toCharacterSummary() }.also { cacheCharacters(it) }
 }
 
 internal suspend fun TauriTavernJniClient.doGetCharacter(avatar: String): CharacterDetail {
@@ -32,7 +56,7 @@ internal suspend fun TauriTavernJniClient.doGetCharacter(avatar: String): Charac
     val item = runCatching {
         invokeAsMap("character_get", requestPayload(normalizedAvatar))
     }.recoverCatching { originalError ->
-        val matched = runCatching { doListCharacters() }
+        val matched = runCatching { getCachedOrLoadCharacters() }
             .getOrDefault(emptyList())
             .findMatchingCharacter(normalizedAvatar)
             ?.takeIf { !it.id.equals(normalizedAvatar, ignoreCase = true) }
@@ -133,6 +157,7 @@ internal suspend fun TauriTavernJniClient.doCreateCharacter(
     } else {
         invokeRaw("character_create", reqMap + mapOf("request" to reqMap))
     }
+    invalidateCachedCharacters()
     return when (data) {
         is String -> data.trim()
         is Map<*, *> -> data.stringValue("avatar").ifBlank { data.stringValue("file_name") }
@@ -161,6 +186,7 @@ internal suspend fun TauriTavernJniClient.doUpdateCharacter(
             )
         }
     }
+    invalidateCachedCharacters()
 }
 
 internal suspend fun TauriTavernJniClient.doMergeCharacterAttributes(
@@ -184,6 +210,7 @@ internal suspend fun TauriTavernJniClient.doMergeCharacterAttributes(
         "data" to data
     )
     invokeRaw("character_merge", req + mapOf("request" to req))
+    invalidateCachedCharacters()
 }
 
 internal suspend fun TauriTavernJniClient.doRenameCharacter(avatar: String, newName: String): String {
@@ -198,6 +225,7 @@ internal suspend fun TauriTavernJniClient.doRenameCharacter(avatar: String, newN
             "new_name" to newName
         )
     )
+    invalidateCachedCharacters()
     return when (data) {
         is String -> data
         is Map<*, *> -> data.stringValue("avatar").ifBlank { avatar }
@@ -210,6 +238,7 @@ internal suspend fun TauriTavernJniClient.doDuplicateCharacter(avatar: String): 
         "character_duplicate",
         mapOf("avatar" to avatar, "avatarUrl" to avatar, "avatar_url" to avatar)
     )
+    invalidateCachedCharacters()
     return when (data) {
         is String -> data
         is Map<*, *> -> data.stringValue("path").ifBlank { data.stringValue("avatar") }
@@ -228,6 +257,7 @@ internal suspend fun TauriTavernJniClient.doDeleteCharacter(avatar: String, dele
             "delete_chats" to deleteChats
         )
     )
+    invalidateCachedCharacters()
 }
 
 internal suspend fun TauriTavernJniClient.doListCharacterChats(avatar: String): List<CharacterChatSummary> {
@@ -268,6 +298,7 @@ internal suspend fun TauriTavernJniClient.doImportCharacter(
             .ifBlank { data.stringValue("avatar") }
         else -> ""
     }.ifBlank { throw IllegalStateException("Invalid character import response") }
+    invalidateCachedCharacters()
     return if (imported.endsWith(".png", ignoreCase = true)) imported else "$imported.png"
 }
 
@@ -295,6 +326,7 @@ internal suspend fun TauriTavernJniClient.doImportExternalCharacter(
             .ifBlank { data.stringValue("avatar") }
         else -> ""
     }.ifBlank { throw IllegalStateException("Invalid character import response") }
+    invalidateCachedCharacters()
     return if (imported.endsWith(".png", ignoreCase = true)) imported else "$imported.png"
 }
 
@@ -368,6 +400,7 @@ internal suspend fun TauriTavernJniClient.doUpdateCharacterAvatar(
         ),
         bytes
     )
+    invalidateCachedCharacters()
 }
 
 internal suspend fun TauriTavernJniClient.doRenameCharacterChat(
@@ -734,7 +767,7 @@ internal fun List<CharacterSummary>.findMatchingCharacter(vararg candidates: Str
 internal suspend fun TauriTavernJniClient.doListRecentChats(): List<ChatSummary> {
     val items = invokeAsListOfMaps("chats_recent")
     if (items.isEmpty()) return emptyList()
-    val characters = runCatching { doListCharacters() }.getOrDefault(emptyList())
+    val characters = runCatching { getCachedOrLoadCharacters() }.getOrDefault(emptyList())
     return items.mapNotNull { item ->
         val rawFileName = item.stringAnyValue("file_name")
             .ifBlank { item.stringAnyValue("fileName") }

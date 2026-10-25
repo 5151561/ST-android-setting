@@ -720,8 +720,18 @@ internal suspend fun TauriTavernJniClient.doListConnectionProfiles(): List<Conne
         if (displayName.isBlank()) return@mapNotNull null
         val source = item.stringAnyValue("chatCompletionSource")
             .ifBlank { item.stringAnyValue("chat_completion_source") }
-        val description = item.stringAnyValue("description")
-        val subtitle = description.ifBlank { source }
+        val endpoint = item.anyMapValue("endpoint")
+        val routing = item.anyMapValue("routing")
+        val reverseProxy = routing.anyMapValue("reverseProxy")
+            .ifEmpty { routing.anyMapValue("reverse_proxy") }
+        val endpointUrl = endpoint.stringAnyValue("baseUrl")
+            .ifBlank { endpoint.stringAnyValue("base_url") }
+            .ifBlank { reverseProxy.stringAnyValue("url") }
+            .ifBlank { item.stringAnyValue("reverseProxyUrl") }
+            .ifBlank { item.stringAnyValue("baseUrl") }
+            .trim()
+        val description = item.stringAnyValue("description").trim()
+        val subtitle = endpointUrl.ifBlank { description }.ifBlank { source }
         ConnectionProfile(
             label = displayName,
             url = subtitle,
@@ -774,6 +784,7 @@ internal suspend fun TauriTavernJniClient.doSaveConnectionProfile(profile: Conne
     val reverseProxyUrl = if (source in reverseProxySupportedSources) {
         oai.stringAnyValue("reverse_proxy_$source")
             .ifBlank { oai.stringAnyValue("reverse_proxy") }
+            .ifBlank { profile.url }
             .trim()
     } else {
         ""
@@ -810,9 +821,7 @@ internal suspend fun TauriTavernJniClient.doSaveConnectionProfile(profile: Conne
         }
     }
 
-    val description = profile.url.trim().ifBlank {
-        listOf(source, model).filter { it.isNotBlank() }.joinToString(" · ")
-    }
+    val description = listOf(source, model).filter { it.isNotBlank() }.joinToString(" · ")
     val definition = linkedMapOf<String, Any?>(
         "schemaVersion" to 1,
         "kind" to "tauritavern.llmConnection",
@@ -920,6 +929,24 @@ internal suspend fun TauriTavernJniClient.doApplyConnectionProfile(name: String)
         oai[connectionModelKeyForSource(source)] = modelPart
     }
     settings["oai_settings"] = oai
+
+    val auth = conn.anyMapValue("auth")
+    val secretRefMap = auth.anyMapValue("secretRef")
+        .ifEmpty { auth.anyMapValue("secret_ref") }
+    val vertexAuthMode = sourceSpecific.stringAnyValue("vertexai_auth_mode")
+        .ifBlank { oai.stringAnyValue("vertexai_auth_mode") }
+        .ifBlank { "express" }
+    val secretKey = secretRefMap.stringAnyValue("key")
+        .ifBlank { expectedSecretKeyForConnectionSource(source, vertexAuthMode) }
+        .trim()
+    val secretId = secretRefMap.stringAnyValue("id")
+        .ifBlank { auth.stringAnyValue("secretRef").ifBlank { auth.stringAnyValue("secret_ref") } }
+        .trim()
+    if (secretKey.isNotBlank() && secretId.isNotBlank()) {
+        runCatching {
+            invokeRaw("secrets_rotate", mapOf("key" to secretKey, "id" to secretId))
+        }
+    }
 
     val displayName = conn.stringAnyValue("displayName")
         .ifBlank { conn.stringAnyValue("display_name") }

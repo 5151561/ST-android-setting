@@ -204,6 +204,160 @@ class TauriTavernJniClientContractTest {
     }
 
     @Test
+    fun `testConnection forwards bypass_status_check and reports ready detail when status is bypassed`() = runTest {
+        var capturedStatusPayload = ""
+        val client = TauriTavernJniClient { command, payload ->
+            when (command) {
+                "settings_get" -> """
+                    {
+                      "ok": true,
+                      "data": {
+                        "oai_settings": {
+                          "chat_completion_source": "claude",
+                          "claude_model": "claude-3-7-sonnet-20250219",
+                          "bypass_status_check": true
+                        }
+                      }
+                    }
+                """.trimIndent()
+                "chat_completion_status" -> {
+                    capturedStatusPayload = payload
+                    """{"ok":true,"data":{"data":[],"bypass":true}}"""
+                }
+                else -> """{"ok":true,"data":{}}"""
+            }
+        }
+
+        val result = client.testConnection(
+            mode = "cc",
+            sourceValue = "claude",
+            apiServer = ""
+        )
+        assertTrue(result.success)
+        assertTrue(result.models.isEmpty())
+        assertTrue(
+            "Expected bypass_status_check=true in status payload: $capturedStatusPayload",
+            capturedStatusPayload.contains("\"bypass_status_check\":true")
+        )
+        assertTrue(
+            "Expected ready detail message with configured model, got: ${result.detail}",
+            result.detail.orEmpty().contains("连接就绪") &&
+                result.detail.orEmpty().contains("claude-3-7-sonnet-20250219")
+        )
+    }
+
+    @Test
+    fun `saveConnectionProfile with non-empty url preserves model in description and applyConnectionProfile restores model and rotates secret`() = runTest {
+        var savedConnectionJson = ""
+        var savedSettingsJson = ""
+        var rotatedSecretPayload = ""
+
+        val client = TauriTavernJniClient { command, payload ->
+            when (command) {
+                "settings_get" -> """
+                    {
+                      "ok": true,
+                      "data": {
+                        "main_api": "openai",
+                        "oai_settings": {
+                          "chat_completion_source": "custom",
+                          "custom_url": "https://relay.example.com/v1",
+                          "custom_model": "gpt-4.1-mini",
+                          "custom_api_format": "openai_compat"
+                        },
+                        "power_user": {}
+                      }
+                    }
+                """.trimIndent()
+                "secrets_read_state" -> """
+                    {
+                      "ok": true,
+                      "data": {
+                        "api_key_custom": [
+                          {"id": "sec-custom-99", "label": "RelayKey", "active": true}
+                        ]
+                      }
+                    }
+                """.trimIndent()
+                "save_llm_connection" -> {
+                    savedConnectionJson = payload
+                    """{"ok":true,"data":{}}"""
+                }
+                "list_llm_connections" -> """
+                    {
+                      "ok": true,
+                      "data": [
+                        {
+                          "id": "my-relay",
+                          "displayName": "My Relay",
+                          "chatCompletionSource": "custom",
+                          "description": "custom · gpt-4.1-mini"
+                        }
+                      ]
+                    }
+                """.trimIndent()
+                "load_llm_connection" -> """
+                    {
+                      "ok": true,
+                      "data": {
+                        "id": "my-relay",
+                        "displayName": "My Relay",
+                        "description": "custom · gpt-4.1-mini",
+                        "provider": {
+                          "chatCompletionSource": "custom",
+                          "customApiFormat": "openai_compat"
+                        },
+                        "endpoint": {
+                          "baseUrl": "https://relay.example.com/v1"
+                        },
+                        "auth": {
+                          "secretRef": {
+                            "key": "api_key_custom",
+                            "id": "sec-custom-99"
+                          }
+                        },
+                        "routing": {}
+                      }
+                    }
+                """.trimIndent()
+                "secrets_rotate" -> {
+                    rotatedSecretPayload = payload
+                    """{"ok":true,"data":{}}"""
+                }
+                "settings_save" -> {
+                    savedSettingsJson = payload
+                    """{"ok":true,"data":{}}"""
+                }
+                else -> """{"ok":true,"data":{}}"""
+            }
+        }
+
+        client.saveConnectionProfile(
+            ConnectionProfile(
+                label = "My Relay",
+                url = "https://relay.example.com/v1",
+                lastConnection = 123L
+            )
+        )
+        assertTrue(
+            "Expected save_llm_connection payload to preserve 'custom · gpt-4.1-mini' description even when url is non-empty: $savedConnectionJson",
+            savedConnectionJson.contains("\"description\":\"custom · gpt-4.1-mini\"")
+        )
+
+        val applied = client.applyConnectionProfile("My Relay")
+        assertTrue(applied)
+        assertTrue(
+            "Expected applyConnectionProfile to restore custom_model in oai_settings: $savedSettingsJson",
+            savedSettingsJson.contains("\"custom_model\":\"gpt-4.1-mini\"")
+        )
+        assertTrue(
+            "Expected applyConnectionProfile to rotate active secret via secrets_rotate: $rotatedSecretPayload",
+            rotatedSecretPayload.contains("\"key\":\"api_key_custom\"") &&
+                rotatedSecretPayload.contains("\"id\":\"sec-custom-99\"")
+        )
+    }
+
+    @Test
     fun `real JNI bridge seeds default Seraphina character and presets from tauritavern_default assets`() = runTest {
         val tempRoot = java.nio.file.Files.createTempDirectory("tt-jni-default-seed-test").toFile()
         try {

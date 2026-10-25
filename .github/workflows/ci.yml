@@ -18,10 +18,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch SillyTavern submodule
-        # ConfigFormToolsTest 读 SillyTavern/default/config.yaml 做契约校验；
-        # 只浅拉这一个子模块，跳过体积巨大的 node 源码子模块。
-        run: git submodule update --init --depth 1 SillyTavern
+      - name: Fetch submodules
+        # 拉取 SillyTavern 与 TauriTavern 子模块以供契约校验与 Rust JNI 构建使用；
+        # 优先按指定路径浅拉，若子模块路径变更则回退初始化全部声明子模块。
+        run: |
+          git submodule update --init --depth 1 SillyTavern external/tauritavern || git submodule update --init --depth 1
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4

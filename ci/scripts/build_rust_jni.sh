@@ -5,7 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 CRATE_DIR="${ROOT_DIR}/rust/tt-android-jni"
 JNI_LIBS_DIR="${ROOT_DIR}/app/src/main/jniLibs"
-DEFAULT_SRC_DIR="${ROOT_DIR}/TauriTavern/default"
+DEFAULT_SRC_DIR="${ROOT_DIR}/external/tauritavern/default"
+if [ ! -d "${DEFAULT_SRC_DIR}" ]; then
+  DEFAULT_SRC_DIR="${ROOT_DIR}/TauriTavern/default"
+fi
 DEFAULT_ASSET_DIR="${ROOT_DIR}/app/src/main/assets/tauritavern_default"
 
 export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$PATH"

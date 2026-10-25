@@ -2953,11 +2953,7 @@ impl JniAppState {
                     Err(env) => return env,
                 };
                 match self.preset_service.restore_default_preset(name, &pt).await {
-                    Ok(Some(def)) => {
-                        let preset = Preset::new(name.to_string(), pt, def.data.clone());
-                        let _ = self.preset_service.save_preset(&preset).await;
-                        InvokeEnvelope::success(def.data)
-                    }
+                    Ok(Some(def)) => InvokeEnvelope::success(def.data),
                     Ok(None) => InvokeEnvelope::success(json!({})),
                     Err(e) => InvokeEnvelope::from_domain_error(e),
                 }

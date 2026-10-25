@@ -361,9 +361,11 @@ fun STApiConnectionScreen(
                             }.onFailure {
                                 onShowMessage("切换失败：${it.message}")
                             }
+                            onOpenProviderDetail(provider.id)
                         }
+                    } else {
+                        onOpenProviderDetail(provider.id)
                     }
-                    onOpenProviderDetail(provider.id)
                 }
             )
 

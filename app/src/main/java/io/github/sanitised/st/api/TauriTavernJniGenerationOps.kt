@@ -67,6 +67,9 @@ private suspend fun TauriTavernJniClient.buildStatusPayload(
             payload[key] = value
         }
     }
+    (oai["bypass_status_check"] as? Boolean)?.let { value ->
+        payload["bypass_status_check"] = value
+    }
     if (sourceValue == "custom") {
         payload["custom_api_format"] = (oai["custom_api_format"] as? String)?.takeIf { it.isNotBlank() } ?: "openai_compat"
         if ((oai["custom_include_headers"] as? String)?.isNotBlank() == true) {
@@ -115,13 +118,16 @@ internal suspend fun TauriTavernJniClient.doFetchModels(
     }.getOrDefault(emptyList())
 }
 
+val ConnectionTestResult.detail: String?
+    get() = errorMessage
+
 internal suspend fun TauriTavernJniClient.doTestConnection(
     mode: String,
     sourceValue: String,
     apiServer: String
 ): ConnectionTestResult {
     return try {
-        val (payload, _) = buildStatusPayload(sourceValue, apiServer)
+        val (payload, oai) = buildStatusPayload(sourceValue, apiServer)
         val data = invokeRaw("chat_completion_status", payload + mapOf("request" to payload))
         val map = data as? Map<*, *>
         val hasError = map != null && map["error"] == true
@@ -133,7 +139,22 @@ internal suspend fun TauriTavernJniClient.doTestConnection(
             )
         }
         val models = extractModelListFromStatusData(data)
-        ConnectionTestResult(success = true, models = models)
+        val isBypassed = map?.get("bypass") == true
+        val configuredModel = (oai[connectionModelKeyForSource(sourceValue)] as? String)?.trim().orEmpty()
+        val detailMessage = if (models.isEmpty() && isBypassed) {
+            if (configuredModel.isNotEmpty()) {
+                "连接就绪（该渠道跳过在线模型列表探测，请手动填写或使用已选模型：$configuredModel）"
+            } else {
+                "连接就绪（该渠道跳过在线模型列表探测，请手动填写或使用已选模型）"
+            }
+        } else {
+            null
+        }
+        ConnectionTestResult(
+            success = true,
+            models = models,
+            errorMessage = detailMessage
+        )
     } catch (e: Exception) {
         ConnectionTestResult(
             success = false,

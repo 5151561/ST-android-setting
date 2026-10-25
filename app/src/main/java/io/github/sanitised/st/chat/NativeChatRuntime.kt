@@ -153,15 +153,40 @@ class NativeChatRepository(
         val key = writeLockKey(avatar, chatFile)
         val cached = cachedSession?.takeIf { it.key == key }
         if (cached != null) {
+            cached.integrity?.let { knownIntegrities[key] = it }
             return character to cached.lines.nativeChatDeepCopy()
         }
         val lines = source.getChatJsonl(avatar, chatFile)
+        val integrity = lines.nativeChatIntegrity().takeIf { it.isNotBlank() }
+        integrity?.let { knownIntegrities[key] = it }
         cachedSession = CachedChatSession(
             key = key,
             lines = lines.nativeChatDeepCopy(),
-            integrity = lines.nativeChatIntegrity().takeIf { it.isNotBlank() },
+            integrity = integrity,
         )
         return character to lines
+    }
+
+    fun recordLoadedIntegrity(avatar: String, chatFile: String, rawChat: List<Any?>) {
+        if (avatar.isBlank() || chatFile.isBlank()) return
+        val key = writeLockKey(avatar, chatFile)
+        val integrity = rawChat.nativeChatIntegrity().takeIf { it.isNotBlank() }
+        if (integrity != null) {
+            knownIntegrities[key] = integrity
+        } else {
+            knownIntegrities.remove(key)
+        }
+    }
+
+    fun recordLoadedIntegrity(avatar: String, chatFile: String, integrity: String?) {
+        if (avatar.isBlank() || chatFile.isBlank()) return
+        val key = writeLockKey(avatar, chatFile)
+        val clean = integrity?.takeIf { it.isNotBlank() }
+        if (clean != null) {
+            knownIntegrities[key] = clean
+        } else {
+            knownIntegrities.remove(key)
+        }
     }
 
     suspend fun getCharacter(avatar: String): CharacterDetail =
@@ -171,12 +196,13 @@ class NativeChatRepository(
         val key = writeLockKey(avatar, chatFile)
         writeLocks.getOrPut(key) { Mutex() }.withLock {
             val source = dataSourceProvider()
-            val expectedIntegrity = chat.nativeChatIntegrity()
+            val expectedIntegrity = chat.nativeChatIntegrity().ifBlank { knownIntegrities[key].orEmpty() }
             if (enableLegacyFileBackups) {
                 val current = source.getChatJsonl(avatar, chatFile)
                 val currentIntegrity = current.nativeChatIntegrity()
                 if (expectedIntegrity.isNotBlank() && currentIntegrity.isNotBlank() && expectedIntegrity != currentIntegrity) {
                     cachedSession = null
+                    knownIntegrities.remove(key)
                     throw NativeChatIntegrityConflict(
                         avatar = avatar,
                         chatFile = chatFile,
@@ -191,6 +217,7 @@ class NativeChatRepository(
                 val currentIntegrity = source.getChatIntegrity(avatar, chatFile).orEmpty()
                 if (currentIntegrity.isNotBlank() && expectedIntegrity != currentIntegrity) {
                     cachedSession = null
+                    knownIntegrities.remove(key)
                     throw NativeChatIntegrityConflict(
                         avatar = avatar,
                         chatFile = chatFile,
@@ -202,10 +229,12 @@ class NativeChatRepository(
             val next = chat.nativeChatDeepCopy()
             next.ensureNativeChatIntegrity()
             source.saveChatJsonl(avatar, chatFile, next)
+            val savedIntegrity = next.nativeChatIntegrity().takeIf { it.isNotBlank() }
+            savedIntegrity?.let { knownIntegrities[key] = it }
             cachedSession = CachedChatSession(
                 key = key,
                 lines = next.nativeChatDeepCopy(),
-                integrity = next.nativeChatIntegrity().takeIf { it.isNotBlank() },
+                integrity = savedIntegrity,
             )
             if (enableLegacyFileBackups) {
                 pruneNativeBackups(source, avatar, chatFile)
@@ -224,16 +253,18 @@ class NativeChatRepository(
         return writeLocks.getOrPut(key) { Mutex() }.withLock {
             val source = dataSourceProvider()
             val cached = cachedSession?.takeIf { it.key == key }
-            val expectedIntegrity = cached?.integrity
+            val expectedIntegrity = cached?.integrity ?: knownIntegrities[key]
+            val normalizedHeader = headerIfMissing?.normalizeHeaderWithIntegrity()
             val appended = source.appendChatJsonl(
                 avatar = avatar,
                 chatFile = chatFile,
                 newMessages = newMessages,
-                headerIfMissing = headerIfMissing,
+                headerIfMissing = normalizedHeader,
                 expectedIntegrity = expectedIntegrity,
             )
             if (!appended) {
                 cachedSession = null
+                knownIntegrities.remove(key)
                 val actualIntegrity = source.getChatIntegrity(avatar, chatFile).orEmpty()
                 throw NativeChatIntegrityConflict(
                     avatar = avatar,
@@ -244,18 +275,25 @@ class NativeChatRepository(
             }
             if (cached != null) {
                 val updatedLines = cached.lines.nativeChatDeepCopy()
-                if (updatedLines.isEmpty() && headerIfMissing != null) {
-                    updatedLines.add(nativeChatDeepCopyValue(headerIfMissing))
-                    updatedLines.ensureNativeChatIntegrity()
+                if (updatedLines.isEmpty() && normalizedHeader != null) {
+                    updatedLines.add(nativeChatDeepCopyValue(normalizedHeader))
                 }
                 newMessages.forEach { message ->
                     updatedLines.add(nativeChatDeepCopyValue(message))
                 }
+                val nextIntegrity = updatedLines.nativeChatIntegrity().takeIf { it.isNotBlank() } ?: cached.integrity
+                nextIntegrity?.let { knownIntegrities[key] = it }
                 cachedSession = CachedChatSession(
                     key = key,
                     lines = updatedLines,
-                    integrity = updatedLines.nativeChatIntegrity().takeIf { it.isNotBlank() } ?: cached.integrity,
+                    integrity = nextIntegrity,
                 )
+            } else if (expectedIntegrity.isNullOrBlank()) {
+                val headerIntegrity = normalizedHeader?.let { listOf<Any?>(it).nativeChatIntegrity() }
+                    ?.takeIf { it.isNotBlank() }
+                val resolvedIntegrity = source.getChatIntegrity(avatar, chatFile)?.takeIf { it.isNotBlank() }
+                    ?: headerIntegrity
+                resolvedIntegrity?.let { knownIntegrities[key] = it }
             }
             true
         }
@@ -264,9 +302,11 @@ class NativeChatRepository(
     fun invalidateCache(avatar: String? = null, chatFile: String? = null) {
         if (avatar == null || chatFile == null) {
             cachedSession = null
+            knownIntegrities.clear()
             return
         }
         val key = writeLockKey(avatar, chatFile)
+        knownIntegrities.remove(key)
         if (cachedSession?.key == key) {
             cachedSession = null
         }
@@ -297,11 +337,23 @@ class NativeChatRepository(
     suspend fun exportChat(avatar: String, chatFile: String, format: ChatExportFormat): CharacterExportFile =
         dataSourceProvider().exportCharacterChat(avatar, chatFile, format)
 
-    private companion object {
-        val writeLocks = ConcurrentHashMap<String, Mutex>()
+    companion object {
+        private val writeLocks = ConcurrentHashMap<String, Mutex>()
+        private val knownIntegrities = ConcurrentHashMap<String, String>()
 
-        fun writeLockKey(avatar: String, chatFile: String): String =
+        private fun writeLockKey(avatar: String, chatFile: String): String =
             "$avatar/${chatFile.removeSuffix(".jsonl")}"
+
+        internal fun recordKnownIntegrity(avatar: String, chatFile: String, rawChat: List<Any?>) {
+            if (avatar.isBlank() || chatFile.isBlank()) return
+            val key = writeLockKey(avatar, chatFile)
+            val integrity = rawChat.nativeChatIntegrity().takeIf { it.isNotBlank() }
+            if (integrity != null) {
+                knownIntegrities[key] = integrity
+            } else {
+                knownIntegrities.remove(key)
+            }
+        }
     }
 
     private suspend fun pruneNativeBackups(source: NativeChatDataSource, avatar: String, chatFile: String) {
@@ -509,6 +561,7 @@ class NativeChatRuntime(
         chat: List<Any?>,
         resetPagination: Boolean = false,
     ) {
+        repository.recordLoadedIntegrity(avatar, chatFile, chat)
         val savedHasMore = store.hasMoreHistory
         val savedCursor = store.historyCursor
         store.applySnapshot(
@@ -674,8 +727,26 @@ internal fun nativeChatBackupTimestamp(name: String): String? {
 }
 
 private fun List<Any?>.nativeChatIntegrity(): String {
-    val metadata = firstOrNull().nativeChatHeaderMetadata() ?: return ""
+    val header = firstOrNull() as? Map<*, *> ?: return ""
+    val hasHeaderShape = header.containsKey("chat_metadata") ||
+        header.containsKey("user_name") ||
+        header.containsKey("character_name") ||
+        header.containsKey("create_date")
+    if (!hasHeaderShape) return ""
+    val metadata = header["chat_metadata"] as? Map<*, *> ?: return ""
     return metadata["integrity"]?.toString().orEmpty()
+}
+
+private fun Map<String, Any?>.normalizeHeaderWithIntegrity(): Map<String, Any?> {
+    @Suppress("UNCHECKED_CAST")
+    val copy = nativeChatDeepCopyValue(this) as MutableMap<String, Any?>
+    @Suppress("UNCHECKED_CAST")
+    val metadata = (copy["chat_metadata"] as? MutableMap<String, Any?>)
+        ?: linkedMapOf<String, Any?>().also { copy["chat_metadata"] = it }
+    if (metadata["integrity"]?.toString().isNullOrBlank()) {
+        metadata["integrity"] = UUID.randomUUID().toString()
+    }
+    return copy
 }
 
 // ST 服务端 /api/chats/save 要求 payload 首行 integrity 与磁盘文件一致（上游前端在加载时
